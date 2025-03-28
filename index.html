@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Budget App</title>
+  <title>Artha | Track your money like it matters</title>
   <meta name="description" content="Personal budgeting web app to manage your finances">
   
   <!-- Favicon -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
   
   <!-- Fonts -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;700;900&family=Gentium+Book+Basic:wght@400;700&family=Hind:wght@300;400;500;600;700&display=swap">
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -20,29 +20,45 @@
   
   <style>
     :root {
-      --primary: #412EBC;
-      --primary-hover: #362499;
-      --primary-light: #F1EFFF;
-      --primary-50: rgba(65, 46, 188, 0.05);
-      --primary-100: rgba(65, 46, 188, 0.1);
-      --accent: #E57CD8;
-      --accent-hover: #D15FC7;
-      --accent-light: #FDEEF7;
-      --bg-default: #FAFBFC;
-      --bg-muted: #E6E9F4;
-      --text-default: #2C2C2E;
-      --text-muted: #6E6E73;
+      /* Dark mode color system */
+      --primary: #412A4C;
+      --primary-hover: #37233F;
+      --primary-light: #634975;
+      --primary-50: rgba(65, 42, 76, 0.05);
+      --primary-100: rgba(65, 42, 76, 0.1);
+      
+      --accent: #EE5451;
+      --accent-hover: #D63E3B;
+      --accent-light: rgba(238, 84, 81, 0.2);
+      
+      --secondary: #F3A536;
+      --secondary-hover: #DB8E2E;
+      --secondary-light: rgba(243, 165, 54, 0.2);
+      
+      --soft-lavender: #FCE5CD;
+      
+      --bg-dark: #1E1E24;
+      --bg-dark-secondary: #2A2A35;
+      --bg-card: #2A2A35;
+      --bg-muted: #3D3D4E;
+      
+      --text-default: #F7F7F8;
+      --text-muted: #ADAEBA;
       --text-light: #8E8E93;
-      --border-default: #E6E6E6;
-      --border-hover: #C7C7CC;
+      
+      --border-default: #3D3D4E;
+      --border-hover: #4D4D5E;
+      
       --success: #34C759;
-      --warning: #FF9500;
-      --error: #FF3B30;
-      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
-      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-      --radius-sm: 6px;
-      --radius-md: 10px;
+      --warning: #F3A536;
+      --error: #EE5451;
+      
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+      
+      --radius-sm: 8px;
+      --radius-md: 12px;
       --radius-lg: 16px;
     }
     
@@ -53,12 +69,24 @@
     }
     
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg-default);
+      font-family: 'Hind', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-dark);
       color: var(--text-default);
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+      font-weight: 700;
+    }
+    
+    h1 {
+      font-family: 'Alegreya Sans', sans-serif;
+    }
+    
+    h2 {
+      font-family: 'Gentium Book Basic', serif;
     }
     
     .container {
@@ -68,7 +96,7 @@
     
     /* Cards */
     .card {
-      background-color: white;
+      background-color: var(--bg-card);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-sm);
       transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -166,7 +194,7 @@
     
     /* Navigation */
     .navbar {
-      background-color: white;
+      background-color: var(--bg-dark-secondary);
       border-bottom: 1px solid var(--border-default);
     }
     
@@ -179,13 +207,13 @@
     }
     
     .nav-item:hover {
-      color: var(--primary);
-      background-color: var(--primary-50);
+      color: var(--accent);
+      background-color: rgba(238, 84, 81, 0.1);
     }
     
     .nav-item.active {
-      background-color: var(--primary-light);
-      color: var(--primary);
+      background-color: var(--accent-light);
+      color: var(--accent);
       font-weight: 600;
     }
     
@@ -371,7 +399,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
                   </svg>
                 </div>
-                <span class="font-semibold text-xl" style="color: var(--primary);">Budget App</span>
+                <span class="font-semibold text-xl" style="color: var(--accent); font-family: 'Alegreya Sans', sans-serif;">Artha</span>
               </div>
               
               <div class="hidden md:flex items-center space-x-2">
@@ -401,9 +429,9 @@
           <!-- Welcome Area (First-time users) -->
           <div v-if="!hasData" class="mb-8 fade-in">
             <div class="card bg-white p-6 md:p-8 mb-6">
-              <h1 class="text-2xl font-semibold mb-3">Welcome to Your Budget Tracker</h1>
-              <p class="text-gray-600 mb-6">
-                Let's get started with your personal budgeting journey. Follow these steps to gain insights into your spending habits.
+              <h1 class="text-2xl font-semibold mb-2" style="color: var(--accent);">Welcome to Artha</h1>
+              <p class="mb-6" style="color: var(--text-muted);">
+                Track your money like it matters. Let's get started with your personal budgeting journey. Follow these steps to gain insights into your spending habits.
               </p>
               
               <div class="flex items-center justify-between mb-8 px-4 py-2">
@@ -635,7 +663,7 @@
         
         <!-- Footer -->
         <footer class="container mx-auto p-4 text-center text-sm text-gray-500 mt-8">
-          Budget App | Version 1.0.0
+          Artha | Track your money like it matters
         </footer>
       `
     };
