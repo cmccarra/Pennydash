@@ -1,9 +1,9 @@
 // Import Vue components
 import { defineComponent, ref, computed, onMounted, watchEffect } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 
-// Chart.js imports
-import {
-  Chart,
+// Use global Chart instance from CDN
+const { 
+  Chart, 
   BarController, 
   LineController,
   BarElement,
@@ -23,7 +23,7 @@ import {
   Title,
   Tooltip,
   SubTitle
-} from 'https://cdn.jsdelivr.net/npm/chart.js/+esm';
+} = window.Chart;
 
 // Register Chart.js components
 Chart.register(
@@ -781,96 +781,93 @@ export default defineComponent({
     };
   },
   template: `
+    <div class="reports-container">
+      <!-- Report Controls -->
+      <div class="mb-6 flex flex-wrap gap-3 items-center justify-between">
+        <h1 class="text-2xl font-bold">Reports & Analytics</h1>
+        
+        <!-- Date Range Selector -->
+        <div class="flex items-center">
+          <div class="join">
+            <button 
+              v-for="range in dateRanges" 
+              :key="range.value" 
+              class="btn btn-sm join-item" 
+              :class="{'btn-primary': selectedDateRange === range.value, 'btn-outline': selectedDateRange !== range.value}"
+              @click="selectedDateRange = range.value"
+            >
+              {{ range.label }}
+            </button>
+          </div>
+        </div>
+      </div>
       
-      <div class="reports-container">
-        <!-- Report Controls -->
-        <div class="mb-6 flex flex-wrap gap-3 items-center justify-between">
-          <h1 class="text-2xl font-bold">Reports & Analytics</h1>
-          
-          <!-- Date Range Selector -->
-          <div class="flex items-center">
-            <div class="join">
-              <button 
-                v-for="range in dateRanges" 
-                :key="range.value" 
-                class="btn btn-sm join-item" 
-                :class="{'btn-primary': selectedDateRange === range.value, 'btn-outline': selectedDateRange !== range.value}"
-                @click="selectedDateRange = range.value"
-              >
-                {{ range.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Chart Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <!-- Monthly Spending by Category Chart -->
-          <div class="card bg-base-200 shadow-md">
-            <div class="card-body">
-              <h2 class="card-title text-lg mb-3">Monthly Spending by Category</h2>
-              <MonthlySpendingBarChart :category-data="categorySpendingData" :data-loaded="dataLoaded" />
-            </div>
-          </div>
-          
-          <!-- Spending Trend Over Time Chart -->
-          <div class="card bg-base-200 shadow-md">
-            <div class="card-body">
-              <h2 class="card-title text-lg mb-3">Spending Trend Over Time</h2>
-              <SpendingTrendLineChart :trend-data="spendingTrendData" :time-unit="timeUnit" :data-loaded="dataLoaded" />
-            </div>
-          </div>
-          
-          <!-- Spending by Category Doughnut Chart -->
-          <div class="card bg-base-200 shadow-md">
-            <div class="card-body">
-              <h2 class="card-title text-lg mb-3">Spending by Category (This Month)</h2>
-              <CategoryDoughnutChart :category-data="categorySpendingData" :data-loaded="dataLoaded" />
-            </div>
-          </div>
-          
-          <!-- Income vs Expenses Stacked Chart -->
-          <div class="card bg-base-200 shadow-md">
-            <div class="card-body">
-              <h2 class="card-title text-lg mb-3">Income vs Expenses by Month</h2>
-              <IncomeExpensesStackedChart :monthly-data="monthlyFinanceData" :data-loaded="dataLoaded" />
-            </div>
-          </div>
-        </div>
-        
-        <!-- Summary Section -->
-        <div class="mt-8 card bg-primary text-primary-content">
+      <!-- Chart Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Monthly Spending by Category Chart -->
+        <div class="card bg-base-200 shadow-md">
           <div class="card-body">
-            <h2 class="card-title">Financial Summary</h2>
-            <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div class="bg-base-100/20 p-4 rounded-lg">
-                <h3 class="font-semibold text-lg">Average Monthly Spending</h3>
-                <p class="text-2xl font-bold">${{ averageMonthlySpending }}</p>
-                <p class="text-sm opacity-80">
-                  {{ spendingTrend }} compared to previous period
-                </p>
-              </div>
-              
-              <div class="bg-base-100/20 p-4 rounded-lg">
-                <h3 class="font-semibold text-lg">Largest Expense</h3>
-                <p class="text-2xl font-bold">{{ largestCategory.category }}</p>
-                <p class="text-sm opacity-80">
-                  ${{ formatAmount(largestCategory.amount) }} ({{ largestCategoryPercentage }}% of total)
-                </p>
-              </div>
-              
-              <div class="bg-base-100/20 p-4 rounded-lg">
-                <h3 class="font-semibold text-lg">Monthly Savings</h3>
-                <p class="text-2xl font-bold">${{ monthlySavings }}</p>
-                <p class="text-sm opacity-80">
-                  {{ savingsPercentage }}% of monthly income
-                </p>
-              </div>
+            <h2 class="card-title text-lg mb-3">Monthly Spending by Category</h2>
+            <MonthlySpendingBarChart :category-data="categorySpendingData" :data-loaded="dataLoaded" />
+          </div>
+        </div>
+        
+        <!-- Spending Trend Over Time Chart -->
+        <div class="card bg-base-200 shadow-md">
+          <div class="card-body">
+            <h2 class="card-title text-lg mb-3">Spending Trend Over Time</h2>
+            <SpendingTrendLineChart :trend-data="spendingTrendData" :time-unit="timeUnit" :data-loaded="dataLoaded" />
+          </div>
+        </div>
+        
+        <!-- Spending by Category Doughnut Chart -->
+        <div class="card bg-base-200 shadow-md">
+          <div class="card-body">
+            <h2 class="card-title text-lg mb-3">Spending by Category (This Month)</h2>
+            <CategoryDoughnutChart :category-data="categorySpendingData" :data-loaded="dataLoaded" />
+          </div>
+        </div>
+        
+        <!-- Income vs Expenses Stacked Chart -->
+        <div class="card bg-base-200 shadow-md">
+          <div class="card-body">
+            <h2 class="card-title text-lg mb-3">Income vs Expenses by Month</h2>
+            <IncomeExpensesStackedChart :monthly-data="monthlyFinanceData" :data-loaded="dataLoaded" />
+          </div>
+        </div>
+      </div>
+      
+      <!-- Summary Section -->
+      <div class="mt-8 card bg-primary text-primary-content">
+        <div class="card-body">
+          <h2 class="card-title">Financial Summary</h2>
+          <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-base-100/20 p-4 rounded-lg">
+              <h3 class="font-semibold text-lg">Average Monthly Spending</h3>
+              <p class="text-2xl font-bold">${{ averageMonthlySpending }}</p>
+              <p class="text-sm opacity-80">
+                {{ spendingTrend }} compared to previous period
+              </p>
+            </div>
+            
+            <div class="bg-base-100/20 p-4 rounded-lg">
+              <h3 class="font-semibold text-lg">Largest Expense</h3>
+              <p class="text-2xl font-bold">{{ largestCategory.category }}</p>
+              <p class="text-sm opacity-80">
+                ${{ formatAmount(largestCategory.amount) }} ({{ largestCategoryPercentage }}% of total)
+              </p>
+            </div>
+            
+            <div class="bg-base-100/20 p-4 rounded-lg">
+              <h3 class="font-semibold text-lg">Monthly Savings</h3>
+              <p class="text-2xl font-bold">${{ monthlySavings }}</p>
+              <p class="text-sm opacity-80">
+                {{ savingsPercentage }}% of monthly income
+              </p>
             </div>
           </div>
         </div>
       </div>
+    </div>
   `
 });
-
-// The watchEffect function is now properly imported from Vue
