@@ -3,19 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PennyDash - Personal Budget Tracker</title>
+  <title>PennyDash - Personal Budgeting</title>
   
-  <!-- Fonts -->
+  <!-- Favicon -->
+  <link rel="icon" href="generated-icon.png" type="image/png">
+  
+  <!-- Google Fonts: Inter + DM Serif Display -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS with DaisyUI -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
   
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <!-- Vue.js and Chart.js -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
   <!-- Reports View Styles -->
   <style>
@@ -532,21 +536,485 @@
   </style>
 </head>
 <body data-theme="pennydash" class="min-h-screen bg-base-100 text-base-content">
-  <div id="app"></div>
+  <div id="app">
+    <div class="flex min-h-screen">
+      <!-- Sidebar Navigation -->
+      <div class="w-64 bg-base-300 border-r border-base-200 shrink-0 hidden md:block">
+        <!-- App Logo -->
+        <div class="py-6 px-5 flex items-center gap-3">
+          <div class="btn btn-circle btn-ghost text-accent bg-base-200">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+            </svg>
+          </div>
+          <a class="font-serif text-xl font-semibold text-accent">PennyDash</a>
+        </div>
+        
+        <!-- Sidebar Navigation Menu -->
+        <nav class="pt-4">
+          <ul class="menu menu-vertical px-4 gap-1">
+            <li>
+              <a @click="activeTab = 'home'" :class="activeTab === 'home' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
+                <div class="w-7 h-7 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                  </svg>
+                </div>
+                Dashboard
+              </a>
+            </li>
+            <li>
+              <a @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
+                <div class="w-7 h-7 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                  </svg>
+                </div>
+                Transactions
+              </a>
+            </li>
+            <li>
+              <a @click="activeTab = 'categories'" :class="activeTab === 'categories' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
+                <div class="w-7 h-7 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
+                  </svg>
+                </div>
+                Categories
+              </a>
+            </li>
+            <li>
+              <a @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
+                <div class="w-7 h-7 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
+                  </svg>
+                </div>
+                Reports
+              </a>
+            </li>
+            <li>
+              <a @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
+                <div class="w-7 h-7 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                Settings
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+      
+      <!-- Mobile Navigation Menu -->
+      <div class="btm-nav z-50 bg-base-200 border-t border-base-300 md:hidden">
+        <button @click="activeTab = 'home'" :class="activeTab === 'home' ? 'active text-primary' : ''">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+          </svg>
+          <span class="btm-nav-label text-xs">Home</span>
+        </button>
+        <button @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'active text-primary' : ''">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+          </svg>
+          <span class="btm-nav-label text-xs">Transactions</span>
+        </button>
+        <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'active text-primary' : ''">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
+          </svg>
+          <span class="btm-nav-label text-xs">Reports</span>
+        </button>
+        <button @click="activeTab = 'more'" :class="activeTab === 'more' ? 'active text-primary' : ''">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+          <span class="btm-nav-label text-xs">More</span>
+        </button>
+      </div>
+      
+      <!-- Main Content Area -->
+      <div class="flex-1 p-4 md:px-6 md:py-8 overflow-y-auto pb-20 md:pb-8">
+        <!-- Dashboard View -->
+        <div v-if="activeTab === 'home'" class="space-y-6">
+          <h1 class="text-2xl font-bold mb-6">Dashboard</h1>
+          
+          <!-- Upload Transaction Card -->
+          <div class="card bg-base-200 shadow-md transition-all hover:shadow-lg">
+            <div class="p-6">
+              <h2 class="text-xl font-semibold mb-4">Upload Transactions</h2>
+              <p class="text-base-content/80 mb-4">
+                Import your transactions from your bank or financial institution to get started.
+              </p>
+              
+              <div 
+                class="upload-zone text-center p-8 cursor-pointer"
+                :class="{'active': isUploadActive}"
+                @click="useSampleData"
+                @dragover="setUploadActive(true)"
+                @dragleave="setUploadActive(false)"
+                @drop="setUploadActive(false); useSampleData();"
+              >
+                <div class="flex flex-col items-center justify-center gap-3">
+                  <div class="bg-primary/20 p-3 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p class="font-medium text-base-content">Drag & drop files here or <span class="text-primary">browse</span></p>
+                    <p class="text-sm text-base-content/70 mt-1">Supports CSV, OFX, QFX, PDF, and Excel files</p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Upload Progress (only show when something is uploaded) -->
+              <div v-if="uploadProgress > 0" class="mt-4">
+                <div class="flex justify-between items-center mb-2">
+                  <span class="text-sm font-medium">Upload Progress</span>
+                  <span class="text-sm font-medium">{{uploadProgress}}%</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-bar-fill" :style="{width: uploadProgress + '%'}"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Action Buttons -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="card bg-base-200 shadow text-center transition-all hover:bg-primary/10 cursor-pointer">
+              <div class="p-4 py-6 flex flex-col items-center">
+                <div class="bg-base-300 p-3 rounded-full mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                </div>
+                <span class="font-medium">Upload</span>
+              </div>
+            </div>
+            
+            <div class="card bg-base-200 shadow text-center transition-all hover:bg-primary/10 cursor-pointer">
+              <div class="p-4 py-6 flex flex-col items-center">
+                <div class="bg-base-300 p-3 rounded-full mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
+                  </svg>
+                </div>
+                <span class="font-medium">Categorize</span>
+              </div>
+            </div>
+            
+            <div class="card bg-base-200 shadow text-center transition-all hover:bg-primary/10 cursor-pointer" @click="activeTab = 'reports'">
+              <div class="p-4 py-6 flex flex-col items-center">
+                <div class="bg-base-300 p-3 rounded-full mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
+                  </svg>
+                </div>
+                <span class="font-medium">Create Report</span>
+              </div>
+            </div>
+            
+            <div class="card bg-base-200 shadow text-center transition-all hover:bg-primary/10 cursor-pointer">
+              <div class="p-4 py-6 flex flex-col items-center">
+                <div class="bg-base-300 p-3 rounded-full mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <span class="font-medium">Add Category</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- KPI Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- KPI 1: Spending vs Income -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="p-5">
+                <div class="flex items-center mb-3">
+                  <div class="icon-circle bg-primary/20 text-primary mr-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 class="text-lg font-medium">Spending vs Income</h3>
+                </div>
+                
+                <div v-if="!hasData" class="animate-pulse space-y-3">
+                  <div class="h-4 bg-base-300 rounded w-3/4"></div>
+                  <div class="h-10 bg-base-300 rounded"></div>
+                  <div class="h-4 bg-base-300 rounded w-1/2"></div>
+                </div>
+                
+                <div v-else>
+                  <div class="flex items-end justify-between">
+                    <div>
+                      <p class="text-sm text-base-content/70">Current Month</p>
+                      <p class="text-2xl font-bold">$2,875.90</p>
+                    </div>
+                    <div class="text-right">
+                      <span class="badge badge-success">+15%</span>
+                    </div>
+                  </div>
+                  
+                  <div class="mt-4">
+                    <div class="flex justify-between items-center mb-1">
+                      <span class="text-xs text-base-content/70">Spending</span>
+                      <span class="text-xs font-medium">75%</span>
+                    </div>
+                    <div class="progress-bar">
+                      <div class="progress-bar-fill" style="width: 75%; background-color: var(--error);"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- KPI 2: Top Spending Categories -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="p-5">
+                <div class="flex items-center mb-3">
+                  <div class="icon-circle bg-primary/20 text-primary mr-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
+                    </svg>
+                  </div>
+                  <h3 class="text-lg font-medium">Top Categories</h3>
+                </div>
+                
+                <div v-if="!hasData" class="animate-pulse space-y-3">
+                  <div class="h-4 bg-base-300 rounded w-3/4"></div>
+                  <div class="space-y-2">
+                    <div class="h-5 bg-base-300 rounded"></div>
+                    <div class="h-5 bg-base-300 rounded"></div>
+                    <div class="h-5 bg-base-300 rounded"></div>
+                  </div>
+                </div>
+                
+                <div v-else class="space-y-3">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm">Housing</span>
+                    <span class="text-sm font-medium">$1,200</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm">Food</span>
+                    <span class="text-sm font-medium">$550</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm">Transportation</span>
+                    <span class="text-sm font-medium">$350</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- KPI 3: Spending Over Time -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="p-5">
+                <div class="flex items-center mb-3">
+                  <div class="icon-circle bg-primary/20 text-primary mr-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                    </svg>
+                  </div>
+                  <h3 class="text-lg font-medium">Spending Trend</h3>
+                </div>
+                
+                <div v-if="!hasData" class="animate-pulse space-y-3">
+                  <div class="h-4 bg-base-300 rounded w-3/4"></div>
+                  <div class="h-24 bg-base-300 rounded"></div>
+                </div>
+                
+                <div v-else>
+                  <div class="flex items-end justify-between mb-3">
+                    <div>
+                      <p class="text-sm text-base-content/70">vs Last Month</p>
+                      <p class="text-sm font-medium text-error">+12.5%</p>
+                    </div>
+                    <div class="text-right">
+                      <span class="text-sm font-medium">$8,245</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Simple mini-chart visualization -->
+                  <div class="flex items-end h-16 gap-1">
+                    <div class="bg-primary/20 h-1/4 w-full rounded-t"></div>
+                    <div class="bg-primary/30 h-2/4 w-full rounded-t"></div>
+                    <div class="bg-primary/40 h-1/3 w-full rounded-t"></div>
+                    <div class="bg-primary/60 h-3/4 w-full rounded-t"></div>
+                    <div class="bg-primary/80 h-1/2 w-full rounded-t"></div>
+                    <div class="bg-primary h-full w-full rounded-t"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- KPI 4: Remaining Budget -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="p-5">
+                <div class="flex items-center mb-3">
+                  <div class="icon-circle bg-primary/20 text-primary mr-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                    </svg>
+                  </div>
+                  <h3 class="text-lg font-medium">Budget Status</h3>
+                </div>
+                
+                <div v-if="!hasData" class="animate-pulse space-y-3">
+                  <div class="h-4 bg-base-300 rounded w-3/4"></div>
+                  <div class="h-32 bg-base-300 rounded"></div>
+                </div>
+                
+                <div v-else>
+                  <div class="text-center mb-2">
+                    <p class="text-sm text-base-content/70">Remaining</p>
+                    <p class="text-2xl font-bold">$1,250</p>
+                    <p class="text-sm">of $4,000 monthly budget</p>
+                  </div>
+                  
+                  <div class="mt-3 flex items-center justify-center">
+                    <div class="radial-progress text-primary" style="--value:68; --size:5rem;">68%</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Reports View -->
+        <div v-if="activeTab === 'reports'" class="reports-container">
+          <!-- Report Controls -->
+          <div class="mb-6 flex flex-wrap gap-3 items-center justify-between">
+            <h1 class="text-2xl font-bold">Reports & Analytics</h1>
+            
+            <!-- Date Range Selector -->
+            <div class="flex items-center">
+              <div class="join">
+                <button 
+                  class="btn btn-sm join-item btn-primary"
+                >
+                  This Month
+                </button>
+                <button 
+                  class="btn btn-sm join-item btn-outline"
+                >
+                  3 Months
+                </button>
+                <button 
+                  class="btn btn-sm join-item btn-outline"
+                >
+                  6 Months
+                </button>
+                <button 
+                  class="btn btn-sm join-item btn-outline"
+                >
+                  Year
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Chart Grid -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Monthly Spending by Category Chart -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="card-body">
+                <h2 class="card-title text-lg mb-3">Monthly Spending by Category</h2>
+                <div class="chart-container">
+                  <canvas id="monthlySpendingChart" height="300"></canvas>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Spending Trend Over Time Chart -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="card-body">
+                <h2 class="card-title text-lg mb-3">Spending Trend Over Time</h2>
+                <div class="chart-container">
+                  <canvas id="trendChart" height="300"></canvas>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Spending by Category Doughnut Chart -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="card-body">
+                <h2 class="card-title text-lg mb-3">Spending by Category (This Month)</h2>
+                <div class="chart-container">
+                  <canvas id="categoryChart" height="300"></canvas>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Income vs Expenses Stacked Chart -->
+            <div class="card bg-base-200 shadow-md">
+              <div class="card-body">
+                <h2 class="card-title text-lg mb-3">Income vs Expenses by Month</h2>
+                <div class="chart-container">
+                  <canvas id="incomeExpensesChart" height="300"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Summary Section -->
+          <div class="mt-8 card bg-primary text-primary-content">
+            <div class="card-body">
+              <h2 class="card-title">Financial Summary</h2>
+              <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-base-100/20 p-4 rounded-lg">
+                  <h3 class="font-semibold text-lg">Average Monthly Spending</h3>
+                  <p class="text-2xl font-bold">$2,780</p>
+                  <p class="text-sm opacity-80">
+                    +3.5% compared to previous period
+                  </p>
+                </div>
+                
+                <div class="bg-base-100/20 p-4 rounded-lg">
+                  <h3 class="font-semibold text-lg">Largest Expense</h3>
+                  <p class="text-2xl font-bold">Housing</p>
+                  <p class="text-sm opacity-80">
+                    $1,200 (35% of total)
+                  </p>
+                </div>
+                
+                <div class="bg-base-100/20 p-4 rounded-lg">
+                  <h3 class="font-semibold text-lg">Monthly Savings</h3>
+                  <p class="text-2xl font-bold">$750</p>
+                  <p class="text-sm opacity-80">
+                    20% of monthly income
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
   
-  <script type="module">
-    import { createApp, ref, computed } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
-    import ReportsView from './src/client/components/ReportsView.js';
+  <script>
+    // Create Vue App
+    const { createApp, ref } = Vue;
     
-    const App = {
-      components: {
-        ReportsView
-      },
+    createApp({
       setup() {
         const hasData = ref(false);
         const isUploadActive = ref(false);
         const uploadProgress = ref(0);
-        const activeTab = ref('home');
+        const activeTab = ref('reports');
         
         const setHasData = () => {
           hasData.value = true;
@@ -574,488 +1042,285 @@
           useSampleData,
           setUploadActive
         };
-      },
-      template: `
-        <div class="flex min-h-screen">
-          <!-- Sidebar Navigation -->
-          <div class="w-64 bg-base-300 border-r border-base-200 shrink-0 hidden md:block">
-            <!-- App Logo -->
-            <div class="py-6 px-5 flex items-center gap-3">
-              <div class="btn btn-circle btn-ghost text-accent bg-base-200">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-                </svg>
-              </div>
-              <a class="font-serif text-xl font-semibold text-accent">PennyDash</a>
-            </div>
-            
-            <!-- Sidebar Navigation Menu -->
-            <nav class="pt-4">
-              <ul class="menu menu-vertical px-4 gap-1">
-                <li>
-                  <a @click="activeTab = 'home'" :class="activeTab === 'home' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                    <div class="w-7 h-7 flex items-center justify-center mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                      </svg>
-                    </div>
-                    Dashboard
-                  </a>
-                </li>
-                <li>
-                  <a @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                    <div class="w-7 h-7 flex items-center justify-center mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-                      </svg>
-                    </div>
-                    Transactions
-                  </a>
-                </li>
-                <li>
-                  <a @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                    <div class="w-7 h-7 flex items-center justify-center mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                      </svg>
-                    </div>
-                    Reports
-                  </a>
-                </li>
-                <li>
-                  <a @click="activeTab = 'categories'" :class="activeTab === 'categories' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                    <div class="w-7 h-7 flex items-center justify-center mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
-                      </svg>
-                    </div>
-                    Categories
-                  </a>
-                </li>
-                <li>
-                  <a @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                    <div class="w-7 h-7 flex items-center justify-center mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </div>
-                    Settings
-                  </a>
-                </li>
-              </ul>
-            </nav>
-          </div>
-          
-          <!-- Main Content Area -->
-          <div class="flex-1 overflow-x-hidden">
-            <!-- Mobile Header -->
-            <div class="md:hidden flex items-center justify-between py-3 px-4 border-b border-base-200">
-              <div class="flex items-center gap-2">
-                <div class="btn btn-square btn-ghost text-accent">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-                  </svg>
-                </div>
-                <a class="font-serif text-lg font-semibold text-accent">PennyDash</a>
-              </div>
-              
-              <label for="mobile-drawer" class="btn btn-square btn-ghost">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                </svg>
-              </label>
-            </div>
-            
-            <!-- Mobile Navigation Drawer -->
-            <div class="drawer md:hidden">
-              <input id="mobile-drawer" type="checkbox" class="drawer-toggle" /> 
-              <div class="drawer-side z-20">
-                <label for="mobile-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
-                <div class="p-4 w-80 min-h-full bg-base-300 text-base-content flex flex-col">
-                  <div class="flex justify-between items-center mb-6">
-                    <div class="font-serif text-xl font-semibold text-accent">PennyDash</div>
-                    <label for="mobile-drawer" class="btn btn-square btn-ghost">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </label>
-                  </div>
-                  
-                  <ul class="menu menu-vertical px-2 gap-1">
-                    <li>
-                      <a @click="activeTab = 'home'" :class="activeTab === 'home' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                        <div class="w-7 h-7 flex items-center justify-center mr-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                          </svg>
-                        </div>
-                        Dashboard
-                      </a>
-                    </li>
-                    <li>
-                      <a @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                        <div class="w-7 h-7 flex items-center justify-center mr-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-                          </svg>
-                        </div>
-                        Transactions
-                      </a>
-                    </li>
-                    <li>
-                      <a @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                        <div class="w-7 h-7 flex items-center justify-center mr-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                          </svg>
-                        </div>
-                        Reports
-                      </a>
-                    </li>
-                    <li>
-                      <a @click="activeTab = 'categories'" :class="activeTab === 'categories' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                        <div class="w-7 h-7 flex items-center justify-center mr-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
-                          </svg>
-                        </div>
-                        Categories
-                      </a>
-                    </li>
-                    <li>
-                      <a @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'bg-primary/20 text-primary' : ''" class="flex items-center py-3 px-4 rounded-lg transition-all">
-                        <div class="w-7 h-7 flex items-center justify-center mr-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </div>
-                        Settings
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Page Content -->
-            <div class="p-6">
-              <!-- Dashboard Content -->
-              <div v-if="activeTab === 'home'" class="fade-in">
-                <h1 class="text-2xl font-bold mb-6">Dashboard</h1>
-                
-                <!-- Upload Card -->
-                <div class="card bg-base-200 mb-8">
-                  <div class="card-body p-6">
-                    <div class="flex items-center justify-between mb-4">
-                      <h2 class="text-xl font-bold">Import Transactions</h2>
-                      <button class="btn btn-primary btn-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                        </svg>
-                        Upload
-                      </button>
-                    </div>
-                    
-                    <!-- Upload Zone -->
-                    <div 
-                      class="upload-zone" 
-                      :class="{ 'active': isUploadActive }"
-                      @dragover.prevent="setUploadActive(true)"
-                      @dragleave.prevent="setUploadActive(false)"
-                      @drop.prevent="setHasData()"
-                    >
-                      <div class="text-center py-8">
-                        <div class="btn btn-circle btn-ghost text-primary mb-4">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                          </svg>
-                        </div>
-                        <h3 class="text-lg font-semibold mb-2">Drag & Drop or Click to Upload</h3>
-                        <p class="text-sm text-base-content/70 mb-3">
-                          Supported formats: CSV, OFX, QFX, PDF, Excel
-                        </p>
-                        <button @click="useSampleData" class="btn btn-ghost btn-sm">
-                          <span class="text-primary">Use Sample Data</span>
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <!-- Upload Progress (shown after file is uploaded) -->
-                    <div v-if="hasData" class="mt-4">
-                      <div class="flex justify-between items-center mb-2">
-                        <span class="text-sm font-medium">Processing...</span>
-                        <span class="text-sm text-base-content/70">{{ uploadProgress }}%</span>
-                      </div>
-                      <div class="progress-bar">
-                        <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Dashboard Action Buttons -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                  <button class="card bg-base-200 hover:bg-base-300 transition-all p-4 flex flex-col items-center justify-center text-center">
-                    <div class="btn btn-circle btn-primary mb-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                      </svg>
-                    </div>
-                    <h3 class="font-semibold">Upload</h3>
-                    <p class="text-xs text-base-content/70 mt-1">Import transactions from files</p>
-                  </button>
-                  
-                  <button class="card bg-base-200 hover:bg-base-300 transition-all p-4 flex flex-col items-center justify-center text-center">
-                    <div class="btn btn-circle btn-accent mb-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
-                      </svg>
-                    </div>
-                    <h3 class="font-semibold">Categorize</h3>
-                    <p class="text-xs text-base-content/70 mt-1">Assign categories to transactions</p>
-                  </button>
-                  
-                  <button class="card bg-base-200 hover:bg-base-300 transition-all p-4 flex flex-col items-center justify-center text-center" @click="activeTab = 'reports'">
-                    <div class="btn btn-circle bg-amber-500 hover:bg-amber-600 border-none mb-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                      </svg>
-                    </div>
-                    <h3 class="font-semibold">Create Report</h3>
-                    <p class="text-xs text-base-content/70 mt-1">Generate financial reports</p>
-                  </button>
-                  
-                  <button class="card bg-base-200 hover:bg-base-300 transition-all p-4 flex flex-col items-center justify-center text-center">
-                    <div class="btn btn-circle bg-emerald-500 hover:bg-emerald-600 border-none mb-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                      </svg>
-                    </div>
-                    <h3 class="font-semibold">Add Category</h3>
-                    <p class="text-xs text-base-content/70 mt-1">Create custom categories</p>
-                  </button>
-                </div>
-                
-                <!-- KPI Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                  <!-- Spending vs Income -->
-                  <div class="card bg-base-200">
-                    <div class="card-body">
-                      <h3 class="text-lg font-semibold mb-2">Spending vs Income</h3>
-                      <div class="flex items-end justify-between">
-                        <div>
-                          <p class="text-3xl font-bold text-emerald-500">75%</p>
-                          <p class="text-sm text-base-content/70">Spending Ratio</p>
-                        </div>
-                        <div class="w-24 h-24 flex items-center justify-center">
-                          <div class="relative w-full h-full">
-                            <div class="absolute inset-0 flex items-center justify-center">
-                              <svg viewBox="0 0 36 36" class="w-full h-full">
-                                <path
-                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                  fill="none"
-                                  stroke="#222"
-                                  stroke-width="3"
-                                />
-                                <path
-                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                  fill="none"
-                                  stroke="#10B981"
-                                  stroke-width="3"
-                                  stroke-dasharray="75, 100"
-                                />
-                              </svg>
-                              <div class="absolute text-sm font-semibold">75%</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <!-- Top Spending Categories -->
-                  <div class="card bg-base-200">
-                    <div class="card-body">
-                      <h3 class="text-lg font-semibold mb-2">Top Spending Categories</h3>
-                      <ul class="space-y-2">
-                        <li class="flex items-center justify-between">
-                          <div class="flex items-center">
-                            <div class="w-3 h-3 rounded-full bg-primary mr-2"></div>
-                            <span class="text-sm">Housing</span>
-                          </div>
-                          <span class="text-sm font-semibold">$1,200</span>
-                        </li>
-                        <li class="flex items-center justify-between">
-                          <div class="flex items-center">
-                            <div class="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
-                            <span class="text-sm">Food</span>
-                          </div>
-                          <span class="text-sm font-semibold">$550</span>
-                        </li>
-                        <li class="flex items-center justify-between">
-                          <div class="flex items-center">
-                            <div class="w-3 h-3 rounded-full bg-amber-500 mr-2"></div>
-                            <span class="text-sm">Transportation</span>
-                          </div>
-                          <span class="text-sm font-semibold">$350</span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                  
-                  <!-- Spending Over Time -->
-                  <div class="card bg-base-200">
-                    <div class="card-body">
-                      <h3 class="text-lg font-semibold mb-2">Spending Over Time</h3>
-                      <div class="h-32 w-full">
-                        <!-- Mini chart representation -->
-                        <div class="relative h-full w-full flex items-end justify-between">
-                          <div class="w-[10%] h-[50%] bg-primary/20 rounded-t-sm"></div>
-                          <div class="w-[10%] h-[65%] bg-primary/30 rounded-t-sm"></div>
-                          <div class="w-[10%] h-[40%] bg-primary/40 rounded-t-sm"></div>
-                          <div class="w-[10%] h-[75%] bg-primary/50 rounded-t-sm"></div>
-                          <div class="w-[10%] h-[60%] bg-primary/60 rounded-t-sm"></div>
-                          <div class="w-[10%] h-[85%] bg-primary/70 rounded-t-sm"></div>
-                          <div class="w-[10%] h-[70%] bg-primary/80 rounded-t-sm"></div>
-                        </div>
-                      </div>
-                      <div class="mt-2 flex justify-between">
-                        <span class="text-xs text-base-content/70">Jan</span>
-                        <span class="text-xs text-base-content/70">Apr</span>
-                        <span class="text-xs text-base-content/70">Jul</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <!-- Remaining Budget -->
-                  <div class="card bg-base-200">
-                    <div class="card-body">
-                      <h3 class="text-lg font-semibold mb-2">Remaining Budget</h3>
-                      <div class="flex items-end justify-between">
-                        <div>
-                          <p class="text-3xl font-bold text-primary">$750</p>
-                          <p class="text-sm text-base-content/70">of $3,000</p>
-                        </div>
-                        <div class="flex flex-col items-end">
-                          <span class="text-sm font-medium">25%</span>
-                          <span class="text-xs text-base-content/70">5 days left</span>
-                        </div>
-                      </div>
-                      <div class="mt-4">
-                        <div class="progress-bar">
-                          <div class="progress-bar-fill" style="width: 75%"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Recent Transactions -->
-                <div class="card bg-base-200">
-                  <div class="card-body">
-                    <div class="flex items-center justify-between mb-4">
-                      <h3 class="text-lg font-semibold">Recent Transactions</h3>
-                      <a href="#" class="text-sm text-primary hover:underline">View All</a>
-                    </div>
-                    
-                    <div class="overflow-x-auto">
-                      <table class="table table-zebra">
-                        <thead>
-                          <tr>
-                            <th>Date</th>
-                            <th>Description</th>
-                            <th>Category</th>
-                            <th class="text-right">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>Mar 15</td>
-                            <td>Grocery Store</td>
-                            <td>
-                              <div class="badge badge-sm badge-primary">Food</div>
-                            </td>
-                            <td class="text-right font-medium">-$84.32</td>
-                          </tr>
-                          <tr>
-                            <td>Mar 14</td>
-                            <td>Monthly Salary</td>
-                            <td>
-                              <div class="badge badge-sm badge-success">Income</div>
-                            </td>
-                            <td class="text-right font-medium text-emerald-500">+$3,500.00</td>
-                          </tr>
-                          <tr>
-                            <td>Mar 12</td>
-                            <td>Gas Station</td>
-                            <td>
-                              <div class="badge badge-sm badge-secondary">Transportation</div>
-                            </td>
-                            <td class="text-right font-medium">-$45.00</td>
-                          </tr>
-                          <tr>
-                            <td>Mar 10</td>
-                            <td>Restaurant Downtown</td>
-                            <td>
-                              <div class="badge badge-sm badge-accent">Entertainment</div>
-                            </td>
-                            <td class="text-right font-medium">-$68.50</td>
-                          </tr>
-                          <tr>
-                            <td>Mar 8</td>
-                            <td>Electric Bill</td>
-                            <td>
-                              <div class="badge badge-sm" style="background-color: #607D8B;">Utilities</div>
-                            </td>
-                            <td class="text-right font-medium">-$94.72</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Reports Tab Content -->
-              <div v-if="activeTab === 'reports'" class="fade-in">
-                <ReportsView />
-              </div>
-              
-              <!-- Other tabs would be implemented similarly -->
-              <div v-if="activeTab === 'transactions'" class="fade-in">
-                <h1 class="text-2xl font-bold mb-6">Transactions</h1>
-                <div class="card bg-base-200 p-6">
-                  <p>Transactions content will appear here.</p>
-                </div>
-              </div>
-              
-              <div v-if="activeTab === 'categories'" class="fade-in">
-                <h1 class="text-2xl font-bold mb-6">Categories</h1>
-                <div class="card bg-base-200 p-6">
-                  <p>Categories content will appear here.</p>
-                </div>
-              </div>
-              
-              <div v-if="activeTab === 'settings'" class="fade-in">
-                <h1 class="text-2xl font-bold mb-6">Settings</h1>
-                <div class="card bg-base-200 p-6">
-                  <p>Settings content will appear here.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `
-    };
+      }
+    }).mount('#app');
     
-    // Mount the app
-    const app = createApp(App);
-    app.mount('#app');
+    // Create Charts
+    window.addEventListener('load', function() {
+      setTimeout(() => {
+        initCharts();
+      }, 500);
+    });
+    
+    function initCharts() {
+      // Monthly Spending Bar Chart
+      const monthlySpendingCtx = document.getElementById('monthlySpendingChart');
+      if (monthlySpendingCtx) {
+        const monthlySpendingChart = new Chart(monthlySpendingCtx, {
+          type: 'bar',
+          data: {
+            labels: ['Housing', 'Food', 'Transportation', 'Entertainment', 'Utilities', 'Shopping', 'Healthcare', 'Personal Care', 'Education'],
+            datasets: [{
+              label: 'Spending Amount',
+              data: [1200, 550, 350, 200, 180, 320, 150, 90, 220],
+              backgroundColor: [
+                'rgba(52, 211, 153, 0.8)',
+                'rgba(59, 130, 246, 0.8)',
+                'rgba(139, 92, 246, 0.8)',
+                'rgba(249, 115, 22, 0.8)',
+                'rgba(239, 68, 68, 0.8)',
+                'rgba(16, 185, 129, 0.8)',
+                'rgba(14, 165, 233, 0.8)',
+                'rgba(168, 85, 247, 0.8)',
+                'rgba(251, 146, 60, 0.8)'
+              ],
+              borderColor: [
+                'rgba(52, 211, 153, 1)',
+                'rgba(59, 130, 246, 1)',
+                'rgba(139, 92, 246, 1)',
+                'rgba(249, 115, 22, 1)',
+                'rgba(239, 68, 68, 1)',
+                'rgba(16, 185, 129, 1)',
+                'rgba(14, 165, 233, 1)',
+                'rgba(168, 85, 247, 1)',
+                'rgba(251, 146, 60, 1)'
+              ],
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                callbacks: {
+                  label: (context) => {
+                    const value = context.raw;
+                    return `$${value.toLocaleString()}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => `$${value}`
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Spending Trend Line Chart
+      const trendCtx = document.getElementById('trendChart');
+      if (trendCtx) {
+        // Generate dates for the last 12 months
+        const today = new Date();
+        const dates = Array.from({ length: 12 }, (_, i) => {
+          const date = new Date(today);
+          date.setDate(1);
+          date.setMonth(today.getMonth() - i);
+          return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }).reverse();
+        
+        // Random data for spending trend
+        const spendingData = Array.from({ length: 12 }, () => {
+          const baseAmount = 2500;
+          const variance = Math.random() * 1000 - 500; // Random between -500 and 500
+          return Math.round(baseAmount + variance);
+        });
+        
+        const trendChart = new Chart(trendCtx, {
+          type: 'line',
+          data: {
+            labels: dates,
+            datasets: [{
+              label: 'Spending Trend',
+              data: spendingData,
+              borderColor: 'rgba(124, 58, 237, 1)',
+              backgroundColor: 'rgba(124, 58, 237, 0.2)',
+              borderWidth: 2,
+              tension: 0.3,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                callbacks: {
+                  label: (context) => {
+                    const value = context.raw;
+                    return `$${value.toLocaleString()}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => `$${value}`
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Category Doughnut Chart
+      const categoryCtx = document.getElementById('categoryChart');
+      if (categoryCtx) {
+        const categoryChart = new Chart(categoryCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Housing', 'Food', 'Transportation', 'Entertainment', 'Utilities', 'Shopping'],
+            datasets: [{
+              label: 'Spending by Category',
+              data: [1200, 550, 350, 200, 180, 320],
+              backgroundColor: [
+                'rgba(124, 58, 237, 0.8)',
+                'rgba(52, 211, 153, 0.8)',
+                'rgba(59, 130, 246, 0.8)',
+                'rgba(249, 115, 22, 0.8)',
+                'rgba(239, 68, 68, 0.8)',
+                'rgba(16, 185, 129, 0.8)'
+              ],
+              borderColor: [
+                'rgba(124, 58, 237, 1)',
+                'rgba(52, 211, 153, 1)',
+                'rgba(59, 130, 246, 1)',
+                'rgba(249, 115, 22, 1)',
+                'rgba(239, 68, 68, 1)',
+                'rgba(16, 185, 129, 1)'
+              ],
+              borderWidth: 1,
+              hoverOffset: 15
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: {
+              legend: {
+                position: 'right',
+                labels: {
+                  boxWidth: 15,
+                  padding: 15
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  label: (context) => {
+                    const value = context.raw;
+                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                    const percentage = Math.round((value / total) * 100);
+                    return `${context.label}: $${value.toLocaleString()} (${percentage}%)`;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Income vs Expenses Stacked Chart
+      const incomeExpensesCtx = document.getElementById('incomeExpensesChart');
+      if (incomeExpensesCtx) {
+        // Generate dates for the last 6 months
+        const today = new Date();
+        const dates = Array.from({ length: 6 }, (_, i) => {
+          const date = new Date(today);
+          date.setDate(1);
+          date.setMonth(today.getMonth() - i);
+          return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }).reverse();
+        
+        // Random data for income and expenses
+        const incomeData = Array.from({ length: 6 }, () => {
+          return Math.round(3800 + (Math.random() * 400 - 200));
+        });
+        
+        const expensesData = incomeData.map(income => {
+          const expenseRatio = 0.7 + (Math.random() * 0.25);
+          return Math.round(income * expenseRatio);
+        });
+        
+        const incomeExpensesChart = new Chart(incomeExpensesCtx, {
+          type: 'bar',
+          data: {
+            labels: dates,
+            datasets: [
+              {
+                label: 'Income',
+                data: incomeData,
+                backgroundColor: 'rgba(52, 211, 153, 0.8)',
+                borderColor: 'rgba(52, 211, 153, 1)',
+                borderWidth: 1
+              },
+              {
+                label: 'Expenses',
+                data: expensesData,
+                backgroundColor: 'rgba(229, 62, 62, 0.8)',
+                borderColor: 'rgba(229, 62, 62, 1)',
+                borderWidth: 1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+              },
+              tooltip: {
+                callbacks: {
+                  label: (context) => {
+                    const value = context.raw;
+                    const label = context.dataset.label;
+                    return `${label}: $${value.toLocaleString()}`;
+                  },
+                  afterBody: (tooltipItems) => {
+                    const index = tooltipItems[0].dataIndex;
+                    const income = incomeData[index];
+                    const expenses = expensesData[index];
+                    
+                    const difference = income - expenses;
+                    const isSurplus = difference >= 0;
+                    const label = isSurplus ? 'Savings' : 'Deficit';
+                    const value = Math.abs(difference);
+                    
+                    return [`${label}: $${value.toLocaleString()}`];
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                stacked: false,
+              },
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => `$${value}`
+                }
+              }
+            }
+          }
+        });
+      }
+    }
   </script>
 </body>
 </html>
