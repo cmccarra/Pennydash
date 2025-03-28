@@ -1,8 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const multer = require('multer');
 const path = require('path');
 const bodyParser = require('body-parser');
+const fs = require('fs');
 
 // Import routes
 const transactionRoutes = require('./routes/transactions');
@@ -14,32 +14,11 @@ const settingsRoutes = require('./routes/settings');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, 'uploads/'));
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    // Accept only CSV and XML files
-    if (file.mimetype === 'text/csv' || 
-        file.mimetype === 'application/xml' || 
-        file.mimetype === 'text/xml' ||
-        file.originalname.endsWith('.csv') ||
-        file.originalname.endsWith('.xml')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only CSV and XML files are allowed'), false);
-    }
-  }
-});
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Middleware
 app.use(cors());

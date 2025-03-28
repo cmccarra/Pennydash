@@ -16,10 +16,13 @@ const storage = multer.diskStorage({
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
+    console.log(`Upload directory: ${uploadDir}`);
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
+    const filename = Date.now() + '-' + file.originalname;
+    console.log(`Saving file as: ${filename}`);
+    cb(null, filename);
   }
 });
 
@@ -142,6 +145,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
     
     const filePath = req.file.path;
+    console.log(`Processing uploaded file: ${filePath}`);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(500).json({ error: `File not found at path: ${filePath}` });
+    }
+    
     const fileName = path.basename(filePath);
     const fileExtension = path.extname(fileName).toLowerCase().slice(1);
     
@@ -149,8 +159,24 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const accountType = req.body.accountType || '';
     const accountName = req.body.accountName || '';
     
+    console.log(`Parsing file with extension: ${fileExtension}`);
+    
     // Parse the file based on its extension
-    const transactions = await FileParser.parseFile(filePath);
+    let transactions;
+    try {
+      transactions = await FileParser.parseFile(filePath);
+      console.log(`Successfully parsed ${transactions.length} transactions from file`);
+    } catch (parseError) {
+      console.error('Error parsing file:', parseError);
+      return res.status(400).json({ 
+        error: `Error parsing file: ${parseError.message}`, 
+        details: parseError.stack 
+      });
+    }
+    
+    if (!transactions || transactions.length === 0) {
+      return res.status(400).json({ error: 'No transactions found in the uploaded file' });
+    }
     
     // Add source file information and override account info if provided
     const processedTransactions = transactions.map(transaction => {
@@ -171,6 +197,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       
       return updatedTransaction;
     });
+    
+    console.log(`Saving ${processedTransactions.length} transactions to database`);
     
     // Save transactions to database
     const savedTransactions = await db.addTransactions(processedTransactions);
@@ -212,7 +240,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       transactions: savedTransactions
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Upload endpoint error:', error);
+    res.status(500).json({ 
+      error: error.message, 
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+    });
   }
 });
 
