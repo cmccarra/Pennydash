@@ -656,11 +656,18 @@
               <div 
                 class="upload-zone text-center p-8 cursor-pointer"
                 :class="{'active': isUploadActive}"
-                @click="useSampleData"
-                @dragover="setUploadActive(true)"
-                @dragleave="setUploadActive(false)"
-                @drop="setUploadActive(false); useSampleData();"
+                @click="$refs.fileInput.click()"
+                @dragover.prevent="setUploadActive(true)"
+                @dragleave.prevent="setUploadActive(false)"
+                @drop.prevent="handleFileDrop($event); setUploadActive(false);"
               >
+                <input 
+                  type="file" 
+                  ref="fileInput" 
+                  class="hidden" 
+                  @change="handleFileUpload"
+                  accept=".csv,.ofx,.qfx,.pdf,.xlsx,.xls,.xml"
+                >
                 <div class="flex flex-col items-center justify-center gap-3">
                   <div class="bg-primary/20 p-3 rounded-full">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -672,6 +679,12 @@
                     <p class="text-sm text-base-content/70 mt-1">Supports CSV, OFX, QFX, PDF, and Excel files</p>
                   </div>
                 </div>
+              </div>
+              
+              <!-- Error Alert (only show when there's an upload error) -->
+              <div v-if="state.errors.upload" class="mt-4 alert alert-error">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>{{ state.errors.upload }}</span>
               </div>
               
               <!-- Upload Progress (only show when something is uploaded) -->
@@ -903,22 +916,30 @@
             <div class="flex items-center">
               <div class="join">
                 <button 
-                  class="btn btn-sm join-item btn-primary"
+                  class="btn btn-sm join-item"
+                  :class="{'btn-primary': selectedDateRange === 'month', 'btn-outline': selectedDateRange !== 'month'}"
+                  @click="setDateRange('month')"
                 >
                   This Month
                 </button>
                 <button 
-                  class="btn btn-sm join-item btn-outline"
+                  class="btn btn-sm join-item"
+                  :class="{'btn-primary': selectedDateRange === '3months', 'btn-outline': selectedDateRange !== '3months'}"
+                  @click="setDateRange('3months')"
                 >
                   3 Months
                 </button>
                 <button 
-                  class="btn btn-sm join-item btn-outline"
+                  class="btn btn-sm join-item"
+                  :class="{'btn-primary': selectedDateRange === '6months', 'btn-outline': selectedDateRange !== '6months'}"
+                  @click="setDateRange('6months')"
                 >
                   6 Months
                 </button>
                 <button 
-                  class="btn btn-sm join-item btn-outline"
+                  class="btn btn-sm join-item"
+                  :class="{'btn-primary': selectedDateRange === 'year', 'btn-outline': selectedDateRange !== 'year'}"
+                  @click="setDateRange('year')"
                 >
                   Year
                 </button>
@@ -1006,26 +1027,333 @@
   </div>
   
   <script>
+    // API Service Functions
+    const api = {
+      // Base API URLs
+      baseUrl: '/api',
+      
+      // Generic request handler
+      async request(endpoint, method = 'GET', data = null) {
+        const url = `${this.baseUrl}${endpoint}`;
+        const options = {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        };
+        
+        if (data && (method === 'POST' || method === 'PUT')) {
+          options.body = JSON.stringify(data);
+        }
+        
+        try {
+          const response = await fetch(url, options);
+          
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+          }
+          
+          return await response.json();
+        } catch (error) {
+          console.error('API request failed:', error);
+          throw error;
+        }
+      },
+      
+      // Transactions API
+      transactions: {
+        async getAll() {
+          return api.request('/transactions');
+        },
+        
+        async getById(id) {
+          return api.request(`/transactions/${id}`);
+        },
+        
+        async create(transaction) {
+          return api.request('/transactions', 'POST', transaction);
+        },
+        
+        async update(id, transaction) {
+          return api.request(`/transactions/${id}`, 'PUT', transaction);
+        },
+        
+        async delete(id) {
+          return api.request(`/transactions/${id}`, 'DELETE');
+        },
+        
+        async batchUpdateCategory(transactionIds, categoryId) {
+          return api.request('/transactions/batch-category', 'PUT', { 
+            transactionIds, 
+            categoryId 
+          });
+        },
+        
+        async uploadFile(formData) {
+          const url = `${api.baseUrl}/transactions/upload`;
+          
+          try {
+            const response = await fetch(url, {
+              method: 'POST',
+              body: formData // No Content-Type header for multipart/form-data
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+            }
+            
+            return await response.json();
+          } catch (error) {
+            console.error('File upload failed:', error);
+            throw error;
+          }
+        }
+      },
+      
+      // Categories API
+      categories: {
+        async getAll() {
+          return api.request('/categories');
+        },
+        
+        async getById(id) {
+          return api.request(`/categories/${id}`);
+        },
+        
+        async create(category) {
+          return api.request('/categories', 'POST', category);
+        },
+        
+        async update(id, category) {
+          return api.request(`/categories/${id}`, 'PUT', category);
+        },
+        
+        async delete(id) {
+          return api.request(`/categories/${id}`, 'DELETE');
+        }
+      },
+      
+      // Reports API
+      reports: {
+        async getCategorySummary(timeframe = 'month') {
+          return api.request(`/reports/category-summary?timeframe=${timeframe}`);
+        },
+        
+        async getSpendingTrend(timeframe = '6months') {
+          return api.request(`/reports/spending-trend?timeframe=${timeframe}`);
+        },
+        
+        async getMonthlyFinances(months = 6) {
+          return api.request(`/reports/monthly-finances?months=${months}`);
+        },
+        
+        async getBudgetStatus() {
+          return api.request('/reports/budget-status');
+        }
+      },
+      
+      // Settings API
+      settings: {
+        async get() {
+          return api.request('/settings');
+        },
+        
+        async update(settings) {
+          return api.request('/settings', 'PUT', settings);
+        }
+      }
+    };
+
     // Create Vue App
-    const { createApp, ref } = Vue;
+    const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
     
     createApp({
       setup() {
+        // State management
+        const state = reactive({
+          transactions: [],
+          categories: [],
+          reportData: {
+            categorySummary: [],
+            spendingTrend: [],
+            monthlyFinances: []
+          },
+          budgetStatus: null,
+          settings: null,
+          errors: {
+            transactions: null,
+            categories: null,
+            reports: null,
+            settings: null,
+            upload: null
+          },
+          loading: {
+            transactions: false,
+            categories: false,
+            reports: false,
+            settings: false,
+            upload: false
+          }
+        });
+        
         const hasData = ref(false);
         const isUploadActive = ref(false);
         const uploadProgress = ref(0);
-        const activeTab = ref('reports');
+        const activeTab = ref('home');
+        const selectedDateRange = ref('month');
         
-        const setHasData = () => {
-          hasData.value = true;
-          uploadProgress.value = 25;
+        // Fetch transactions from API
+        const fetchTransactions = async () => {
+          state.loading.transactions = true;
+          state.errors.transactions = null;
+          
+          try {
+            state.transactions = await api.transactions.getAll();
+            if (state.transactions.length > 0) {
+              hasData.value = true;
+            }
+          } catch (error) {
+            state.errors.transactions = error.message;
+            console.error('Failed to fetch transactions:', error);
+          } finally {
+            state.loading.transactions = false;
+          }
         };
         
+        // Fetch categories from API
+        const fetchCategories = async () => {
+          state.loading.categories = true;
+          state.errors.categories = null;
+          
+          try {
+            state.categories = await api.categories.getAll();
+          } catch (error) {
+            state.errors.categories = error.message;
+            console.error('Failed to fetch categories:', error);
+          } finally {
+            state.loading.categories = false;
+          }
+        };
+        
+        // Fetch report data based on selected timeframe
+        const fetchReportData = async () => {
+          state.loading.reports = true;
+          state.errors.reports = null;
+          
+          try {
+            // Fetch category summary data
+            state.reportData.categorySummary = await api.reports.getCategorySummary(selectedDateRange.value);
+            
+            // Fetch spending trend data
+            state.reportData.spendingTrend = await api.reports.getSpendingTrend(selectedDateRange.value);
+            
+            // Fetch monthly finance data
+            const months = selectedDateRange.value === 'month' ? 1 :
+                          selectedDateRange.value === '3months' ? 3 :
+                          selectedDateRange.value === '6months' ? 6 : 12;
+            state.reportData.monthlyFinances = await api.reports.getMonthlyFinances(months);
+            
+            // Fetch budget status
+            state.budgetStatus = await api.reports.getBudgetStatus();
+          } catch (error) {
+            state.errors.reports = error.message;
+            console.error('Failed to fetch report data:', error);
+          } finally {
+            state.loading.reports = false;
+          }
+        };
+        
+        // Fetch settings from API
+        const fetchSettings = async () => {
+          state.loading.settings = true;
+          state.errors.settings = null;
+          
+          try {
+            state.settings = await api.settings.get();
+          } catch (error) {
+            state.errors.settings = error.message;
+            console.error('Failed to fetch settings:', error);
+          } finally {
+            state.loading.settings = false;
+          }
+        };
+        
+        // Handle file drop (drag & drop)
+        const handleFileDrop = async (event) => {
+          if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+            const file = event.dataTransfer.files[0];
+            await processFileUpload(file);
+          }
+        };
+        
+        // Handle file upload from input field
+        const handleFileUpload = async (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+          
+          await processFileUpload(file);
+        };
+        
+        // Process file upload (used by both drag & drop and file input)
+        const processFileUpload = async (file) => {
+          
+          state.loading.upload = true;
+          state.errors.upload = null;
+          uploadProgress.value = 10;
+          
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Simulate progress (in a real app, this would use progress events)
+            let progressInterval = setInterval(() => {
+              if (uploadProgress.value < 90) {
+                uploadProgress.value += 10;
+              } else {
+                clearInterval(progressInterval);
+              }
+            }, 300);
+            
+            const result = await api.transactions.uploadFile(formData);
+            
+            // Clear interval and set to 100%
+            clearInterval(progressInterval);
+            uploadProgress.value = 100;
+            
+            // Refresh transactions after upload
+            await fetchTransactions();
+            
+            hasData.value = true;
+            
+            // Reset upload progress after a delay
+            setTimeout(() => {
+              uploadProgress.value = 0;
+            }, 2000);
+            
+            return result;
+          } catch (error) {
+            state.errors.upload = error.message;
+            console.error('File upload failed:', error);
+            uploadProgress.value = 0;
+          } finally {
+            state.loading.upload = false;
+          }
+        };
+        
+        // Use sample data (for development/demo)
         const useSampleData = () => {
           hasData.value = true;
           uploadProgress.value = 60;
+          
+          // Simulate API call delay
           setTimeout(() => {
             uploadProgress.value = 100;
+            
+            // Reset upload progress after delay
+            setTimeout(() => {
+              uploadProgress.value = 0;
+            }, 2000);
           }, 1500);
         };
         
@@ -1033,14 +1361,52 @@
           isUploadActive.value = active;
         };
         
+        // Handle date range selection
+        const setDateRange = (range) => {
+          selectedDateRange.value = range;
+          fetchReportData();
+        };
+        
+        // Initialize data on component mount
+        onMounted(async () => {
+          try {
+            // Fetch initial data in parallel
+            await Promise.all([
+              fetchCategories(),
+              fetchTransactions()
+            ]);
+            
+            // Fetch report data after we have categories and transactions
+            if (hasData.value) {
+              await fetchReportData();
+            }
+            
+            // Fetch settings
+            await fetchSettings();
+          } catch (error) {
+            console.error('Error initializing app data:', error);
+          }
+        });
+        
+        // Watch for tab changes
+        watch(activeTab, (newTab) => {
+          if (newTab === 'reports' && hasData.value) {
+            fetchReportData();
+          }
+        });
+        
         return {
+          state,
           hasData,
           isUploadActive,
           uploadProgress,
           activeTab,
-          setHasData,
+          selectedDateRange,
+          handleFileUpload,
+          handleFileDrop,
           useSampleData,
-          setUploadActive
+          setUploadActive,
+          setDateRange
         };
       }
     }).mount('#app');

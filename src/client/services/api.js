@@ -5,7 +5,7 @@
 // API base URL
 const API_URL = process.env.NODE_ENV === 'production' 
   ? '/api' 
-  : 'http://localhost:8000/api';
+  : 'http://localhost:5000/api';
 
 /**
  * Make a GET request to the API
@@ -166,4 +166,10 @@ export const reportsApi = {
   getIncomeVsExpenses: () => fetchData('/reports/income-vs-expenses'),
   getTopMerchants: (limit = 10) => fetchData(`/reports/top-merchants?limit=${limit}`),
   getCategorizationStatus: () => fetchData('/reports/categorization-status')
+};
+
+// Settings API
+export const settingsApi = {
+  get: () => fetchData('/settings'),
+  update: (data) => putData('/settings', data)
 };

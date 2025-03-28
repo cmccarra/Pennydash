@@ -8,6 +8,7 @@ const bodyParser = require('body-parser');
 const transactionRoutes = require('./routes/transactions');
 const categoryRoutes = require('./routes/categories');
 const reportRoutes = require('./routes/reports');
+const settingsRoutes = require('./routes/settings');
 
 // Initialize express app
 const app = express();
@@ -52,6 +53,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Serve static files from the root
 app.use(express.static(path.join(__dirname, '../../')));
