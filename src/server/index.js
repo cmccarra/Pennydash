@@ -4,11 +4,14 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 
+// Import database
+const { initDB } = require('./db/sequelize');
+
 // Import routes
-const transactionRoutes = require('./routes/transactions');
-const categoryRoutes = require('./routes/categories');
-const reportRoutes = require('./routes/reports');
-const settingsRoutes = require('./routes/settings');
+const transactionRoutes = require('./routes/transactions.sequelize');
+const categoryRoutes = require('./routes/categories.sequelize');
+const reportRoutes = require('./routes/reports.sequelize');
+const settingsRoutes = require('./routes/settings.sequelize');
 
 // Initialize express app
 const app = express();
@@ -61,9 +64,23 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
-});
+// Start server and database
+const startServer = async () => {
+  try {
+    // Initialize database
+    await initDB();
+    
+    // Start server
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://0.0.0.0:${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+// Start the application
+startServer();
 
 module.exports = app;
