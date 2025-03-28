@@ -912,6 +912,230 @@
           </div>
         </div>
         
+        <!-- Transactions View -->
+        <div v-if="activeTab === 'transactions'" class="transactions-container">
+          <!-- Transactions Controls -->
+          <div class="mb-6 flex flex-wrap gap-3 items-center justify-between">
+            <h1 class="text-2xl font-bold">Transactions</h1>
+            
+            <!-- Quick Filters -->
+            <div class="flex items-center space-x-2">
+              <div class="form-control">
+                <div class="input-group">
+                  <input 
+                    type="text" 
+                    v-model="transactionSearchQuery" 
+                    placeholder="Search..." 
+                    class="input input-bordered focus:border-primary focus:ring-1 focus:ring-primary"
+                    @input="filterTransactions"
+                  />
+                  <button class="btn btn-square btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-outline">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+                  </svg>
+                  Filters
+                </label>
+                <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box w-52">
+                  <li class="menu-title">Transaction Type</li>
+                  <li><a @click="setTransactionTypeFilter('all')">All</a></li>
+                  <li><a @click="setTransactionTypeFilter('income')">Income</a></li>
+                  <li><a @click="setTransactionTypeFilter('expense')">Expenses</a></li>
+                  <li class="menu-title pt-2">Date Range</li>
+                  <li><a @click="setTransactionDateFilter('all')">All Time</a></li>
+                  <li><a @click="setTransactionDateFilter('thisMonth')">This Month</a></li>
+                  <li><a @click="setTransactionDateFilter('last3Months')">Last 3 Months</a></li>
+                </ul>
+              </div>
+              <button class="btn btn-primary" @click="openCategoryModal">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                </svg>
+                Categorize
+              </button>
+            </div>
+          </div>
+          
+          <!-- Transaction Stats Summary -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div class="stats shadow bg-base-200">
+              <div class="stat">
+                <div class="stat-title">Total Transactions</div>
+                <div class="stat-value">{{ filteredTransactions.length }}</div>
+                <div class="stat-desc">From {{ state.transactions.length }} total records</div>
+              </div>
+            </div>
+            
+            <div class="stats shadow bg-base-200">
+              <div class="stat">
+                <div class="stat-title">Total Income</div>
+                <div class="stat-value text-success">{{ formatCurrency(calculateTotalIncome(filteredTransactions)) }}</div>
+                <div class="stat-desc">{{ calculateCountByType(filteredTransactions, 'income') }} income transactions</div>
+              </div>
+            </div>
+            
+            <div class="stats shadow bg-base-200">
+              <div class="stat">
+                <div class="stat-title">Total Expenses</div>
+                <div class="stat-value text-error">{{ formatCurrency(calculateTotalExpenses(filteredTransactions)) }}</div>
+                <div class="stat-desc">{{ calculateCountByType(filteredTransactions, 'expense') }} expense transactions</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Transactions Table -->
+          <div class="overflow-x-auto bg-base-200 rounded-lg shadow">
+            <table class="table table-zebra w-full">
+              <!-- Table Header -->
+              <thead>
+                <tr>
+                  <th class="w-12">
+                    <label>
+                      <input type="checkbox" class="checkbox" v-model="selectAllTransactions" @change="toggleSelectAll" />
+                    </label>
+                  </th>
+                  <th @click="sortTransactions('date')" class="cursor-pointer">
+                    Date
+                    <span v-if="transactionSort.field === 'date'">
+                      {{ transactionSort.direction === 'asc' ? '↑' : '↓' }}
+                    </span>
+                  </th>
+                  <th @click="sortTransactions('description')" class="cursor-pointer">
+                    Description
+                    <span v-if="transactionSort.field === 'description'">
+                      {{ transactionSort.direction === 'asc' ? '↑' : '↓' }}
+                    </span>
+                  </th>
+                  <th @click="sortTransactions('amount')" class="cursor-pointer">
+                    Amount
+                    <span v-if="transactionSort.field === 'amount'">
+                      {{ transactionSort.direction === 'asc' ? '↑' : '↓' }}
+                    </span>
+                  </th>
+                  <th>Category</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              
+              <!-- Table Body -->
+              <tbody>
+                <tr v-if="state.loading.transactions">
+                  <td colspan="6" class="text-center py-8">
+                    <div class="flex justify-center items-center">
+                      <span class="loading loading-spinner loading-md mr-2"></span>
+                      Loading transactions...
+                    </div>
+                  </td>
+                </tr>
+                
+                <tr v-else-if="filteredTransactions.length === 0">
+                  <td colspan="6" class="text-center py-8">
+                    No transactions found. Adjust your filters or upload new transactions.
+                  </td>
+                </tr>
+                
+                <tr v-for="tx in paginatedTransactions" :key="tx.id" class="hover">
+                  <td>
+                    <label>
+                      <input type="checkbox" class="checkbox" v-model="selectedTransactions" :value="tx.id" />
+                    </label>
+                  </td>
+                  <td>{{ formatDate(tx.date) }}</td>
+                  <td>
+                    <div class="flex items-center space-x-3">
+                      <div>
+                        <div class="font-medium">{{ tx.description }}</div>
+                        <div class="text-sm opacity-70">{{ tx.merchant || 'Unknown' }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td :class="tx.type === 'income' ? 'text-success' : 'text-error'">
+                    {{ tx.type === 'income' ? '+' : '-' }} {{ formatCurrency(Math.abs(tx.amount)) }}
+                  </td>
+                  <td>
+                    <div class="badge" :style="{ backgroundColor: getCategoryColor(tx.categoryId), color: 'white' }">
+                      {{ getCategoryName(tx.categoryId) }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="flex space-x-1">
+                      <button class="btn btn-xs btn-ghost">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                        </svg>
+                      </button>
+                      <button class="btn btn-xs btn-ghost">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Pagination Controls -->
+          <div class="flex justify-between items-center mt-4">
+            <div class="text-sm">
+              Showing {{ paginationStart + 1 }} to {{ Math.min(paginationStart + paginationLimit, filteredTransactions.length) }} of {{ filteredTransactions.length }} transactions
+            </div>
+            <div class="join">
+              <button 
+                class="join-item btn btn-sm" 
+                :disabled="paginationStart === 0"
+                @click="previousPage"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+              <button class="join-item btn btn-sm">Page {{ currentPage }}</button>
+              <button 
+                class="join-item btn btn-sm" 
+                :disabled="paginationStart + paginationLimit >= filteredTransactions.length"
+                @click="nextPage"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Batch Actions -->
+          <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-50">
+            <div>
+              <span class="font-medium">{{ selectedTransactions.length }} transactions selected</span>
+            </div>
+            <div class="space-x-2">
+              <div class="join">
+                <select class="select select-bordered join-item" v-model="batchCategoryId">
+                  <option disabled value="">Select category</option>
+                  <option v-for="category in state.categories" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </select>
+                <button class="btn join-item btn-primary" @click="applyBatchCategory" :disabled="!batchCategoryId">
+                  Apply Category
+                </button>
+              </div>
+              <button class="btn btn-error" @click="deleteBatchTransactions">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+        
         <!-- Reports View -->
         <div v-if="activeTab === 'reports'" class="reports-container">
           <!-- Report Controls -->
@@ -1187,6 +1411,12 @@
           },
           budgetStatus: null,
           settings: null,
+          loading: {
+            transactions: false,
+            categories: false,
+            reports: false,
+            upload: false
+          },
           successMessages: {
             upload: null
           },
@@ -1196,13 +1426,6 @@
             reports: null,
             settings: null,
             upload: null
-          },
-          loading: {
-            transactions: false,
-            categories: false,
-            reports: false,
-            settings: false,
-            upload: false
           }
         });
         
@@ -1211,6 +1434,22 @@
         const uploadProgress = ref(0);
         const activeTab = ref('home');
         const selectedDateRange = ref('month');
+        
+        // Transaction filtering and pagination
+        const transactionSearchQuery = ref('');
+        const selectedTransactions = ref([]);
+        const selectAllTransactions = ref(false);
+        const transactionTypeFilter = ref('all'); // all, income, expense
+        const transactionDateFilter = ref('all'); // all, thisMonth, last3Months, custom
+        const paginationStart = ref(0);
+        const paginationLimit = ref(20);
+        const transactionSort = reactive({
+          field: 'date',
+          direction: 'desc'
+        });
+        
+        // Batch actions
+        const batchCategoryId = ref('');
         
         // Fetch transactions from API
         const fetchTransactions = async () => {
@@ -1413,13 +1652,277 @@
           }
         });
         
+        // Transaction management functions
+        
+        // Format date for display
+        const formatDate = (dateString) => {
+          if (!dateString) return 'N/A';
+          const date = new Date(dateString);
+          return new Intl.DateTimeFormat('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          }).format(date);
+        };
+        
+        // Format currency for display
+        const formatCurrency = (amount) => {
+          if (amount === undefined || amount === null) return '$0.00';
+          return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD'
+          }).format(amount);
+        };
+        
+        // Get category name by ID
+        const getCategoryName = (categoryId) => {
+          if (!categoryId) return 'Uncategorized';
+          const category = state.categories.find(c => c.id === categoryId);
+          return category ? category.name : 'Uncategorized';
+        };
+        
+        // Get category color by ID
+        const getCategoryColor = (categoryId) => {
+          if (!categoryId) return '#718096'; // Default gray color
+          const category = state.categories.find(c => c.id === categoryId);
+          return category ? category.color : '#718096';
+        };
+        
+        // Filter transactions based on search query and filters
+        const filterTransactions = () => {
+          // Reset pagination when filter changes
+          paginationStart.value = 0;
+        };
+        
+        // Computed property for filtered transactions
+        const filteredTransactions = computed(() => {
+          if (!state.transactions.length) return [];
+          
+          return state.transactions.filter(tx => {
+            // Search query filter
+            const searchMatches = !transactionSearchQuery.value || 
+              tx.description?.toLowerCase().includes(transactionSearchQuery.value.toLowerCase()) ||
+              tx.merchant?.toLowerCase().includes(transactionSearchQuery.value.toLowerCase());
+            
+            // Transaction type filter
+            const typeMatches = transactionTypeFilter.value === 'all' || 
+              tx.type === transactionTypeFilter.value;
+            
+            // Date filter
+            let dateMatches = true;
+            if (transactionDateFilter.value === 'thisMonth') {
+              const now = new Date();
+              const txDate = new Date(tx.date);
+              dateMatches = txDate.getMonth() === now.getMonth() && 
+                txDate.getFullYear() === now.getFullYear();
+            } else if (transactionDateFilter.value === 'last3Months') {
+              const now = new Date();
+              const threeMonthsAgo = new Date();
+              threeMonthsAgo.setMonth(now.getMonth() - 3);
+              const txDate = new Date(tx.date);
+              dateMatches = txDate >= threeMonthsAgo;
+            }
+            
+            return searchMatches && typeMatches && dateMatches;
+          });
+        });
+        
+        // Sort transactions
+        const sortTransactions = (field) => {
+          if (transactionSort.field === field) {
+            // If already sorting by this field, toggle direction
+            transactionSort.direction = transactionSort.direction === 'asc' ? 'desc' : 'asc';
+          } else {
+            // Otherwise, sort by the new field in ascending order
+            transactionSort.field = field;
+            transactionSort.direction = 'asc';
+          }
+        };
+        
+        // Computed property for sorted and filtered transactions
+        const sortedTransactions = computed(() => {
+          const transactions = [...filteredTransactions.value];
+          
+          return transactions.sort((a, b) => {
+            let comparison = 0;
+            
+            if (transactionSort.field === 'date') {
+              comparison = new Date(a.date) - new Date(b.date);
+            } else if (transactionSort.field === 'amount') {
+              comparison = a.amount - b.amount;
+            } else if (transactionSort.field === 'description') {
+              comparison = a.description.localeCompare(b.description);
+            }
+            
+            return transactionSort.direction === 'asc' ? comparison : -comparison;
+          });
+        });
+        
+        // Computed property for paginated transactions
+        const paginatedTransactions = computed(() => {
+          return sortedTransactions.value.slice(
+            paginationStart.value,
+            paginationStart.value + paginationLimit.value
+          );
+        });
+        
+        // Computed property for current page number
+        const currentPage = computed(() => {
+          return Math.floor(paginationStart.value / paginationLimit.value) + 1;
+        });
+        
+        // Toggle select all transactions
+        const toggleSelectAll = () => {
+          if (selectAllTransactions.value) {
+            selectedTransactions.value = filteredTransactions.value.map(tx => tx.id);
+          } else {
+            selectedTransactions.value = [];
+          }
+        };
+        
+        // Calculate total income from transactions
+        const calculateTotalIncome = (transactions) => {
+          return transactions
+            .filter(tx => tx.type === 'income')
+            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+        };
+        
+        // Calculate total expenses from transactions
+        const calculateTotalExpenses = (transactions) => {
+          return transactions
+            .filter(tx => tx.type === 'expense')
+            .reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
+        };
+        
+        // Count transactions by type
+        const calculateCountByType = (transactions, type) => {
+          return transactions.filter(tx => tx.type === type).length;
+        };
+        
+        // Set transaction type filter
+        const setTransactionTypeFilter = (type) => {
+          transactionTypeFilter.value = type;
+          filterTransactions();
+        };
+        
+        // Set transaction date filter
+        const setTransactionDateFilter = (dateFilter) => {
+          transactionDateFilter.value = dateFilter;
+          filterTransactions();
+        };
+        
+        // Handle pagination - go to previous page
+        const previousPage = () => {
+          if (paginationStart.value >= paginationLimit.value) {
+            paginationStart.value -= paginationLimit.value;
+          }
+        };
+        
+        // Handle pagination - go to next page
+        const nextPage = () => {
+          if (paginationStart.value + paginationLimit.value < filteredTransactions.value.length) {
+            paginationStart.value += paginationLimit.value;
+          }
+        };
+        
+        // Open modal for batch categorization
+        const openCategoryModal = () => {
+          // This would open a modal for selecting a category to apply to selected transactions
+          // Implemented in the UI later
+        };
+        
+        // Apply category to multiple transactions
+        const applyBatchCategory = async () => {
+          if (!batchCategoryId.value || selectedTransactions.value.length === 0) {
+            return;
+          }
+          
+          try {
+            await api.transactions.updateCategory(selectedTransactions.value, batchCategoryId.value);
+            
+            // Refresh transactions to show new categories
+            await fetchTransactions();
+            
+            // Clear selection
+            selectedTransactions.value = [];
+            selectAllTransactions.value = false;
+            batchCategoryId.value = '';
+          } catch (error) {
+            console.error('Failed to update categories:', error);
+            state.errors.transactions = error.message;
+          }
+        };
+        
+        // Delete multiple transactions
+        const deleteBatchTransactions = async () => {
+          if (selectedTransactions.value.length === 0) {
+            return;
+          }
+          
+          if (!confirm(`Are you sure you want to delete ${selectedTransactions.value.length} transaction(s)?`)) {
+            return;
+          }
+          
+          try {
+            const deletePromises = selectedTransactions.value.map(id => api.transactions.delete(id));
+            await Promise.all(deletePromises);
+            
+            // Refresh transactions after deletion
+            await fetchTransactions();
+            
+            // Clear selection
+            selectedTransactions.value = [];
+            selectAllTransactions.value = false;
+          } catch (error) {
+            console.error('Failed to delete transactions:', error);
+            state.errors.transactions = error.message;
+          }
+        };
+        
         return {
+          // State variables
           state,
           hasData,
           isUploadActive,
           uploadProgress,
           activeTab,
           selectedDateRange,
+          
+          // Transaction management
+          transactionSearchQuery,
+          selectedTransactions,
+          selectAllTransactions,
+          transactionTypeFilter,
+          transactionDateFilter,
+          paginationStart,
+          paginationLimit,
+          transactionSort,
+          batchCategoryId,
+          filteredTransactions,
+          sortedTransactions,
+          paginatedTransactions,
+          currentPage,
+          
+          // Transaction functions
+          formatDate,
+          formatCurrency,
+          getCategoryName,
+          getCategoryColor,
+          filterTransactions,
+          sortTransactions,
+          toggleSelectAll,
+          calculateTotalIncome,
+          calculateTotalExpenses,
+          calculateCountByType,
+          setTransactionTypeFilter,
+          setTransactionDateFilter,
+          previousPage,
+          nextPage,
+          openCategoryModal,
+          applyBatchCategory,
+          deleteBatchTransactions,
+          
+          // File upload and UI control
           handleFileUpload,
           handleFileDrop,
           useSampleData,

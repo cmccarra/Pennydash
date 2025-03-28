@@ -143,7 +143,9 @@ export const transactionsApi = {
   update: (id, data) => putData(`/transactions/${id}`, data),
   delete: (id) => deleteData(`/transactions/${id}`),
   upload: (file) => uploadFile('/transactions/upload', file),
+  uploadFile: (formData) => uploadFile('/transactions/upload', formData),
   batchCategorize: (data) => postData('/transactions/batch-categorize', data),
+  updateCategory: (transactionIds, categoryId) => postData('/transactions/batch-categorize', { transactionIds, categoryId }),
   suggestCategory: (id) => fetchData(`/transactions/${id}/suggest-category`),
   findSimilar: (id, threshold) => fetchData(`/transactions/${id}/similar?threshold=${threshold}`),
   getUncategorized: () => fetchData('/transactions/filter/uncategorized')
