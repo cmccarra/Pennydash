@@ -1674,10 +1674,15 @@
         },
         
         async batchUpdateCategory(transactionIds, categoryId) {
-          return api.request('/transactions/batch-category', 'PUT', { 
+          return api.request('/transactions/batch-categorize', 'POST', { 
             transactionIds, 
             categoryId 
           });
+        },
+        
+        // Alias for batchUpdateCategory for better naming consistency
+        async updateCategory(transactionIds, categoryId) {
+          return this.batchUpdateCategory(transactionIds, categoryId);
         },
         
         async uploadFile(formData) {
