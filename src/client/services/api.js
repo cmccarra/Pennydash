@@ -168,11 +168,13 @@ export const categoriesApi = {
 
 // Reports API
 export const reportsApi = {
+  getDashboard: () => fetchData('/reports/dashboard'),
   getByCategory: () => fetchData('/reports/by-category'),
   getMonthlyTotals: () => fetchData('/reports/monthly-totals'),
   getIncomeVsExpenses: () => fetchData('/reports/income-vs-expenses'),
   getTopMerchants: (limit = 10) => fetchData(`/reports/top-merchants?limit=${limit}`),
-  getCategorizationStatus: () => fetchData('/reports/categorization-status')
+  getCategorizationStatus: () => fetchData('/reports/categorization-status'),
+  getSpendingTrends: (months = 6) => fetchData(`/reports/spending-trends?months=${months}`)
 };
 
 // Settings API

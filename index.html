@@ -2027,6 +2027,10 @@
       
       // Reports API
       reports: {
+        async getDashboard() {
+          return api.request('/reports/dashboard');
+        },
+        
         async getCategorySummary(timeframe = 'month') {
           return api.request(`/reports/category-summary?timeframe=${timeframe}`);
         },
@@ -2070,6 +2074,12 @@
             spendingTrend: [],
             monthlyFinances: []
           },
+          // New dashboard-specific state
+          dashboardData: null,
+          incomeVsExpenses: { income: 0, expenses: 0, net: 0, savingsRate: 0 },
+          categorizationStatus: { total: 0, categorized: 0, uncategorized: 0, percentage: 0 },
+          topMerchants: [],
+          recentTransactions: [],
           budgetStatus: null,
           settings: null,
           loading: {
@@ -2196,6 +2206,43 @@
             console.error('Failed to fetch categories:', error);
           } finally {
             state.loading.categories = false;
+          }
+        };
+        
+        // Fetch dashboard data
+        const fetchDashboardData = async () => {
+          state.loading.reports = true;
+          state.errors.reports = null;
+          
+          try {
+            const dashboardData = await api.reports.getDashboard();
+            
+            // Store dashboard data in the state
+            state.dashboardData = dashboardData;
+            
+            // Update other state properties based on dashboard data
+            if (dashboardData.incomeVsExpenses) {
+              state.incomeVsExpenses = dashboardData.incomeVsExpenses;
+            }
+            
+            if (dashboardData.topMerchants) {
+              state.topMerchants = dashboardData.topMerchants;
+            }
+            
+            if (dashboardData.recentTransactions) {
+              state.recentTransactions = dashboardData.recentTransactions;
+            }
+            
+            if (dashboardData.categorization) {
+              state.categorizationStatus = dashboardData.categorization;
+            }
+            
+            console.log('Dashboard data loaded:', dashboardData);
+          } catch (error) {
+            state.errors.reports = error.message;
+            console.error('Failed to fetch dashboard data:', error);
+          } finally {
+            state.loading.reports = false;
           }
         };
         
@@ -2558,7 +2605,14 @@
             
             // Fetch report data after we have categories and transactions
             if (hasData.value) {
-              await fetchReportData();
+              // Fetch both dashboard and report data
+              await Promise.all([
+                fetchDashboardData(),
+                fetchReportData()
+              ]);
+            } else {
+              // Even with no transactions, try to fetch dashboard data
+              await fetchDashboardData();
             }
             
             // Fetch settings
@@ -2572,6 +2626,9 @@
         watch(activeTab, (newTab) => {
           if (newTab === 'reports' && hasData.value) {
             fetchReportData();
+          } else if (newTab === 'home') {
+            // Refresh dashboard data when returning to home tab
+            fetchDashboardData();
           }
         });
         

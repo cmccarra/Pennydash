@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDB } = require('../db/sequelize');
 const { Op, QueryTypes, literal, fn, col } = require('sequelize');
+const { promisify } = require('util');
 
 // Get the Sequelize models
 const getModels = () => {
@@ -207,6 +208,145 @@ router.get('/categorization-status', async (req, res) => {
       percentage
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Dashboard endpoint - combines multiple reports
+router.get('/dashboard', async (req, res) => {
+  try {
+    // Create a promise-based version of the request handler functions
+    const getIncomeVsExpensesData = async () => {
+      const { Transaction } = getModels();
+      
+      // Calculate totals grouped by transaction type
+      const totals = await Transaction.findAll({
+        attributes: [
+          'type',
+          [fn('SUM', col('amount')), 'total']
+        ],
+        group: ['type']
+      });
+      
+      // Format the results
+      const totalsByType = totals.reduce((acc, item) => {
+        acc[item.type] = parseFloat(item.getDataValue('total')) || 0;
+        return acc;
+      }, { income: 0, expense: 0 });
+      
+      const totalIncome = totalsByType.income || 0;
+      const totalExpenses = totalsByType.expense || 0;
+      const net = totalIncome - totalExpenses;
+      const savingsRate = totalIncome > 0 ? (net / totalIncome) * 100 : 0;
+      
+      return {
+        income: totalIncome,
+        expenses: totalExpenses,
+        net,
+        savingsRate
+      };
+    };
+    
+    const getCategorizationData = async () => {
+      const { Transaction } = getModels();
+      
+      // Count total transactions
+      const total = await Transaction.count();
+      
+      // Count categorized transactions
+      const categorized = await Transaction.count({
+        where: {
+          categoryId: {
+            [Op.not]: null
+          }
+        }
+      });
+      
+      const uncategorized = total - categorized;
+      const percentage = total > 0 ? (categorized / total) * 100 : 0;
+      
+      return {
+        total,
+        categorized,
+        uncategorized,
+        percentage
+      };
+    };
+    
+    const getTopMerchantsData = async (limit = 5) => {
+      const sequelize = getDB();
+      
+      // Query to get top merchants by total spending
+      const results = await sequelize.query(`
+        SELECT 
+          merchant,
+          COUNT(*) as transaction_count,
+          SUM(amount) as total_amount
+        FROM transactions
+        WHERE merchant IS NOT NULL AND merchant != '' AND type = 'expense'
+        GROUP BY merchant
+        ORDER BY total_amount DESC
+        LIMIT :limit
+      `, {
+        replacements: { limit },
+        type: QueryTypes.SELECT
+      });
+      
+      // Format the results
+      return results.map(item => ({
+        merchant: item.merchant,
+        count: parseInt(item.transaction_count),
+        total: parseFloat(item.total_amount)
+      }));
+    };
+    
+    const getRecentTransactions = async (limit = 10) => {
+      const { Transaction, Category } = getModels();
+      
+      // Get recent transactions
+      const transactions = await Transaction.findAll({
+        limit,
+        order: [['date', 'DESC']],
+        include: [{
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'color']
+        }]
+      });
+      
+      // Format the transactions
+      return transactions.map(tx => {
+        const plainTx = tx.get({ plain: true });
+        return {
+          id: plainTx.id,
+          date: plainTx.date,
+          description: plainTx.description,
+          amount: parseFloat(plainTx.amount),
+          type: plainTx.type,
+          merchant: plainTx.merchant,
+          category: plainTx.category,
+        };
+      });
+    };
+    
+    // Execute all queries in parallel
+    const [incomeVsExpenses, categorization, topMerchants, recentTransactions] = 
+      await Promise.all([
+        getIncomeVsExpensesData(), 
+        getCategorizationData(), 
+        getTopMerchantsData(5),
+        getRecentTransactions(10)
+      ]);
+    
+    // Combine all data into a single dashboard response
+    res.json({
+      incomeVsExpenses,
+      categorization,
+      topMerchants,
+      recentTransactions
+    });
+  } catch (error) {
+    console.error('Dashboard error:', error);
     res.status(500).json({ error: error.message });
   }
 });
