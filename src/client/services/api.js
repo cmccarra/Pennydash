@@ -148,7 +148,12 @@ export const transactionsApi = {
   updateCategory: (transactionIds, categoryId) => postData('/transactions/batch-categorize', { transactionIds, categoryId }),
   suggestCategory: (id) => fetchData(`/transactions/${id}/suggest-category`),
   findSimilar: (id, threshold) => fetchData(`/transactions/${id}/similar?threshold=${threshold}`),
-  getUncategorized: () => fetchData('/transactions/filter/uncategorized')
+  getUncategorized: () => fetchData('/transactions/filter/uncategorized'),
+  // Enrichment flow APIs
+  getUploadedBatches: (uploadId) => fetchData(`/transactions/batches/${uploadId}`),
+  batchEnrich: (batchId, enrichData) => putData(`/transactions/batches/${batchId}/enrich`, enrichData),
+  completeBatch: (batchId) => postData(`/transactions/batches/${batchId}/complete`, {}),
+  completeUpload: (uploadId) => postData(`/transactions/upload/${uploadId}/complete`, {})
 };
 
 // Categories API

@@ -106,6 +106,22 @@ class Transaction extends Model {
         type: DataTypes.STRING,
         allowNull: true,
         comment: 'Source file name or import method'
+      },
+      uploadId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        comment: 'ID of the upload batch this transaction belongs to'
+      },
+      batchId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        comment: 'ID of the specific batch within an upload this transaction belongs to'
+      },
+      enrichmentStatus: {
+        type: DataTypes.ENUM('pending', 'enriched', 'completed'),
+        allowNull: true,
+        defaultValue: null,
+        comment: 'Status of transaction enrichment process'
       }
     }, {
       sequelize,
@@ -131,6 +147,15 @@ class Transaction extends Model {
         },
         {
           fields: ['type']
+        },
+        {
+          fields: ['upload_id']
+        },
+        {
+          fields: ['batch_id']
+        },
+        {
+          fields: ['enrichment_status']
         }
       ]
     });

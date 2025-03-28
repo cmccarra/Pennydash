@@ -7,6 +7,133 @@ const { getDB } = require('../db/sequelize');
 const FileParser = require('../services/fileParser');
 const categorySuggestionService = require('../services/categorySuggestion');
 const { Op } = require('sequelize');
+const { v4: uuidv4 } = require('uuid');
+
+/**
+ * Organize transactions into logical batches based on various criteria
+ * @param {Array} transactions - Array of transactions to organize
+ * @returns {Array} Array of transaction batches
+ */
+function organizeIntoBatches(transactions) {
+  // First try to group by source and transactionType
+  const sourceGroups = {};
+  
+  // Group transactions by source
+  transactions.forEach(transaction => {
+    const source = transaction.source || 'Unknown';
+    if (!sourceGroups[source]) {
+      sourceGroups[source] = [];
+    }
+    sourceGroups[source].push(transaction);
+  });
+  
+  // Split large groups into smaller batches
+  const maxBatchSize = 50; // Max transactions per batch
+  const batches = [];
+  
+  Object.keys(sourceGroups).forEach(source => {
+    const sourceTransactions = sourceGroups[source];
+    
+    // Further split by type if the source group is large
+    if (sourceTransactions.length > maxBatchSize) {
+      const typeGroups = {};
+      
+      // Group by transaction type
+      sourceTransactions.forEach(transaction => {
+        const type = transaction.type || 'unknown';
+        if (!typeGroups[type]) {
+          typeGroups[type] = [];
+        }
+        typeGroups[type].push(transaction);
+      });
+      
+      // Add each type group as a batch or split further if needed
+      Object.keys(typeGroups).forEach(type => {
+        const typeTransactions = typeGroups[type];
+        
+        // If still too large, split by date ranges
+        if (typeTransactions.length > maxBatchSize) {
+          // Sort by date for chronological batches
+          typeTransactions.sort((a, b) => {
+            return new Date(a.date) - new Date(b.date);
+          });
+          
+          // Split into batches of maxBatchSize
+          for (let i = 0; i < typeTransactions.length; i += maxBatchSize) {
+            batches.push(typeTransactions.slice(i, i + maxBatchSize));
+          }
+        } else {
+          batches.push(typeTransactions);
+        }
+      });
+    } else {
+      // Small enough to be a single batch
+      batches.push(sourceTransactions);
+    }
+  });
+  
+  return batches;
+}
+
+/**
+ * Calculate statistics for a batch of transactions
+ * @param {Array} transactions - Array of transactions
+ * @returns {Object} Statistics object
+ */
+function calculateBatchStatistics(transactions) {
+  const incomeTransactions = transactions.filter(t => t.type === 'income');
+  const expenseTransactions = transactions.filter(t => t.type === 'expense');
+  const totalIncome = incomeTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const totalExpense = expenseTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  
+  // Find date range
+  let minDate = null;
+  let maxDate = null;
+  
+  if (transactions.length > 0) {
+    const dates = transactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
+    if (dates.length > 0) {
+      minDate = new Date(Math.min(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+      maxDate = new Date(Math.max(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+    }
+  }
+  
+  // Find unique sources
+  const sources = [...new Set(transactions.map(t => t.source).filter(Boolean))];
+  
+  // Count transactions with/without categories
+  const categorizedCount = transactions.filter(t => t.categoryId).length;
+  const uncategorizedCount = transactions.filter(t => !t.categoryId).length;
+  
+  return {
+    totalTransactions: transactions.length,
+    incomeTransactions: incomeTransactions.length,
+    expenseTransactions: expenseTransactions.length,
+    totalIncome: totalIncome,
+    totalExpense: totalExpense,
+    netAmount: totalIncome - totalExpense,
+    dateRange: {
+      from: minDate,
+      to: maxDate
+    },
+    sources,
+    categorization: {
+      categorized: categorizedCount,
+      uncategorized: uncategorizedCount,
+      percent: transactions.length ? Math.round((categorizedCount / transactions.length) * 100) : 0
+    }
+  };
+}
+
+/**
+ * Calculate total statistics across multiple batches
+ * @param {Array} batchResults - Array of batch result objects
+ * @returns {Object} Aggregated statistics
+ */
+function calculateTotalStatistics(batchResults) {
+  const allTransactions = batchResults.flatMap(batch => batch.transactions);
+  return calculateBatchStatistics(allTransactions);
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -278,8 +405,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const accountType = req.body.accountType || '';
     const accountName = req.body.accountName || '';
     const accountTypeEnum = req.body.accountTypeEnum || '';
+    const enrichMode = req.body.enrichMode === 'true'; // Whether to use the new enrichment flow
     
-    console.log(`Parsing file with extension: ${fileExtension}`);
+    console.log(`Parsing file with extension: ${fileExtension}, enrichMode: ${enrichMode}`);
     
     // Parse the file based on its extension
     let transactions;
@@ -356,45 +484,70 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     
     console.log(`Saving ${processedTransactions.length} transactions to database`);
     
-    // Save transactions to database
+    // Generate an upload ID for enrichment flow tracking
+    const uploadId = `upload_${Date.now()}`;
+    
+    // If enrichment mode is enabled, we organize transactions into batches
+    if (enrichMode) {
+      // Group transactions by similar attributes (like source, type, date range)
+      const batches = organizeIntoBatches(processedTransactions);
+      
+      // Store batches with pending status
+      const batchResults = [];
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        
+        // Save batch metadata
+        const batchId = `${uploadId}_batch_${i}`;
+        batch.forEach(transaction => {
+          transaction.batchId = batchId;
+          transaction.uploadId = uploadId;
+          transaction.enrichmentStatus = 'pending';
+        });
+        
+        // Save this batch of transactions
+        const savedBatch = await Transaction.bulkCreate(batch, {
+          returning: true
+        });
+        
+        // Calculate batch statistics
+        const batchStatistics = calculateBatchStatistics(savedBatch);
+        
+        batchResults.push({
+          batchId,
+          transactions: savedBatch,
+          statistics: batchStatistics
+        });
+      }
+      
+      // Return the upload ID and batches
+      return res.status(201).json({
+        message: `Successfully prepared ${processedTransactions.length} transactions for enrichment`,
+        uploadId,
+        enrichmentMode: true,
+        batches: batchResults.map(batch => ({
+          batchId: batch.batchId,
+          transactionCount: batch.transactions.length,
+          statistics: batch.statistics
+        })),
+        statistics: calculateTotalStatistics(batchResults)
+      });
+    }
+    
+    // Traditional (non-enrichment) flow: save all transactions directly
     const savedTransactions = await Transaction.bulkCreate(processedTransactions, {
       returning: true
     });
     
     // Calculate some statistics
-    const incomeTransactions = savedTransactions.filter(t => t.type === 'income');
-    const expenseTransactions = savedTransactions.filter(t => t.type === 'expense');
-    const totalIncome = incomeTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
-    const totalExpense = expenseTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
-    
-    // Find date range
-    let minDate = null;
-    let maxDate = null;
-    
-    if (savedTransactions.length > 0) {
-      const dates = savedTransactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
-      if (dates.length > 0) {
-        minDate = new Date(Math.min(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
-        maxDate = new Date(Math.max(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
-      }
-    }
+    const statistics = calculateBatchStatistics(savedTransactions);
     
     res.status(201).json({
       message: `Successfully imported ${savedTransactions.length} transactions`,
       fileType: fileExtension,
       fileName: fileName,
-      dateRange: {
-        from: minDate,
-        to: maxDate
-      },
-      statistics: {
-        totalTransactions: savedTransactions.length,
-        incomeTransactions: incomeTransactions.length,
-        expenseTransactions: expenseTransactions.length,
-        totalIncome: totalIncome,
-        totalExpense: totalExpense,
-        netAmount: totalIncome - totalExpense
-      },
+      dateRange: statistics.dateRange,
+      statistics,
       transactions: savedTransactions
     });
   } catch (error) {
@@ -684,6 +837,234 @@ router.get('/filter/uncategorized', async (req, res) => {
     
     res.json(transactions);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all batches for a specific upload
+router.get('/batches/:uploadId', async (req, res) => {
+  try {
+    const { Transaction, Category } = getModels();
+    const { uploadId } = req.params;
+    
+    if (!uploadId) {
+      return res.status(400).json({ error: 'Upload ID is required' });
+    }
+    
+    // Get all transactions for this upload, grouped by batch
+    const transactions = await Transaction.findAll({
+      where: {
+        uploadId: uploadId
+      },
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'color', 'icon'],
+          required: false
+        }
+      ],
+      order: [['date', 'DESC']]
+    });
+    
+    // Group transactions by batchId
+    const batchMap = {};
+    transactions.forEach(transaction => {
+      const batchId = transaction.batchId;
+      if (!batchId) return;
+      
+      if (!batchMap[batchId]) {
+        batchMap[batchId] = [];
+      }
+      batchMap[batchId].push(transaction);
+    });
+    
+    // Convert to array of batches with statistics
+    const batches = Object.keys(batchMap).map(batchId => {
+      const batchTransactions = batchMap[batchId];
+      return {
+        batchId,
+        transactions: batchTransactions,
+        statistics: calculateBatchStatistics(batchTransactions),
+        status: batchTransactions[0]?.enrichmentStatus || 'pending'
+      };
+    });
+    
+    res.json({
+      uploadId,
+      batches,
+      statistics: calculateTotalStatistics(batches.map(b => ({ transactions: b.transactions })))
+    });
+  } catch (error) {
+    console.error('Error getting batches:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Batch enrichment endpoint - update multiple transactions in a batch
+router.put('/batches/:batchId/enrich', async (req, res) => {
+  try {
+    const { Transaction, Category } = getModels();
+    const { batchId } = req.params;
+    const enrichData = req.body;
+    
+    if (!batchId) {
+      return res.status(400).json({ error: 'Batch ID is required' });
+    }
+    
+    // Verify the batch exists
+    const batchTransactions = await Transaction.findAll({
+      where: {
+        batchId: batchId
+      }
+    });
+    
+    if (batchTransactions.length === 0) {
+      return res.status(404).json({ error: 'Batch not found' });
+    }
+    
+    // Prepare update data
+    const updateData = {};
+    
+    // Only update fields that are provided in the request
+    if (enrichData.categoryId) {
+      updateData.categoryId = enrichData.categoryId;
+    }
+    
+    if (enrichData.subcategoryId) {
+      updateData.subcategoryId = enrichData.subcategoryId;
+    }
+    
+    if (enrichData.tags) {
+      updateData.tags = Array.isArray(enrichData.tags) ? enrichData.tags : [enrichData.tags];
+    }
+    
+    if (enrichData.notes) {
+      updateData.notes = enrichData.notes;
+    }
+    
+    if (enrichData.accountType) {
+      updateData.accountType = enrichData.accountType;
+    }
+    
+    if (enrichData.source) {
+      updateData.source = enrichData.source;
+    }
+    
+    if (enrichData.account) {
+      updateData.account = enrichData.account;
+    }
+    
+    // Update enrichment status
+    updateData.enrichmentStatus = 'enriched';
+    
+    // Update all transactions in the batch
+    await Transaction.update(updateData, {
+      where: {
+        batchId: batchId
+      }
+    });
+    
+    // Get the updated transactions
+    const updatedTransactions = await Transaction.findAll({
+      where: {
+        batchId: batchId
+      },
+      include: [
+        { model: Category, as: 'category' },
+        { model: Category, as: 'subcategory', required: false }
+      ],
+      order: [['date', 'DESC']]
+    });
+    
+    res.json({
+      message: `Enriched ${updatedTransactions.length} transactions`,
+      batchId,
+      transactions: updatedTransactions,
+      statistics: calculateBatchStatistics(updatedTransactions)
+    });
+  } catch (error) {
+    console.error('Error enriching batch:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Complete a batch (mark as processed)
+router.post('/batches/:batchId/complete', async (req, res) => {
+  try {
+    const { Transaction } = getModels();
+    const { batchId } = req.params;
+    
+    if (!batchId) {
+      return res.status(400).json({ error: 'Batch ID is required' });
+    }
+    
+    // Update the enrichment status for all transactions in the batch
+    await Transaction.update(
+      { enrichmentStatus: 'completed' },
+      {
+        where: {
+          batchId: batchId
+        }
+      }
+    );
+    
+    // Get the updated transactions
+    const updatedTransactions = await Transaction.findAll({
+      where: {
+        batchId: batchId
+      }
+    });
+    
+    res.json({
+      message: `Completed batch with ${updatedTransactions.length} transactions`,
+      batchId,
+      status: 'completed'
+    });
+  } catch (error) {
+    console.error('Error completing batch:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Complete an entire upload (mark all batches as processed)
+router.post('/upload/:uploadId/complete', async (req, res) => {
+  try {
+    const { Transaction } = getModels();
+    const { uploadId } = req.params;
+    
+    if (!uploadId) {
+      return res.status(400).json({ error: 'Upload ID is required' });
+    }
+    
+    // Update all transactions for this upload
+    await Transaction.update(
+      { enrichmentStatus: 'completed' },
+      {
+        where: {
+          uploadId: uploadId
+        }
+      }
+    );
+    
+    // Get the updated transactions
+    const transactions = await Transaction.findAll({
+      where: {
+        uploadId: uploadId
+      }
+    });
+    
+    // Get unique batch IDs
+    const batchIds = [...new Set(transactions.map(t => t.batchId).filter(Boolean))];
+    
+    res.json({
+      message: `Completed upload with ${transactions.length} transactions across ${batchIds.length} batches`,
+      uploadId,
+      batchIds,
+      status: 'completed'
+    });
+  } catch (error) {
+    console.error('Error completing upload:', error);
     res.status(500).json({ error: error.message });
   }
 });

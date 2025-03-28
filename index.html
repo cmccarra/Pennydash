@@ -534,6 +534,83 @@
       background-color: var(--secondary-hover);
     }
   </style>
+  
+  <!-- Transaction Enrichment Flow Styles -->
+  <style>
+    .upload-enrichment-modal {
+      max-width: 1000px;
+      width: calc(100% - 2rem);
+      margin: 0 auto;
+    }
+    
+    .transaction-batch {
+      border-left: 3px solid #7C3AED;
+      transition: all 0.3s ease;
+    }
+    
+    .transaction-batch:hover {
+      background-color: rgba(124, 58, 237, 0.05);
+    }
+    
+    .batch-progress {
+      height: 0.5rem;
+      border-radius: 9999px;
+      background: linear-gradient(to right, #7C3AED, #10b981);
+    }
+    
+    .transaction-attribute-tag {
+      background-color: rgba(124, 58, 237, 0.1);
+      color: #7C3AED;
+      border-radius: 9999px;
+      padding: 0.25rem 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.75rem;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .confetti-animation {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+    
+    .transaction-table-compact th, .transaction-table-compact td {
+      padding: 0.5rem;
+      font-size: 0.875rem;
+    }
+    
+    .attribute-selector {
+      border: 1px solid rgba(124, 58, 237, 0.3);
+      border-radius: 0.375rem;
+      transition: all 0.2s ease;
+    }
+    
+    .attribute-selector:focus-within {
+      border-color: #7C3AED;
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+    }
+    
+    .tag-animation {
+      animation: tagSlideIn 0.3s ease-out forwards;
+    }
+    
+    @keyframes tagSlideIn {
+      0% { 
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      100% { 
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
 </head>
 <body data-theme="pennydash" class="min-h-screen bg-base-100 text-base-content">
   <div id="app">
@@ -1614,6 +1691,220 @@
         </form>
       </div>
     </div>
+    
+    <!-- Transaction Enrichment Modal -->
+    <div class="modal" :class="{'modal-open': state.enrichment.showModal}">
+      <div class="modal-box relative max-w-4xl">
+        <h3 class="font-bold text-lg mb-4">Transaction Enrichment</h3>
+        
+        <!-- Progress Bar -->
+        <div class="w-full mb-6">
+          <div class="text-sm mb-1 flex justify-between">
+            <span>Progress</span>
+            <span>{{ Math.round(state.enrichment.progress) }}%</span>
+          </div>
+          <div class="w-full bg-base-200 rounded-full h-2.5">
+            <div class="bg-primary h-2.5 rounded-full" :style="{width: state.enrichment.progress + '%'}"></div>
+          </div>
+        </div>
+        
+        <!-- Steps -->
+        <div class="flex justify-center mb-8">
+          <ul class="steps steps-horizontal w-full">
+            <li class="step" :class="{'step-primary': state.enrichment.progress > 0}">Upload</li>
+            <li class="step" :class="{'step-primary': state.enrichment.progress >= 25}">Batching</li>
+            <li class="step" :class="{'step-primary': state.enrichment.progress >= 75}">Enrichment</li>
+            <li class="step" :class="{'step-primary': state.enrichment.progress === 100}">Complete</li>
+          </ul>
+        </div>
+        
+        <!-- Step Content -->
+        <div v-if="state.loading.enrichment" class="py-8 text-center">
+          <div class="loading loading-spinner loading-lg text-primary"></div>
+          <p class="mt-2">Processing transactions...</p>
+        </div>
+        
+        <div v-else-if="state.errors.enrichment" class="alert alert-error mb-4">
+          <div>
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <span>{{ state.errors.enrichment }}</span>
+          </div>
+        </div>
+        
+        <div v-else>
+          <!-- Batching Step -->
+          <div v-if="state.enrichment.currentStep === 'batching'" class="mb-4">
+            <h4 class="font-semibold text-md mb-2">Transaction Batches</h4>
+            <p class="text-sm mb-4">We've organized your transactions into groups to make them easier to categorize and enrich.</p>
+            
+            <div class="overflow-x-auto">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Batch</th>
+                    <th>Transactions</th>
+                    <th>Amount</th>
+                    <th>Date Range</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(batch, index) in state.enrichment.transactionBatches" :key="batch.batchId">
+                    <td>Batch {{ index + 1 }}</td>
+                    <td>{{ batch.transactions?.length || batch.transactionCount || 0 }} transactions</td>
+                    <td>{{ formatCurrency(batch.statistics?.netAmount || 0) }}</td>
+                    <td>
+                      <span v-if="batch.statistics?.dateRange?.from && batch.statistics?.dateRange?.to">
+                        {{ formatDate(batch.statistics.dateRange.from) }} to {{ formatDate(batch.statistics.dateRange.to) }}
+                      </span>
+                      <span v-else>N/A</span>
+                    </td>
+                    <td>
+                      <button 
+                        class="btn btn-sm btn-primary"
+                        @click="state.enrichment.currentStep = 'enrichment'; state.enrichment.pendingBatches = [batch.batchId]"
+                      >
+                        Enrich
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div class="mt-4">
+              <div class="stats shadow w-full">
+                <div class="stat">
+                  <div class="stat-title">Total Transactions</div>
+                  <div class="stat-value">{{ state.enrichment.statistics?.totalTransactions || 0 }}</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-title">Total Amount</div>
+                  <div class="stat-value text-primary">{{ formatCurrency(state.enrichment.statistics?.netAmount || 0) }}</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-title">Sources</div>
+                  <div class="stat-value text-secondary">{{ state.enrichment.statistics?.sources?.length || 0 }}</div>
+                  <div class="stat-desc">{{ state.enrichment.statistics?.sources?.join(', ') }}</div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex justify-end mt-6">
+              <button 
+                class="btn btn-primary" 
+                @click="state.enrichment.currentStep = 'enrichment'; state.enrichment.pendingBatches = state.enrichment.transactionBatches.map(b => b.batchId)"
+              >
+                Enrich All Batches
+              </button>
+            </div>
+          </div>
+          
+          <!-- Enrichment Step -->
+          <div v-else-if="state.enrichment.currentStep === 'enrichment'" class="mb-4">
+            <h4 class="font-semibold text-md mb-2">Enrich Transactions</h4>
+            <p class="text-sm mb-4">Add categories and additional information to your transactions.</p>
+            
+            <div v-if="state.enrichment.pendingBatches && state.enrichment.pendingBatches.length > 0">
+              <div class="form-control mb-4">
+                <label class="label">
+                  <span class="label-text">Category</span>
+                </label>
+                <select class="select select-bordered w-full" v-model="batchCategoryId">
+                  <option value="" disabled>Select a category</option>
+                  <optgroup label="Income Categories">
+                    <option v-for="category in getIncomeCategories(state.categories)" :key="category.id" :value="category.id">
+                      {{ category.name }}
+                    </option>
+                  </optgroup>
+                  <optgroup label="Expense Categories">
+                    <option v-for="category in getExpenseCategories(state.categories)" :key="category.id" :value="category.id">
+                      {{ category.name }}
+                    </option>
+                  </optgroup>
+                </select>
+              </div>
+              
+              <div class="form-control mb-4">
+                <label class="label">
+                  <span class="label-text">Tags (comma separated)</span>
+                </label>
+                <input type="text" class="input input-bordered w-full" placeholder="e.g. vacation, travel, important" v-model="batchTags" />
+              </div>
+              
+              <div class="form-control mb-4">
+                <label class="label">
+                  <span class="label-text">Notes</span>
+                </label>
+                <textarea class="textarea textarea-bordered w-full" placeholder="Add notes for these transactions" v-model="batchNotes"></textarea>
+              </div>
+              
+              <div class="alert alert-info mb-4">
+                <div>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current flex-shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span>These changes will apply to <strong>{{ state.enrichment.pendingBatches.length }}</strong> batch(es) containing multiple transactions.</span>
+                </div>
+              </div>
+              
+              <div class="flex justify-end mt-6 space-x-2">
+                <button class="btn" @click="state.enrichment.currentStep = 'batching'; state.enrichment.pendingBatches = []">
+                  Back to Batches
+                </button>
+                <button 
+                  class="btn btn-primary" 
+                  @click="applyEnrichmentToBatches()"
+                  :disabled="!batchCategoryId"
+                >
+                  Apply Changes
+                </button>
+              </div>
+            </div>
+            
+            <div v-else>
+              <div class="alert alert-success mb-4">
+                <div>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  <span>All batches have been enriched!</span>
+                </div>
+              </div>
+              
+              <div class="flex justify-end mt-6">
+                <button class="btn" @click="state.enrichment.currentStep = 'batching'">
+                  Back to Batches
+                </button>
+                <button class="btn btn-primary ml-2" @click="completeUpload(state.enrichment.currentUploadId)">
+                  Complete Import
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Complete Step -->
+          <div v-else-if="state.enrichment.currentStep === 'complete'" class="mb-4 text-center py-8">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-success mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h4 class="font-bold text-xl mb-2">Import Complete!</h4>
+            <p class="mb-6">Your transactions have been successfully imported and enriched.</p>
+            
+            <div class="stats shadow mx-auto">
+              <div class="stat">
+                <div class="stat-title">Transactions Imported</div>
+                <div class="stat-value">{{ state.enrichment.statistics?.totalTransactions || 0 }}</div>
+              </div>
+              <div class="stat">
+                <div class="stat-title">Total Amount</div>
+                <div class="stat-value text-primary">{{ formatCurrency(state.enrichment.statistics?.netAmount || 0) }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-action">
+          <button type="button" class="btn" @click="closeEnrichmentModal">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
   
   <script>
@@ -1786,17 +2077,35 @@
             categories: false,
             reports: false,
             upload: false,
-            saveSettings: false
+            saveSettings: false,
+            enrichment: false
           },
           successMessages: {
-            upload: null
+            upload: null,
+            enrichment: null
           },
           errors: {
             transactions: null,
             categories: null,
             reports: null,
             settings: null,
-            upload: null
+            upload: null,
+            enrichment: null
+          },
+          // Enrichment flow state
+          enrichment: {
+            showModal: false,
+            currentUploadId: null,
+            transactionBatches: [],
+            processedBatches: [],
+            pendingBatches: [],
+            currentStep: 'batching', // 'upload', 'batching', 'enrichment', 'complete'
+            progress: 0,
+            statistics: {
+              totalTransactions: 0,
+              netAmount: 0,
+              sources: []
+            }
           }
         });
         
@@ -1823,6 +2132,8 @@
         
         // Batch actions
         const batchCategoryId = ref('');
+        const batchTags = ref('');
+        const batchNotes = ref('');
         const isBatchCategoryModalOpen = ref(false);
         
         // Category management
@@ -1949,7 +2260,6 @@
         
         // Process file upload (used by both drag & drop and file input)
         const processFileUpload = async (file) => {
-          
           state.loading.upload = true;
           state.errors.upload = null;
           state.successMessages.upload = null;
@@ -1958,6 +2268,9 @@
           try {
             const formData = new FormData();
             formData.append('file', file);
+            
+            // Add enrichment mode flag to enable the new flow
+            formData.append('enrichMode', 'true');
             
             // Simulate progress (in a real app, this would use progress events)
             let progressInterval = setInterval(() => {
@@ -1974,13 +2287,28 @@
             clearInterval(progressInterval);
             uploadProgress.value = 100;
             
-            // Refresh transactions after upload
-            await fetchTransactions();
-            
-            hasData.value = true;
-            
-            // Show success message
-            state.successMessages.upload = `Successfully uploaded ${file.name}. ${result.count || 'Multiple'} transactions imported.`;
+            // If result has uploadId and enrichmentMode=true, start the enrichment flow
+            if (result.uploadId && result.enrichmentMode) {
+              // Update state to show enrichment modal
+              state.enrichment.showModal = true;
+              state.enrichment.currentUploadId = result.uploadId;
+              state.enrichment.transactionBatches = result.batches || [];
+              state.enrichment.statistics = result.statistics;
+              state.enrichment.currentStep = 'batching';
+              state.enrichment.progress = 25; // First step completed
+              
+              // Show success message specifically for enrichment mode
+              state.successMessages.upload = `Successfully uploaded ${file.name}. Starting transaction enrichment flow...`;
+            } else {
+              // Traditional flow - no enrichment
+              // Refresh transactions after upload
+              await fetchTransactions();
+              
+              hasData.value = true;
+              
+              // Show success message
+              state.successMessages.upload = `Successfully uploaded ${file.name}. ${result.count || 'Multiple'} transactions imported.`;
+            }
             
             // Reset upload progress after a delay
             setTimeout(() => {
@@ -1999,6 +2327,197 @@
             uploadProgress.value = 0;
           } finally {
             state.loading.upload = false;
+          }
+        };
+        
+        // Fetch enrichment batches
+        const fetchEnrichmentBatches = async (uploadId) => {
+          state.loading.enrichment = true;
+          state.errors.enrichment = null;
+          
+          try {
+            const result = await api.transactions.getUploadedBatches(uploadId);
+            state.enrichment.transactionBatches = result.batches || [];
+            state.enrichment.statistics = result.statistics;
+            return result;
+          } catch (error) {
+            state.errors.enrichment = error.message;
+            console.error('Failed to fetch enrichment batches:', error);
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Enrich a batch of transactions
+        const enrichBatch = async (batchId, enrichData) => {
+          state.loading.enrichment = true;
+          state.errors.enrichment = null;
+          
+          try {
+            const result = await api.transactions.batchEnrich(batchId, enrichData);
+            
+            // Update the batch in the state
+            const batchIndex = state.enrichment.transactionBatches.findIndex(b => b.batchId === batchId);
+            if (batchIndex !== -1) {
+              state.enrichment.transactionBatches[batchIndex] = result;
+            }
+            
+            // Move the batch from pending to processed
+            state.enrichment.processedBatches.push(batchId);
+            state.enrichment.pendingBatches = state.enrichment.pendingBatches.filter(id => id !== batchId);
+            
+            // Update progress
+            updateEnrichmentProgress();
+            
+            return result;
+          } catch (error) {
+            state.errors.enrichment = error.message;
+            console.error('Failed to enrich batch:', error);
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Complete a batch of transactions
+        const completeBatch = async (batchId) => {
+          state.loading.enrichment = true;
+          
+          try {
+            await api.transactions.completeBatch(batchId);
+            
+            // Move the batch to completed status
+            const batchIndex = state.enrichment.transactionBatches.findIndex(b => b.batchId === batchId);
+            if (batchIndex !== -1) {
+              const updatedBatch = { ...state.enrichment.transactionBatches[batchIndex], status: 'completed' };
+              state.enrichment.transactionBatches[batchIndex] = updatedBatch;
+            }
+            
+            // Update progress
+            updateEnrichmentProgress();
+          } catch (error) {
+            console.error('Failed to complete batch:', error);
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Complete the entire upload
+        const completeUpload = async (uploadId) => {
+          state.loading.enrichment = true;
+          
+          try {
+            await api.transactions.completeUpload(uploadId);
+            
+            // Set the enrichment flow as complete
+            state.enrichment.currentStep = 'complete';
+            state.enrichment.progress = 100;
+            
+            // Refresh transactions to show the newly imported data
+            await fetchTransactions();
+            
+            // Fetch categories if they might have been updated
+            await fetchCategories();
+            
+            hasData.value = true;
+            
+            // Show success message
+            state.successMessages.enrichment = `Successfully imported and enriched all transactions.`;
+            
+            // Clear enrichment modal after a delay
+            setTimeout(() => {
+              closeEnrichmentModal();
+            }, 3000);
+          } catch (error) {
+            console.error('Failed to complete upload:', error);
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Update the enrichment progress
+        const updateEnrichmentProgress = () => {
+          const totalBatches = state.enrichment.transactionBatches.length;
+          if (totalBatches === 0) return;
+          
+          const completedBatches = state.enrichment.transactionBatches.filter(b => 
+            b.status === 'completed' || b.status === 'enriched').length;
+          
+          // Calculate progress percentage (25% for upload, 75% for batches)
+          const batchProgress = completedBatches / totalBatches * 75;
+          state.enrichment.progress = 25 + batchProgress;
+          
+          // Update step if all batches are completed
+          if (completedBatches === totalBatches) {
+            state.enrichment.currentStep = 'complete';
+            state.enrichment.progress = 100;
+          }
+        };
+        
+        // Close the enrichment modal
+        const closeEnrichmentModal = () => {
+          state.enrichment.showModal = false;
+          state.enrichment.currentUploadId = null;
+          state.enrichment.transactionBatches = [];
+          state.enrichment.processedBatches = [];
+          state.enrichment.pendingBatches = [];
+          state.enrichment.currentStep = 'batching';
+          state.enrichment.progress = 0;
+          state.enrichment.statistics = null;
+        };
+        
+        // Apply enrichment to selected batches
+        const applyEnrichmentToBatches = async () => {
+          if (!state.enrichment.pendingBatches || state.enrichment.pendingBatches.length === 0) {
+            return;
+          }
+          
+          state.loading.enrichment = true;
+          state.errors.enrichment = null;
+          
+          try {
+            // Build the enrichment data
+            const enrichData = {
+              categoryId: batchCategoryId.value,
+              tags: batchTags.value ? batchTags.value.split(',').map(t => t.trim()) : [],
+              notes: batchNotes.value
+            };
+            
+            // Process each pending batch
+            const enrichPromises = state.enrichment.pendingBatches.map(batchId => 
+              enrichBatch(batchId, enrichData)
+            );
+            
+            // Wait for all batches to be processed
+            await Promise.all(enrichPromises);
+            
+            // Update progress
+            updateEnrichmentProgress();
+            
+            // Clear form
+            batchCategoryId.value = '';
+            batchTags.value = '';
+            batchNotes.value = '';
+            
+            // Show success message
+            state.successMessages.enrichment = `Successfully enriched ${state.enrichment.pendingBatches.length} batch(es).`;
+            
+            // Clear pending batches
+            state.enrichment.pendingBatches = [];
+            
+            // If all batches are processed, move to complete step
+            const areAllBatchesProcessed = state.enrichment.transactionBatches.every(
+              batch => batch.status === 'completed' || batch.status === 'enriched'
+            );
+            
+            if (areAllBatchesProcessed) {
+              state.enrichment.currentStep = 'complete';
+              state.enrichment.progress = 100;
+            }
+          } catch (error) {
+            state.errors.enrichment = error.message || 'Failed to apply enrichment';
+            console.error('Failed to apply enrichment:', error);
+          } finally {
+            state.loading.enrichment = false;
           }
         };
         
@@ -2443,6 +2962,15 @@
           }
         };
         
+        // Category filter helper functions
+        const getIncomeCategories = (categories) => {
+          return categories.filter(category => category.type === 'income');
+        };
+        
+        const getExpenseCategories = (categories) => {
+          return categories.filter(category => category.type === 'expense');
+        };
+        
         return {
           // State variables
           state,
@@ -2463,6 +2991,8 @@
           paginationLimit,
           transactionSort,
           batchCategoryId,
+          batchTags,
+          batchNotes,
           isFilterDropdownOpen,
           
           // Category management
@@ -2513,7 +3043,17 @@
           handleFileDrop,
           useSampleData,
           setUploadActive,
-          setDateRange
+          setDateRange,
+          
+          // Enrichment flow functions
+          closeEnrichmentModal,
+          applyEnrichmentToBatches,
+          fetchEnrichmentBatches,
+          enrichBatch,
+          completeUpload,
+          updateEnrichmentProgress,
+          getIncomeCategories,
+          getExpenseCategories
         };
       }
     }).mount('#app');
