@@ -1,0 +1,147 @@
+📦 Transaction Upload & Enrichment Flow — Developer Instructions
+🧠 Goal:
+Enhance the upload flow to:
+
+Support data parsing, enrichment, and validation
+
+Batch transactions for tagging
+
+Pre-fill attributes using AI/heuristics
+
+Allow user to approve/amend before transactions become available
+
+Ensure every transaction has full metadata coverage before reporting
+
+🧭 Updated Upload Flow (Dashboard Page)
+1. User Uploads File
+UI component: Drag-and-drop or browse file upload zone
+
+Supported file types: .csv, .xlsx, .ofx, .qfx, .xml, .pdf
+
+Show a visual dropzone with icon and instructions
+
+2. Upload Begins
+Parse file on the frontend or stream to backend
+
+Show upload progress bar inside the same UI box
+
+On completion, show a snappy, celebratory animation
+
+Text: “🎉 154 transactions successfully uploaded!”
+
+3. Move to Data Cleaning Flow
+Trigger new step within the same bounding box or open a full-width modal
+
+Begin “Transaction Attribute Tagging Flow”
+
+🧹 Data Cleaning & Enrichment Flow (Post-Upload)
+💡 Key Concept:
+Before imported transactions enter the live table, they need to be enriched with essential attributes. This ensures high-quality reporting and correct income/spend logic.
+
+4. Batching UI
+Use AI to analyze uploaded transactions and group similar ones:
+
+By merchant name
+
+By description keyword similarity
+
+By date + amount pattern
+
+By known match with previous transactions
+
+For each batch, show:
+
+A summary preview of sample transactions
+
+Attributes pre-filled by AI (in dropdowns or pills)
+
+“Approve” or “Edit” buttons per batch
+
+5. Attributes to Capture Per Transaction
+These fields should be editable and visible per batch and individual transaction.
+
+Required:
+✅ Transaction Account Source
+
+e.g. “BMO Credit Card”, “RBC Chequing”, etc.
+
+Determines ledger direction (credit vs debit)
+
+✅ Account Type
+
+e.g. “Credit Card”, “Debit Account”, “Wallet”, “Payroll”
+
+✅ Currency
+
+Auto-detected from file metadata or user-defined
+
+✅ Transaction Category
+
+Top-level budget category (e.g. Food, Transport)
+
+✅ Merchant Name
+
+AI can extract from transaction description
+
+✅ Amount Direction
+
+Credit or debit (positive or negative)
+
+Recommended Additions:
+🆔 Transaction Source ID / Upload Batch ID — for debugging/reporting
+
+📄 Original Description — full text from bank
+
+🕒 Posting vs Transaction Date
+
+🔁 Recurring flag (boolean, AI-detected or user-defined)
+
+🔖 User Tags (optional, custom keywords)
+
+6. Approval Flow
+Each batch of similar transactions shows:
+
+Group header (e.g. “Uber Eats – 14 transactions”)
+
+Pre-filled attribute fields (editable)
+
+CTA: ✅ “Apply to All” or ✏️ “Edit Individually”
+
+After approval:
+
+Mark those transactions as “ready”
+
+Unbatched or edge-case transactions:
+
+Show in a “Needs Review” group for manual tagging
+
+✅ 7. Completion State
+Once 100% of transactions have complete metadata:
+
+Show an “All Done!” animation (confetti, smiley graphic, etc.)
+
+CTA: “Go to Transactions” → navigates to Transactions tab
+
+🧠 AI Assistance (Where Used)
+Merchant name extraction from description
+
+Auto-classifying transaction type (credit vs debit logic)
+
+Pre-filling category suggestions
+
+Grouping transactions by similarity
+
+Auto-matching to previous uploads / user-defined rules
+
+Pre-selecting account source or recognizing financial institution
+
+⚙️ Technical Considerations for Dev
+Store temporary transactions in a staging state until approved
+
+Track upload status per user session (e.g. batch IDs)
+
+Create reusable form components for tagging attributes
+
+Use reactive state (e.g. transactionState = { ready: 68%, needsReview: 32% })
+
+Implement loading spinners + inline validation
