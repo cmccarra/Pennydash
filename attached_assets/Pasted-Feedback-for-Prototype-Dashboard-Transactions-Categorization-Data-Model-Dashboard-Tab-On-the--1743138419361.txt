@@ -1,0 +1,81 @@
+Feedback for Prototype – Dashboard, Transactions, Categorization & Data Model
+Dashboard Tab:
+On the bottom row of cards (Spending vs Income, Top Category, Spending Trend, Budget Status):
+
+If the user is new and has no transactions, this row should remain hidden.
+
+If the user has transactions, this row should be visible and displayed at the top, above the “Upload Transactions” row.
+
+These cards should reflect actual data pulled from the transactions table once it’s populated.
+
+Transactions Tab:
+The search bar is missing a search icon — please add this.
+
+The spacing between the icon and the search input is misaligned — please correct this to ensure proper visual spacing.
+
+Filters:
+
+Filters are functional, but when clicking to open them and clicking again, they don’t close — this should be fixed (toggle behavior).
+
+We should also be able to filter by category — please add this filter option.
+
+The "Categorize" button currently does not perform any action — this needs to be connected to its intended flow.
+
+Data Model:
+The uploaded transaction file was from a credit card statement, and in that case:
+
+Debits and credits are reversed compared to a bank account (e.g. a purchase is a negative in bank accounts but a positive in credit cards).
+
+The system currently misinterprets this, which causes Income vs Expense calculations to be flipped.
+
+We need to:
+
+Add a field to the transaction model that reflects the source of the transaction (e.g. credit card, bank account, etc.).
+
+The user should be able to define/manage these sources in the settings.
+
+The AI should be able to automatically determine the source based on the uploaded document (e.g. based on institution, account number, or known credit card pattern).
+
+Based on the source, the system should determine the correct interpretation of transaction values (positive or negative).
+
+Categorization Model:
+Please build support for a hierarchy within categorization:
+
+A top-level category (e.g. “Food”)
+
+One or more subcategories (e.g. “Groceries”, “Restaurants”)
+
+One or more tags (e.g. “Whole Foods”, “Uber Eats”)
+
+Design should consider these as pills in separate rows:
+
+Top row: categories
+
+Middle row: subcategories
+
+Bottom row: tags
+
+Side Note: Please evaluate whether this is the most user-friendly and scalable way to structure categorization. Open to better options if they exist.
+
+Gamified Categorization Flow (New Feature Request):
+Create a categorization page with the following interactive flow:
+
+Show one transaction at a time that has no category.
+
+Show AI’s best guess for category/subcategory/tags.
+
+User can:
+
+Click ✔️ (checkmark) to confirm
+
+Click ❌ (X) to reject
+
+Or manually select the correct category/subcategory/tags
+
+Once categorized:
+
+AI should automatically reprocess all remaining uncategorized transactions.
+
+If there are similar transactions, they should be auto-categorized based on the user’s last action.
+
+This should reduce manual effort and speed up the categorization workflow.

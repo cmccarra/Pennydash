@@ -922,37 +922,48 @@
             <div class="flex items-center space-x-2">
               <div class="form-control">
                 <div class="input-group">
+                  <span class="flex items-center pl-3 pointer-events-none bg-base-100 rounded-l-md border border-r-0 border-base-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-base-content/70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  </span>
                   <input 
                     type="text" 
                     v-model="transactionSearchQuery" 
-                    placeholder="Search..." 
-                    class="input input-bordered focus:border-primary focus:ring-1 focus:ring-primary"
+                    placeholder="Search transactions..." 
+                    class="input input-bordered w-full focus:border-primary focus:ring-1 focus:ring-primary rounded-l-none"
                     @input="filterTransactions"
                   />
-                  <button class="btn btn-square btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                  </button>
                 </div>
               </div>
               <div class="dropdown dropdown-end">
-                <label tabindex="0" class="btn btn-outline">
+                <button class="btn btn-outline" @click="toggleFilterDropdown">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                   </svg>
                   Filters
-                </label>
-                <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box w-52">
+                </button>
+                <ul v-if="isFilterDropdownOpen" class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box w-64 mt-1">
                   <li class="menu-title">Transaction Type</li>
-                  <li><a @click="setTransactionTypeFilter('all')">All</a></li>
-                  <li><a @click="setTransactionTypeFilter('income')">Income</a></li>
-                  <li><a @click="setTransactionTypeFilter('expense')">Expenses</a></li>
+                  <li><a @click.stop="setTransactionTypeFilter('all')" :class="{'font-bold text-primary': transactionTypeFilter === 'all'}">All</a></li>
+                  <li><a @click.stop="setTransactionTypeFilter('income')" :class="{'font-bold text-primary': transactionTypeFilter === 'income'}">Income</a></li>
+                  <li><a @click.stop="setTransactionTypeFilter('expense')" :class="{'font-bold text-primary': transactionTypeFilter === 'expense'}">Expenses</a></li>
+
                   <li class="menu-title pt-2">Date Range</li>
-                  <li><a @click="setTransactionDateFilter('all')">All Time</a></li>
-                  <li><a @click="setTransactionDateFilter('thisMonth')">This Month</a></li>
-                  <li><a @click="setTransactionDateFilter('last3Months')">Last 3 Months</a></li>
+                  <li><a @click.stop="setTransactionDateFilter('all')" :class="{'font-bold text-primary': transactionDateFilter === 'all'}">All Time</a></li>
+                  <li><a @click.stop="setTransactionDateFilter('thisMonth')" :class="{'font-bold text-primary': transactionDateFilter === 'thisMonth'}">This Month</a></li>
+                  <li><a @click.stop="setTransactionDateFilter('last3Months')" :class="{'font-bold text-primary': transactionDateFilter === 'last3Months'}">Last 3 Months</a></li>
+                  
+                  <li class="menu-title pt-2">Category</li>
+                  <li><a @click.stop="setCategoryFilter('all')" :class="{'font-bold text-primary': categoryFilter === 'all'}">All Categories</a></li>
+                  <li><a @click.stop="setCategoryFilter('uncategorized')" :class="{'font-bold text-primary': categoryFilter === 'uncategorized'}">Uncategorized</a></li>
+                  <li v-for="category in state.categories" :key="category.id">
+                    <a @click.stop="setCategoryFilter(category.id)" :class="{'font-bold text-primary': categoryFilter === category.id}">
+                      <span class="badge badge-sm mr-1" :style="{ backgroundColor: category.color, color: 'white' }"></span>
+                      {{ category.name }}
+                    </a>
+                  </li>
                 </ul>
               </div>
-              <button class="btn btn-primary" @click="openCategoryModal">
+              <button class="btn btn-primary" @click="openBatchCategoryModal" :disabled="filteredTransactions.length === 0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
                 </svg>
@@ -1441,15 +1452,18 @@
         const selectAllTransactions = ref(false);
         const transactionTypeFilter = ref('all'); // all, income, expense
         const transactionDateFilter = ref('all'); // all, thisMonth, last3Months, custom
+        const categoryFilter = ref('all'); // all, uncategorized, or category ID
         const paginationStart = ref(0);
         const paginationLimit = ref(20);
         const transactionSort = reactive({
           field: 'date',
           direction: 'desc'
         });
+        const isFilterDropdownOpen = ref(false);
         
         // Batch actions
         const batchCategoryId = ref('');
+        const isBatchCategoryModalOpen = ref(false);
         
         // Fetch transactions from API
         const fetchTransactions = async () => {
@@ -1692,6 +1706,49 @@
         const filterTransactions = () => {
           // Reset pagination when filter changes
           paginationStart.value = 0;
+          // Close the filter dropdown
+          isFilterDropdownOpen.value = false;
+        };
+        
+        // Toggle filter dropdown
+        const toggleFilterDropdown = () => {
+          isFilterDropdownOpen.value = !isFilterDropdownOpen.value;
+          // Add event listener to close dropdown when clicking outside
+          if (isFilterDropdownOpen.value) {
+            setTimeout(() => {
+              document.addEventListener('click', closeFilterDropdown);
+            }, 0);
+          }
+        };
+        
+        // Close filter dropdown when clicking outside
+        const closeFilterDropdown = (event) => {
+          if (isFilterDropdownOpen.value) {
+            isFilterDropdownOpen.value = false;
+            document.removeEventListener('click', closeFilterDropdown);
+          }
+        };
+        
+        // Set category filter
+        const setCategoryFilter = (categoryId) => {
+          categoryFilter.value = categoryId;
+          filterTransactions();
+        };
+        
+        // Open batch category modal
+        const openBatchCategoryModal = () => {
+          // Select all uncategorized transactions
+          selectedTransactions.value = state.transactions
+            .filter(tx => !tx.categoryId)
+            .map(tx => tx.id);
+          
+          // If there are any selected transactions, show the batch action bar
+          if (selectedTransactions.value.length > 0) {
+            // Scroll to the transactions table
+            document.querySelector('.transactions-container').scrollIntoView({ behavior: 'smooth' });
+          } else {
+            alert('No uncategorized transactions found.');
+          }
         };
         
         // Computed property for filtered transactions
@@ -1723,7 +1780,15 @@
               dateMatches = txDate >= threeMonthsAgo;
             }
             
-            return searchMatches && typeMatches && dateMatches;
+            // Category filter
+            let categoryMatches = true;
+            if (categoryFilter.value === 'uncategorized') {
+              categoryMatches = !tx.categoryId;
+            } else if (categoryFilter.value !== 'all') {
+              categoryMatches = tx.categoryId === categoryFilter.value;
+            }
+            
+            return searchMatches && typeMatches && dateMatches && categoryMatches;
           });
         });
         
@@ -1894,10 +1959,13 @@
           selectAllTransactions,
           transactionTypeFilter,
           transactionDateFilter,
+          categoryFilter,
           paginationStart,
           paginationLimit,
           transactionSort,
           batchCategoryId,
+          isFilterDropdownOpen,
+          isBatchCategoryModalOpen,
           filteredTransactions,
           sortedTransactions,
           paginatedTransactions,
@@ -1916,9 +1984,13 @@
           calculateCountByType,
           setTransactionTypeFilter,
           setTransactionDateFilter,
+          setCategoryFilter,
+          toggleFilterDropdown,
+          closeFilterDropdown,
           previousPage,
           nextPage,
           openCategoryModal,
+          openBatchCategoryModal,
           applyBatchCategory,
           deleteBatchTransactions,
           
