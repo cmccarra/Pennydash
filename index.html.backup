@@ -48,22 +48,37 @@
             error: '#F87272'
           },
           animation: {
-            'fade-in': 'fadeIn 0.4s ease-out forwards',
-            'slide-in': 'slideIn 0.3s ease-out forwards'
+            'fade-in': 'fadeIn 0.5s ease-out forwards',
+            'slide-in': 'slideIn 0.4s ease-out forwards',
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite'
           },
           keyframes: {
             fadeIn: {
-              '0%': { opacity: 0, transform: 'translateY(12px)' },
-              '100%': { opacity: 1, transform: 'translateY(0)' }
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' }
             },
             slideIn: {
-              '0%': { opacity: 0, transform: 'translateX(-12px)' },
-              '100%': { opacity: 1, transform: 'translateX(0)' }
+              '0%': { opacity: '0', transform: 'translateX(-10px)' },
+              '100%': { opacity: '1', transform: 'translateX(0)' }
             }
+          },
+          boxShadow: {
+            'card': '0 2px 10px rgba(0,0,0,0.2)',
+            'card-hover': '0 4px 15px rgba(0,0,0,0.3)',
+            'accent-glow': '0 0 15px rgba(124, 58, 237, 0.5)'
+          },
+          borderRadius: {
+            'btn': '8px',
+            'card': '12px',
+            'input': '8px',
+            'badge': '16px'
+          },
+          fontFamily: {
+            'sans': ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif']
           }
         }
       },
-      plugins: [],
+      plugins: [require("daisyui")],
       daisyui: {
         themes: [
           {
@@ -153,10 +168,6 @@
       /* Transitions */
       --transition-fast: 150ms ease-out;
       --transition-normal: 200ms ease-out;
-      
-      /* Soft color variants */
-      --soft-blue: rgba(63, 131, 248, 0.1);
-      --soft-lavender: rgba(255, 255, 255, 0.8);
     }
     
     * {
@@ -701,449 +712,371 @@
           
             <!-- Main Content -->
             <main class="flex-1 px-4 py-8 md:py-6 overflow-y-auto" :class="{'mt-16': activeTab !== 'welcome'}">
-              <!-- Dashboard View -->
-              <div v-if="activeTab === 'home'">
-                <!-- Main Content Grid -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <!-- Content Area Overview -->
-                  <div class="lg:col-span-2">
-                    <h2 class="font-bold text-xl mb-4 text-base-content">Overview</h2>
-                    
-                    <!-- Tagging Progress (if data exists) -->
-                    <div v-if="hasData" class="card bg-base-200 p-6 mb-6 fade-in">
-                      <h3 class="text-lg font-semibold mb-3">Categorization Progress</h3>
-                      
-                      <div class="mb-4">
-                        <div class="flex justify-between items-center mb-2">
-                          <span class="text-sm text-base-content/70">Tagged {{ Math.round(uploadProgress) }}% of transactions</span>
-                          <span class="text-sm font-medium">{{ uploadProgress }}/100</span>
-                        </div>
-                        <div class="progress-bar">
-                          <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
-                        </div>
-                      </div>
-                      
-                      <button class="btn btn-primary btn-sm">
-                        Continue Tagging
-                      </button>
+          <!-- Dashboard View -->
+          <div v-if="activeTab === 'home'">
+            <!-- Main Content Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <!-- Content Area Overview -->
+              <div class="lg:col-span-2">
+                <h2 class="font-bold text-xl mb-4 text-base-content">Overview</h2>
+                
+                <!-- Tagging Progress (if data exists) -->
+                <div v-if="hasData" class="card bg-base-200 p-6 mb-6 fade-in">
+                  <h3 class="text-lg font-semibold mb-3">Categorization Progress</h3>
+                  
+                  <div class="mb-4">
+                    <div class="flex justify-between items-center mb-2">
+                      <span class="text-sm text-base-content/70">Tagged {{ Math.round(uploadProgress) }}% of transactions</span>
+                      <span class="text-sm font-medium">{{ uploadProgress }}/100</span>
                     </div>
-                    
-                    <!-- Features Cards Grid (first-time users) -->
-                    <div v-if="!hasData" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 fade-in">
-                      <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
-                        <div class="card-body">
-                          <div class="flex items-start">
-                            <div class="avatar placeholder">
-                              <div class="bg-primary text-primary-content rounded-btn w-12 h-12">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                                </svg>
-                              </div>
-                            </div>
-                            <div class="ml-4">
-                              <h3 class="font-medium text-lg text-base-content">Easy Import</h3>
-                              <p class="text-sm mt-1 text-base-content/70">Upload CSV, Excel, PDF, XML and OFX/QFX files with drag-and-drop</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
-                        <div class="card-body">
-                          <div class="flex items-start">
-                            <div class="avatar placeholder">
-                              <div class="bg-accent text-accent-content rounded-btn w-12 h-12">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
-                                </svg>
-                              </div>
-                            </div>
-                            <div class="ml-4">
-                              <h3 class="font-medium text-lg text-base-content">Smart Categorization</h3>
-                              <p class="text-sm mt-1 text-base-content/70">AI-powered suggestions organize transactions automatically</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
-                        <div class="card-body">
-                          <div class="flex items-start">
-                            <div class="avatar placeholder">
-                              <div class="bg-secondary text-secondary-content rounded-btn w-12 h-12">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
-                                </svg>
-                              </div>
-                            </div>
-                            <div class="ml-4">
-                              <h3 class="font-medium text-lg text-base-content">Visual Reports</h3>
-                              <p class="text-sm mt-1 text-base-content/70">Interactive charts showing spending patterns and trends</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
-                        <div class="card-body">
-                          <div class="flex items-start">
-                            <div class="avatar placeholder">
-                              <div class="bg-primary text-primary-content rounded-btn w-12 h-12">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-                                </svg>
-                              </div>
-                            </div>
-                            <div class="ml-4">
-                              <h3 class="font-medium text-lg text-base-content">Custom Categories</h3>
-                              <p class="text-sm mt-1 text-base-content/70">Create personalized categories matching your financial habits</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div class="progress-bar">
+                      <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
                     </div>
-                    
-                    <!-- Recent Uploads (if data exists) -->
-                    <div v-if="hasData">
-                      <h2 class="font-bold text-xl mb-4 text-base-content">Recent Uploads</h2>
-                      <div class="card bg-base-200 mb-6 fade-in">
-                        <div class="card-body">
-                          <div class="overflow-x-auto">
-                            <table class="table">
-                              <thead>
-                                <tr>
-                                  <th>File</th>
-                                  <th>Date</th>
-                                  <th>Status</th>
-                                  <th>Actions</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td>
-                                    <div class="font-medium">March_Statement.csv</div>
-                                    <div class="text-xs text-base-content/60">58 transactions</div>
-                                  </td>
-                                  <td>Apr 3, 2023</td>
-                                  <td>
-                                    <div class="badge badge-success badge-sm">Categorized</div>
-                                  </td>
-                                  <td>
-                                    <button class="btn btn-ghost btn-xs">View</button>
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td>
-                                    <div class="font-medium">February_Statement.csv</div>
-                                    <div class="text-xs text-base-content/60">42 transactions</div>
-                                  </td>
-                                  <td>Mar 2, 2023</td>
-                                  <td>
-                                    <div class="badge badge-primary badge-sm">In Progress</div>
-                                  </td>
-                                  <td>
-                                    <button class="btn btn-ghost btn-xs">Continue</button>
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- Welcome Banner (first-time users) -->
-                    <div v-if="!hasData" class="card bg-primary text-primary-content p-6 mb-6 fade-in">
-                      <div class="card-body">
-                        <h1 class="card-title text-2xl font-serif">Welcome to PennyDash</h1>
-                        <p class="mb-4">
-                          Track your money like it matters. Let's get started with your personal budgeting journey. Follow these steps to gain insights into your spending habits.
-                        </p>
-                        
-                        <ul class="steps steps-vertical md:steps-horizontal w-full mb-4">
-                          <li class="step step-primary">Upload Statements</li>
-                          <li class="step">Review Transactions</li>
-                          <li class="step">Categorize Spending</li>
-                          <li class="step">Generate Reports</li>
-                        </ul>
-                        
-                        <div class="flex justify-center">
-                          <button class="btn bg-base-100 text-base-content hover:bg-base-200 btn-wide" @click="activeTab = 'upload'">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                  </div>
+                  
+                  <button class="btn btn-primary btn-sm">
+                    Continue Tagging
+                  </button>
+                </div>
+                
+                <!-- Features Cards Grid (first-time users) -->
+                <div v-if="!hasData" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 fade-in">
+                  <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
+                    <div class="card-body">
+                      <div class="flex items-start">
+                        <div class="avatar placeholder">
+                          <div class="bg-primary text-primary-content rounded-btn w-12 h-12">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                               <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                             </svg>
-                            Get Started
-                          </button>
+                          </div>
+                        </div>
+                        <div class="ml-4">
+                          <h3 class="font-medium text-lg text-base-content">Easy Import</h3>
+                          <p class="text-sm mt-1 text-base-content/70">Upload CSV, Excel, PDF, XML and OFX/QFX files with drag-and-drop</p>
                         </div>
                       </div>
                     </div>
                   </div>
                   
-                  <!-- Sidebar Area -->
-                  <div class="lg:col-span-1">
-                    <!-- Upload Widget -->
-                    <div class="card bg-base-200 mb-6 fade-in">
-                      <div class="card-body">
-                        <h2 class="card-title text-lg">Upload</h2>
-                        <p class="text-sm text-base-content/70 mb-4">
-                          Import your bank statements to track your finances.
-                        </p>
-                        
-                        <div 
-                          class="border-2 border-dashed border-base-300 bg-base-100/50 hover:bg-base-100 p-6 mb-4 rounded-lg flex flex-col items-center justify-center text-center transition-all"
-                          :class="{ 'bg-primary/5 border-primary': isUploadActive }"
-                          @dragover.prevent="setUploadActive(true)"
-                          @dragleave.prevent="setUploadActive(false)"
-                          @drop.prevent="setUploadActive(false); setHasData()">
-                          
-                          <div class="avatar placeholder mb-3">
-                            <div class="bg-primary text-primary-content rounded-full w-12 h-12">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                              </svg>
-                            </div>
-                          </div>
-                          
-                          <h3 class="font-semibold text-base mb-2">Drop Files Here</h3>
-                          <p class="text-xs text-base-content/70 mb-3">
-                            Supports CSV, Excel, PDF, XML, OFX
-                          </p>
-                          
-                          <button class="btn btn-primary btn-sm">
-                            Browse Files
-                          </button>
-                        </div>
-                        
-                        <div class="text-center">
-                          <button @click="useSampleData" class="btn btn-link btn-sm text-primary">
-                            Or use sample data
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- Quick Actions -->
-                    <div class="card bg-base-200 mb-6 fade-in">
-                      <div class="card-body">
-                        <h2 class="card-title text-lg">Quick Actions</h2>
-                        
-                        <div class="flex flex-col gap-2 mt-2">
-                          <button class="btn btn-outline btn-sm justify-start" @click="activeTab = 'transactions'">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Add Transaction
-                          </button>
-                          
-                          <button class="btn btn-outline btn-sm justify-start" @click="activeTab = 'upload'">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                            </svg>
-                            Upload New File
-                          </button>
-                          
-                          <button class="btn btn-outline btn-sm justify-start" @click="activeTab = 'reports'">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                  <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
+                    <div class="card-body">
+                      <div class="flex items-start">
+                        <div class="avatar placeholder">
+                          <div class="bg-accent text-accent-content rounded-btn w-12 h-12">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                               <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
                             </svg>
-                            Generate Report
-                          </button>
-                          
-                          <button class="btn btn-outline btn-sm justify-start" @click="activeTab = 'categories'">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
-                            </svg>
-                            Manage Categories
-                          </button>
+                          </div>
+                        </div>
+                        <div class="ml-4">
+                          <h3 class="font-medium text-lg text-base-content">Smart Categorization</h3>
+                          <p class="text-sm mt-1 text-base-content/70">AI-powered suggestions organize transactions automatically</p>
                         </div>
                       </div>
                     </div>
-                    
-                    <!-- Getting Started Tips -->
-                    <div class="card bg-base-200 fade-in" v-if="!hasData">
-                      <div class="card-body">
-                        <h2 class="card-title text-lg">Tips for Starting</h2>
-                        
-                        <ul class="space-y-3 mt-3">
-                          <li class="flex gap-2 slide-in" style="animation-delay: 0.1s">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-primary shrink-0 mt-0.5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </div>
+                  
+                  <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
+                    <div class="card-body">
+                      <div class="flex items-start">
+                        <div class="avatar placeholder">
+                          <div class="bg-secondary text-secondary-content rounded-btn w-12 h-12">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
                             </svg>
-                            <span class="text-sm">Download statements from your bank in any supported format.</span>
-                          </li>
-                          
-                          <li class="flex gap-2 slide-in" style="animation-delay: 0.2s">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-primary shrink-0 mt-0.5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span class="text-sm">We'll help categorize your transactions automatically.</span>
-                          </li>
-                          
-                          <li class="flex gap-2 slide-in" style="animation-delay: 0.3s">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-primary shrink-0 mt-0.5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span class="text-sm">Categorize similar transactions in bulk with batch-processing.</span>
-                          </li>
-                        </ul>
+                          </div>
+                        </div>
+                        <div class="ml-4">
+                          <h3 class="font-medium text-lg text-base-content">Visual Reports</h3>
+                          <p class="text-sm mt-1 text-base-content/70">Interactive charts showing spending patterns and trends</p>
+                        </div>
                       </div>
+                    </div>
+                  </div>
+                  
+                  <div class="card bg-base-200 shadow-md hover:shadow-lg transition-all cursor-pointer">
+                    <div class="card-body">
+                      <div class="flex items-start">
+                        <div class="avatar placeholder">
+                          <div class="bg-primary text-primary-content rounded-btn w-12 h-12">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                            </svg>
+                          </div>
+                        </div>
+                        <div class="ml-4">
+                          <h3 class="font-medium text-lg text-base-content">Custom Categories</h3>
+                          <p class="text-sm mt-1 text-base-content/70">Create personalized categories matching your financial habits</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+            <!-- Left Column -->
+            <div class="md:order-1 order-2">
+              <!-- Tagging Progress (if data exists) -->
+              <div v-if="hasData" class="card bg-white p-6 mb-6 fade-in">
+                <h2 class="text-lg font-semibold mb-3">Categorization Progress</h2>
+                
+                <div class="mb-4">
+                  <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm text-gray-600">You've tagged {{ Math.round(uploadProgress) }}% of transactions</span>
+                    <span class="text-sm font-medium">{{ uploadProgress }}/100</span>
+                  </div>
+                  <div class="progress-bar">
+                    <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
+                  </div>
+                </div>
+                
+                <button class="btn btn-primary w-full py-2">
+                  Continue Tagging
+                </button>
+              </div>
+              
+              <!-- Recent Uploads (if data exists) -->
+              <div v-if="hasData" class="card bg-white p-6 mb-6 fade-in">
+                <h2 class="text-lg font-semibold mb-3">Recent Uploads</h2>
+                
+                <div class="divide-y">
+                  <div class="py-3 flex justify-between items-center">
+                    <div>
+                      <div class="font-medium">March_Statement.csv</div>
+                      <div class="text-sm text-gray-500">58 transactions • Apr 3, 2023</div>
+                    </div>
+                    <div class="text-sm text-green-600 font-medium">
+                      Categorized
+                    </div>
+                  </div>
+                  
+                  <div class="py-3 flex justify-between items-center">
+                    <div>
+                      <div class="font-medium">February_Statement.csv</div>
+                      <div class="text-sm text-gray-500">42 transactions • Mar 2, 2023</div>
+                    </div>
+                    <div class="text-sm text-blue-600 font-medium">
+                      In Progress
                     </div>
                   </div>
                 </div>
               </div>
               
-              <!-- Upload View -->
-              <div v-if="activeTab === 'upload'" class="fade-in">
-                <div class="card bg-base-200 mb-6">
-                  <div class="card-body">
-                    <h2 class="card-title text-lg">Upload Transactions</h2>
-                    <p class="text-base-content/70 text-sm mb-6">
-                      Import your bank statements and financial data to start tracking your finances. Drag and drop your files below or use the browse button.
-                    </p>
-                    
-                    <div 
-                      class="border-2 border-dashed border-base-300 bg-base-100/50 hover:bg-base-100 p-10 mb-6 rounded-lg flex flex-col items-center justify-center text-center transition-all"
-                      :class="{ 'bg-primary/5 border-primary': isUploadActive }"
-                      @dragover.prevent="setUploadActive(true)"
-                      @dragleave.prevent="setUploadActive(false)"
-                      @drop.prevent="setUploadActive(false); setHasData()">
-                      
-                      <div class="avatar placeholder mb-4">
-                        <div class="bg-primary text-primary-content rounded-full w-20 h-20">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
+              <!-- Features overview (first-time users) -->
+              <div v-if="!hasData" class="card bg-base-200 shadow-md p-6 mb-6 fade-in">
+                <div class="card-body p-2">
+                  <h2 class="card-title text-lg mb-3">Key Features</h2>
+                  
+                  <div class="space-y-6">
+                    <div class="flex items-start slide-in" style="animation-delay: 0.1s">
+                      <div class="avatar placeholder">
+                        <div class="bg-primary text-primary-content rounded-btn w-12 h-12">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                           </svg>
                         </div>
                       </div>
-                      
-                      <h3 class="font-semibold text-xl mb-2">Drag & Drop Files</h3>
-                      <p class="text-base-content/70 mb-4 max-w-md">
-                        Drop your bank statements here or click to browse files from your computer
-                      </p>
-                      
-                      <div class="flex flex-wrap justify-center gap-2 mb-6">
-                        <div class="badge badge-outline">.CSV</div>
-                        <div class="badge badge-outline">.XLS/.XLSX</div>
-                        <div class="badge badge-outline">.PDF</div>
-                        <div class="badge badge-outline">.XML</div>
-                        <div class="badge badge-outline">.OFX/.QFX</div>
+                      <div class="ml-4">
+                        <h3 class="font-medium text-lg text-base-content">Easy Import</h3>
+                        <p class="text-sm mt-1 text-base-content/70">Upload CSV, XML, Excel, PDF or OFX files from your bank with intuitive drag-and-drop functionality.</p>
                       </div>
-                      
-                      <button class="btn btn-primary">
+                    </div>
+                    
+                    <div class="flex items-start slide-in" style="animation-delay: 0.2s">
+                      <div class="avatar placeholder">
+                        <div class="bg-accent text-accent-content rounded-btn w-12 h-12">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="ml-4">
+                        <h3 class="font-medium text-lg text-base-content">Smart Categorization</h3>
+                        <p class="text-sm mt-1 text-base-content/70">AI-powered suggestions automatically organize your transactions into meaningful categories.</p>
+                      </div>
+                    </div>
+                    
+                    <div class="flex items-start slide-in" style="animation-delay: 0.3s">
+                      <div class="avatar placeholder">
+                        <div class="bg-secondary text-secondary-content rounded-btn w-12 h-12">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="ml-4">
+                        <h3 class="font-medium text-lg text-base-content">Visual Reports</h3>
+                        <p class="text-sm mt-1 text-base-content/70">Gain insights with interactive charts showing spending patterns and financial trends over time.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Right Column -->
+            <div class="md:order-2 order-1">
+              <!-- Upload Zone -->
+              <div class="card bg-base-200 shadow-lg p-6 mb-6 fade-in">
+                <div class="card-body p-2">
+                  <h2 class="card-title text-lg">Upload Transactions</h2>
+                  <p class="text-sm text-base-content/70 mb-4">
+                    Import your bank statements to start tracking your finances.
+                  </p>
+                  
+                  <div 
+                    class="border-2 border-dashed border-base-300 bg-base-100/50 hover:bg-base-100 p-8 mb-4 rounded-lg flex flex-col items-center justify-center text-center transition-all"
+                    :class="{ 'bg-primary/5 border-primary': isUploadActive }"
+                    @dragover.prevent="setUploadActive(true)"
+                    @dragleave.prevent="setUploadActive(false)"
+                    @drop.prevent="setUploadActive(false); setHasData()">
+                    
+                    <div class="avatar placeholder mb-3">
+                      <div class="bg-primary text-primary-content rounded-full w-16 h-16">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
+                      </div>
+                    </div>
+                    
+                    <p class="font-medium mb-1 text-base-content">Drag & drop your files here</p>
+                    <p class="text-sm text-base-content/60 mb-4">Supports CSV, XML, Excel, PDF, and OFX/QFX formats</p>
+                    
+                    <div class="flex flex-wrap justify-center gap-3 mb-2">
+                      <button class="btn btn-primary" @click="setHasData">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                         </svg>
                         Browse Files
                       </button>
-                    </div>
-                    
-                    <div class="text-center">
-                      <button @click="useSampleData" class="btn btn-link text-primary">
-                        Or use sample data
+                      
+                      <button class="btn btn-secondary" @click="useSampleData">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                        </svg>
+                        Try Sample Data
                       </button>
                     </div>
+                    
+                    <div class="badge badge-neutral mt-2">Maximum file size: 10MB</div>
+                  </div>
+                  
+                  <div class="divider divider-neutral text-xs text-base-content/60">Supported File Types</div>
+                  
+                  <div class="flex flex-wrap justify-center gap-2">
+                    <div class="badge badge-primary badge-outline">CSV</div>
+                    <div class="badge badge-primary badge-outline">XML</div>
+                    <div class="badge badge-primary badge-outline">XLSX</div>
+                    <div class="badge badge-primary badge-outline">PDF</div>
+                    <div class="badge badge-primary badge-outline">OFX/QFX</div>
                   </div>
                 </div>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div class="card bg-base-200">
-                    <div class="card-body">
-                      <h3 class="card-title text-lg">Supported File Formats</h3>
-                      
-                      <div class="mt-4 space-y-4">
-                        <div class="flex">
-                          <div class="avatar placeholder mr-4">
-                            <div class="bg-base-300 w-10 h-10 rounded-lg flex items-center justify-center text-primary font-bold">
-                              CSV
-                            </div>
-                          </div>
-                          <div>
-                            <h4 class="font-medium">CSV Files</h4>
-                            <p class="text-sm text-base-content/70">Comma-separated values from most banks</p>
-                          </div>
-                        </div>
-                        
-                        <div class="flex">
-                          <div class="avatar placeholder mr-4">
-                            <div class="bg-base-300 w-10 h-10 rounded-lg flex items-center justify-center text-primary font-bold">
-                              XLS
-                            </div>
-                          </div>
-                          <div>
-                            <h4 class="font-medium">Excel Spreadsheets</h4>
-                            <p class="text-sm text-base-content/70">XLS or XLSX files from spreadsheets</p>
-                          </div>
-                        </div>
-                        
-                        <div class="flex">
-                          <div class="avatar placeholder mr-4">
-                            <div class="bg-base-300 w-10 h-10 rounded-lg flex items-center justify-center text-primary font-bold">
-                              PDF
-                            </div>
-                          </div>
-                          <div>
-                            <h4 class="font-medium">PDF Statements</h4>
-                            <p class="text-sm text-base-content/70">Bank statements in PDF format</p>
-                          </div>
-                        </div>
-                        
-                        <div class="flex">
-                          <div class="avatar placeholder mr-4">
-                            <div class="bg-base-300 w-10 h-10 rounded-lg flex items-center justify-center text-primary font-bold">
-                              OFX
-                            </div>
-                          </div>
-                          <div>
-                            <h4 class="font-medium">OFX/QFX Files</h4>
-                            <p class="text-sm text-base-content/70">Open Financial Exchange format</p>
-                          </div>
-                        </div>
+              </div>
+              
+              <!-- Reports Preview (if data exists) -->
+              <div v-if="hasData" class="card bg-base-200 shadow-lg p-6 mb-6 fade-in">
+                <div class="card-body p-2">
+                  <div class="flex justify-between items-center mb-4">
+                    <h2 class="card-title text-lg">Reports</h2>
+                    <button class="btn btn-primary btn-sm">
+                      View All
+                    </button>
+                  </div>
+                  
+                  <div class="stats stats-vertical lg:stats-horizontal shadow bg-base-300/50 w-full">
+                    <div class="stat">
+                      <div class="stat-title">Total Spending</div>
+                      <div class="stat-value text-primary">$3,240.50</div>
+                      <div class="stat-desc">This Month (March)</div>
+                    </div>
+                    
+                    <div class="stat">
+                      <div class="stat-title">Transactions</div>
+                      <div class="stat-value">132</div>
+                      <div class="stat-desc">↗︎ 24 (22%)</div>
+                    </div>
+                    
+                    <div class="stat">
+                      <div class="stat-title">Categorized</div>
+                      <div class="stat-value text-success">89%</div>
+                      <div class="stat-desc">14 need review</div>
+                    </div>
+                  </div>
+                  
+                  <div class="divider divider-neutral text-xs text-base-content/60">Recent Activity</div>
+                  
+                  <div class="h-40 mb-3 flex items-end justify-center space-x-3 slide-in" style="animation-delay: 0.2s;">
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$890.24">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 60%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$1,180.35">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 80%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$960.42">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 65%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$1,475.82">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-accent to-accent-focus"
+                             style="height: 100%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$663.91">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 45%;"></div>
                       </div>
                     </div>
                   </div>
                   
-                  <div class="card bg-base-200">
-                    <div class="card-body">
-                      <h3 class="card-title text-lg">Processing Steps</h3>
-                      
-                      <ul class="steps steps-vertical mt-4">
-                        <li class="step step-primary">
-                          <div class="text-left ml-2">
-                            <h4 class="font-medium">Upload Files</h4>
-                            <p class="text-xs text-base-content/70">Drag & drop or browse your files</p>
-                          </div>
-                        </li>
-                        <li class="step">
-                          <div class="text-left ml-2">
-                            <h4 class="font-medium">AI Processing</h4>
-                            <p class="text-xs text-base-content/70">We extract and categorize your transactions</p>
-                          </div>
-                        </li>
-                        <li class="step">
-                          <div class="text-left ml-2">
-                            <h4 class="font-medium">Review & Confirm</h4>
-                            <p class="text-xs text-base-content/70">Check and adjust categorizations</p>
-                          </div>
-                        </li>
-                        <li class="step">
-                          <div class="text-left ml-2">
-                            <h4 class="font-medium">Generate Insights</h4>
-                            <p class="text-xs text-base-content/70">View reports and spending patterns</p>
-                          </div>
-                        </li>
-                      </ul>
-                    </div>
+                  <div class="flex justify-between text-xs text-base-content/60">
+                    <span>Feb 1</span>
+                    <span>Feb 8</span>
+                    <span>Feb 15</span>
+                    <span>Feb 22</span>
+                    <span>Mar 1</span>
                   </div>
                 </div>
               </div>
-            </main>
+            </div>
           </div>
-        </div>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="footer footer-center p-6 bg-base-300 text-base-content">
+          <div>
+            <div class="avatar placeholder">
+              <div class="bg-neutral-focus text-neutral-content rounded-full w-10">
+                <span class="text-xl">P</span>
+              </div>
+            </div>
+            <p class="font-serif font-bold text-xl">PennyDash</p>
+            <p class="text-sm opacity-70">Track your money like it matters</p>
+            <p class="text-xs opacity-50">© 2025 - All rights reserved</p>
+          </div>
+        </footer>
       `
     };
     
-    createApp(App).mount("#app");
+    const app = createApp(App);
+    
+    // Global error handler
+    app.config.errorHandler = (err, vm, info) => {
+      console.error('Global error:', err);
+      console.error('Vue instance:', vm);
+      console.error('Error info:', info);
+    };
+    
+    // Mount the app
+    app.mount('#app');
   </script>
 </body>
 </html>
