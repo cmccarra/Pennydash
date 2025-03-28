@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Artha | Track your money like it matters</title>
+  <title>PennyDash | Track your money like it matters</title>
   <meta name="description" content="Personal budgeting web app to manage your finances">
   
   <!-- Favicon -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
   
   <!-- Fonts -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;700;900&family=Gentium+Book+Basic:wght@400;700&family=Hind:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap">
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -20,47 +20,47 @@
   
   <style>
     :root {
-      /* Color system using coolors.co palette */
-      --primary: #262730;
-      --primary-hover: #1A1B21;
-      --primary-light: #393A45;
-      --primary-50: rgba(38, 39, 48, 0.05);
-      --primary-100: rgba(38, 39, 48, 0.1);
+      /* Aria-inspired color system */
+      --primary: #251E5A;
+      --primary-hover: #1C1845;
+      --primary-light: #3F3772;
+      --primary-50: rgba(37, 30, 90, 0.05);
+      --primary-100: rgba(37, 30, 90, 0.1);
       
-      --accent: #D33F49;
-      --accent-hover: #B82F39;
-      --accent-light: rgba(211, 63, 73, 0.15);
+      --accent: #FF5C67;
+      --accent-hover: #F04A55;
+      --accent-light: rgba(255, 92, 103, 0.15);
       
-      --secondary: #77BA99;
-      --secondary-hover: #62A484;
-      --secondary-light: rgba(119, 186, 153, 0.2);
+      --secondary: #3CD5B0;
+      --secondary-hover: #2AC19D;
+      --secondary-light: rgba(60, 213, 176, 0.2);
       
-      --soft-lavender: #D7C0D0;
-      --soft-lavender-light: rgba(215, 192, 208, 0.3);
+      --soft-blue: #E3F1FB;
+      --soft-blue-light: rgba(227, 241, 251, 0.5);
       
-      --bg-light: #EFF0D1;
-      --bg-light-secondary: #E5E6C9;
+      --bg-light: #FFFFFF;
+      --bg-light-secondary: #F9FAFC;
       --bg-card: #FFFFFF;
-      --bg-muted: #D7C0D0;
+      --bg-muted: #F0F2F5;
       
-      --text-default: #262730;
-      --text-muted: #5D5E6A;
-      --text-light: #787986;
+      --text-default: #1E2335;
+      --text-muted: #677183;
+      --text-light: #8F98A8;
       
-      --border-default: #D7C0D0;
-      --border-hover: #C0A8B5;
+      --border-default: #E5E9F0;
+      --border-hover: #D8DCE5;
       
-      --success: #77BA99;
-      --warning: #FFC857;
-      --error: #D33F49;
+      --success: #3CD5B0;
+      --warning: #FFB648;
+      --error: #FF5C67;
       
-      --shadow-sm: 0 1px 3px rgba(38, 39, 48, 0.1);
-      --shadow-md: 0 4px 12px rgba(38, 39, 48, 0.1);
-      --shadow-lg: 0 8px 24px rgba(38, 39, 48, 0.12);
+      --shadow-sm: 0 1px 3px rgba(30, 35, 53, 0.05);
+      --shadow-md: 0 4px 12px rgba(30, 35, 53, 0.08);
+      --shadow-lg: 0 8px 24px rgba(30, 35, 53, 0.1);
       
-      --radius-sm: 8px;
-      --radius-md: 12px;
-      --radius-lg: 16px;
+      --radius-sm: 12px;
+      --radius-md: 16px;
+      --radius-lg: 20px;
     }
     
     * {
@@ -70,24 +70,24 @@
     }
     
     body {
-      font-family: 'Hind', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg-light);
-      color: var(--text-default);
-      line-height: 1.5;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #FFFFFF;
+      color: #1A202C;
+      line-height: 1.6;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
     
     h1, h2, h3, h4, h5, h6 {
-      font-weight: 700;
+      font-weight: 600;
     }
     
     h1 {
-      font-family: 'Alegreya Sans', sans-serif;
+      font-family: 'DM Serif Display', serif;
     }
     
     h2 {
-      font-family: 'Gentium Book Basic', serif;
+      font-family: 'DM Serif Display', serif;
     }
     
     .container {
@@ -318,14 +318,14 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background-color: var(--soft-lavender);
+      background-color: var(--soft-blue);
       color: var(--primary);
       transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
     
     .icon-circle:hover {
       transform: scale(1.05);
-      box-shadow: 0 2px 8px rgba(38, 39, 48, 0.2);
+      box-shadow: 0 2px 8px rgba(37, 30, 90, 0.1);
     }
     
     .avatar {
@@ -401,7 +401,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
                   </svg>
                 </div>
-                <span class="font-semibold text-xl" style="color: var(--accent); font-family: 'Alegreya Sans', sans-serif;">Artha</span>
+                <span class="font-semibold text-xl" style="color: var(--accent); font-family: 'DM Serif Display', serif;">PennyDash</span>
               </div>
               
               <div class="hidden md:flex items-center space-x-2">
@@ -431,7 +431,7 @@
           <!-- Welcome Area (First-time users) -->
           <div v-if="!hasData" class="mb-8 fade-in">
             <div class="card bg-white p-6 md:p-8 mb-6">
-              <h1 class="text-2xl font-semibold mb-2" style="color: var(--accent);">Welcome to Artha</h1>
+              <h1 class="text-2xl font-semibold mb-2" style="color: var(--accent);">Welcome to PennyDash</h1>
               <p class="mb-6" style="color: var(--text-muted);">
                 Track your money like it matters. Let's get started with your personal budgeting journey. Follow these steps to gain insights into your spending habits.
               </p>
@@ -665,7 +665,7 @@
         
         <!-- Footer -->
         <footer class="container mx-auto p-4 text-center text-sm text-gray-500 mt-8">
-          Artha | Track your money like it matters
+          PennyDash | Track your money like it matters
         </footer>
       `
     };
