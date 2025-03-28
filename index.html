@@ -1644,6 +1644,11 @@
             throw new Error(`API error: ${response.status} ${response.statusText}`);
           }
           
+          // For 204 No Content responses (like from DELETE), return an empty object
+          if (response.status === 204) {
+            return {};
+          }
+          
           return await response.json();
         } catch (error) {
           console.error('API request failed:', error);
