@@ -19,98 +19,304 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
   <style>
+    :root {
+      --primary: #412EBC;
+      --primary-hover: #362499;
+      --primary-light: #F1EFFF;
+      --primary-50: rgba(65, 46, 188, 0.05);
+      --primary-100: rgba(65, 46, 188, 0.1);
+      --accent: #E57CD8;
+      --accent-hover: #D15FC7;
+      --accent-light: #FDEEF7;
+      --bg-default: #FAFBFC;
+      --bg-muted: #E6E9F4;
+      --text-default: #2C2C2E;
+      --text-muted: #6E6E73;
+      --text-light: #8E8E93;
+      --border-default: #E6E6E6;
+      --border-hover: #C7C7CC;
+      --success: #34C759;
+      --warning: #FF9500;
+      --error: #FF3B30;
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #F6F8FB;
-      color: #1F1F1F;
+      background-color: var(--bg-default);
+      color: var(--text-default);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     
     .container {
       max-width: 1200px;
+      margin: 0 auto;
     }
     
+    /* Cards */
     .card {
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      transition: all 0.2s ease-in-out;
+      background-color: white;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      border: 1px solid var(--border-default);
     }
     
     .card:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+      box-shadow: var(--shadow-md);
+      border-color: var(--border-hover);
     }
     
+    /* Buttons */
     .btn {
-      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
       font-weight: 500;
-      transition: all 0.2s ease;
+      font-size: 14px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+      white-space: nowrap;
+      outline: none;
+      border: none;
+      height: 38px;
+    }
+    
+    .btn-icon {
+      margin-right: 8px;
     }
     
     .btn-primary {
-      background-color: #2E5BFF;
+      background-color: var(--primary);
       color: white;
     }
     
     .btn-primary:hover {
-      background-color: #2348D9;
+      background-color: var(--primary-hover);
       transform: translateY(-1px);
     }
     
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+    
     .btn-secondary {
-      border: 1px solid #2E5BFF;
-      color: #2E5BFF;
+      border: 1px solid var(--border-hover);
+      color: var(--text-default);
       background-color: white;
     }
     
     .btn-secondary:hover {
-      background-color: #F0F5FF;
+      background-color: var(--bg-muted);
+      color: var(--primary);
+      border-color: var(--primary);
     }
     
+    .btn-accent {
+      background-color: var(--accent);
+      color: white;
+    }
+    
+    .btn-accent:hover {
+      background-color: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+    
+    /* Upload Zone */
     .upload-zone {
-      border: 2px dashed #D1D5DB;
-      border-radius: 12px;
-      transition: all 0.2s ease;
+      border: 2px dashed var(--border-hover);
+      border-radius: var(--radius-md);
+      background-color: var(--primary-50);
+      transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
     
     .upload-zone:hover, .upload-zone.active {
-      border-color: #2E5BFF;
-      background-color: #F0F5FF;
+      border-color: var(--primary);
+      background-color: var(--primary-light);
     }
     
+    /* Progress elements */
     .progress-bar {
       height: 8px;
       border-radius: 4px;
-      background-color: #E5E7EB;
+      background-color: var(--bg-muted);
       overflow: hidden;
     }
     
     .progress-bar-fill {
       height: 100%;
-      background-color: #2E5BFF;
-      transition: width 0.5s ease-in-out;
+      background-color: var(--primary);
+      transition: width 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    
+    /* Navigation */
+    .navbar {
+      background-color: white;
+      border-bottom: 1px solid var(--border-default);
     }
     
     .nav-item {
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
       transition: all 0.15s ease;
+      color: var(--text-muted);
+      font-weight: 500;
     }
     
-    .nav-item:hover, .nav-item.active {
-      background-color: #F0F5FF;
-      color: #2E5BFF;
+    .nav-item:hover {
+      color: var(--primary);
+      background-color: var(--primary-50);
     }
     
+    .nav-item.active {
+      background-color: var(--primary-light);
+      color: var(--primary);
+      font-weight: 600;
+    }
+    
+    /* Step indicators */
+    .step-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    
+    .step-circle.active {
+      background-color: var(--primary);
+      color: white;
+      box-shadow: 0 3px 10px rgba(65, 46, 188, 0.3);
+    }
+    
+    .step-circle.completed {
+      background-color: var(--success);
+      color: white;
+    }
+    
+    .step-circle.inactive {
+      background-color: var(--bg-muted);
+      color: var(--text-muted);
+    }
+    
+    .step-line {
+      height: 2px;
+      background-color: var(--bg-muted);
+      position: relative;
+    }
+    
+    .step-line::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background-color: var(--primary);
+      transition: width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    
+    .step-line.half::after {
+      width: 50%;
+    }
+    
+    .step-line.complete::after {
+      width: 100%;
+    }
+    
+    /* Animations */
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
+      from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
     }
     
-    .fade-in {
-      animation: fadeIn 0.3s ease-out forwards;
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-12px); }
+      to { opacity: 1; transform: translateX(0); }
     }
     
-    .secondary-text {
-      color: #6B7280;
+    .fade-in {
+      animation: fadeIn 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    }
+    
+    .slide-in {
+      animation: slideIn 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    }
+    
+    /* Misc styles */
+    .badge {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .badge-success {
+      background-color: rgba(52, 199, 89, 0.1);
+      color: var(--success);
+    }
+    
+    .badge-primary {
+      background-color: var(--primary-light);
+      color: var(--primary);
+    }
+    
+    .badge-warning {
+      background-color: rgba(255, 149, 0, 0.1);
+      color: var(--warning);
+    }
+    
+    .icon-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--primary-light);
+      color: var(--primary);
+      transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    
+    .icon-circle:hover {
+      transform: scale(1.05);
+      box-shadow: 0 2px 8px rgba(65, 46, 188, 0.2);
+    }
+    
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background-color: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+    
+    .avatar:hover {
+      border-color: var(--primary);
+      transform: scale(1.05);
     }
   </style>
 </head>
@@ -156,26 +362,34 @@
       },
       template: `
         <!-- Navigation -->
-        <nav class="bg-white shadow-sm">
+        <nav class="navbar">
           <div class="container mx-auto px-4 py-3">
             <div class="flex justify-between items-center">
-              <div class="flex items-center space-x-2">
-                <span class="text-2xl">💰</span>
-                <span class="font-semibold text-xl text-[#2E5BFF]">Budget App</span>
+              <div class="flex items-center space-x-3">
+                <div class="icon-circle">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                  </svg>
+                </div>
+                <span class="font-semibold text-xl" style="color: var(--primary);">Budget App</span>
               </div>
               
-              <div class="hidden md:flex items-center space-x-4">
+              <div class="hidden md:flex items-center space-x-2">
                 <a @click="activeTab = 'home'" :class="['nav-item cursor-pointer', activeTab === 'home' ? 'active' : '']">Home</a>
                 <a @click="activeTab = 'upload'" :class="['nav-item cursor-pointer', activeTab === 'upload' ? 'active' : '']">Upload</a>
                 <a @click="activeTab = 'transactions'" :class="['nav-item cursor-pointer', activeTab === 'transactions' ? 'active' : '']">Transactions</a>
                 <a @click="activeTab = 'reports'" :class="['nav-item cursor-pointer', activeTab === 'reports' ? 'active' : '']">Reports</a>
               </div>
               
-              <div class="flex items-center">
-                <div class="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              <div class="flex items-center space-x-3">
+                <button class="btn btn-accent px-3 py-1 h-8 text-sm hidden md:flex">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
+                  Add Transaction
+                </button>
+                <div class="avatar">
+                  <span>JD</span>
                 </div>
               </div>
             </div>
@@ -194,23 +408,23 @@
               
               <div class="flex items-center justify-between mb-8 px-4 py-2">
                 <div class="flex flex-col items-center">
-                  <div class="w-10 h-10 rounded-full bg-[#2E5BFF] text-white flex items-center justify-center mb-2">1</div>
-                  <span class="text-sm text-center">Upload<br>Statements</span>
+                  <div class="step-circle active">1</div>
+                  <span class="text-sm text-center mt-2" style="color: var(--primary); font-weight: 500;">Upload<br>Statements</span>
                 </div>
-                <div class="h-0.5 flex-grow bg-gray-200 mx-2"></div>
+                <div class="step-line flex-grow mx-2"></div>
                 <div class="flex flex-col items-center">
-                  <div class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center mb-2">2</div>
-                  <span class="text-sm text-center">Review<br>Transactions</span>
+                  <div class="step-circle inactive">2</div>
+                  <span class="text-sm text-center mt-2" style="color: var(--text-muted);">Review<br>Transactions</span>
                 </div>
-                <div class="h-0.5 flex-grow bg-gray-200 mx-2"></div>
+                <div class="step-line flex-grow mx-2"></div>
                 <div class="flex flex-col items-center">
-                  <div class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center mb-2">3</div>
-                  <span class="text-sm text-center">Categorize<br>Spending</span>
+                  <div class="step-circle inactive">3</div>
+                  <span class="text-sm text-center mt-2" style="color: var(--text-muted);">Categorize<br>Spending</span>
                 </div>
-                <div class="h-0.5 flex-grow bg-gray-200 mx-2"></div>
+                <div class="step-line flex-grow mx-2"></div>
                 <div class="flex flex-col items-center">
-                  <div class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center mb-2">4</div>
-                  <span class="text-sm text-center">Generate<br>Reports</span>
+                  <div class="step-circle inactive">4</div>
+                  <span class="text-sm text-center mt-2" style="color: var(--text-muted);">Generate<br>Reports</span>
                 </div>
               </div>
             </div>
@@ -270,40 +484,40 @@
               <div v-if="!hasData" class="card bg-white p-6 mb-6 fade-in">
                 <h2 class="text-lg font-semibold mb-4">Key Features</h2>
                 
-                <div class="space-y-4">
-                  <div class="flex items-start">
-                    <div class="bg-[#F0F5FF] p-2 rounded-lg mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#2E5BFF" class="w-6 h-6">
+                <div class="space-y-5">
+                  <div class="flex items-start slide-in" style="animation-delay: 0.1s">
+                    <div class="icon-circle flex-shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                       </svg>
                     </div>
-                    <div>
-                      <h3 class="font-medium">Easy Import</h3>
-                      <p class="text-sm text-gray-600">Upload CSV or XML files from your bank.</p>
+                    <div class="ml-4">
+                      <h3 class="font-medium text-lg" style="color: var(--text-default);">Easy Import</h3>
+                      <p class="text-sm mt-1" style="color: var(--text-muted);">Upload CSV or XML files from your bank with intuitive drag-and-drop functionality.</p>
                     </div>
                   </div>
                   
-                  <div class="flex items-start">
-                    <div class="bg-[#F0F5FF] p-2 rounded-lg mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#2E5BFF" class="w-6 h-6">
+                  <div class="flex items-start slide-in" style="animation-delay: 0.2s">
+                    <div class="icon-circle flex-shrink-0" style="background-color: var(--accent-light); color: var(--accent);">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
                       </svg>
                     </div>
-                    <div>
-                      <h3 class="font-medium">Smart Categorization</h3>
-                      <p class="text-sm text-gray-600">AI assistance to organize your spending.</p>
+                    <div class="ml-4">
+                      <h3 class="font-medium text-lg" style="color: var(--text-default);">Smart Categorization</h3>
+                      <p class="text-sm mt-1" style="color: var(--text-muted);">AI-powered suggestions automatically organize your transactions into meaningful categories.</p>
                     </div>
                   </div>
                   
-                  <div class="flex items-start">
-                    <div class="bg-[#F0F5FF] p-2 rounded-lg mr-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#2E5BFF" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                  <div class="flex items-start slide-in" style="animation-delay: 0.3s">
+                    <div class="icon-circle flex-shrink-0" style="background-color: rgba(52, 199, 89, 0.1); color: var(--success);">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
                       </svg>
                     </div>
-                    <div>
-                      <h3 class="font-medium">Visual Reports</h3>
-                      <p class="text-sm text-gray-600">Gain insights with interactive charts.</p>
+                    <div class="ml-4">
+                      <h3 class="font-medium text-lg" style="color: var(--text-default);">Visual Reports</h3>
+                      <p class="text-sm mt-1" style="color: var(--text-muted);">Gain insights with interactive charts showing spending patterns and financial trends over time.</p>
                     </div>
                   </div>
                 </div>
@@ -326,8 +540,8 @@
                   @dragleave.prevent="setUploadActive(false)"
                   @drop.prevent="setUploadActive(false); setHasData()">
                   
-                  <div class="bg-[#F0F5FF] p-3 rounded-full mb-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#2E5BFF" class="w-6 h-6">
+                  <div class="icon-circle mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                     </svg>
                   </div>
@@ -335,20 +549,23 @@
                   <p class="font-medium mb-1">Drag & drop your files here</p>
                   <p class="text-sm text-gray-500 mb-4">Supports CSV and XML formats</p>
                   
-                  <button class="btn btn-primary px-4 py-2 mb-2" @click="setHasData">
-                    Browse Files
-                  </button>
+                  <div class="flex flex-wrap justify-center gap-3 mb-2">
+                    <button class="btn btn-primary" @click="setHasData">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                      </svg>
+                      Browse Files
+                    </button>
+                    
+                    <button class="btn btn-secondary" @click="useSampleData">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                      </svg>
+                      Try Sample Data
+                    </button>
+                  </div>
+                  
                   <span class="text-xs text-gray-500">Maximum file size: 10MB</span>
-                </div>
-                
-                <!-- Sample Data Option -->
-                <div class="text-center">
-                  <p class="text-sm text-gray-600 mb-2">
-                    Don't have a statement yet?
-                  </p>
-                  <button class="btn btn-secondary px-4 py-2" @click="useSampleData">
-                    Try with Sample Data
-                  </button>
                 </div>
               </div>
               
@@ -361,19 +578,55 @@
                   </button>
                 </div>
                 
-                <div class="bg-gray-50 rounded-lg p-4 text-center">
-                  <div class="text-xl font-semibold mb-1">$3,240.50</div>
-                  <div class="text-sm text-gray-600 mb-3">Total Spending This Month</div>
+                <div class="rounded-lg p-5" style="background-color: var(--primary-50); border: 1px solid var(--primary-light);">
+                  <div class="text-xl font-semibold mb-1" style="color: var(--text-default);">$3,240.50</div>
+                  <div class="text-sm mb-4" style="color: var(--text-muted);">Total Spending This Month</div>
                   
-                  <div class="h-40 mb-2 flex items-end justify-center space-x-3">
-                    <div class="w-8 bg-[#2E5BFF] rounded-t-md" style="height: 60%;"></div>
-                    <div class="w-8 bg-[#2E5BFF] rounded-t-md" style="height: 80%;"></div>
-                    <div class="w-8 bg-[#2E5BFF] rounded-t-md" style="height: 65%;"></div>
-                    <div class="w-8 bg-[#2E5BFF] rounded-t-md" style="height: 100%;"></div>
-                    <div class="w-8 bg-[#2E5BFF] rounded-t-md" style="height: 45%;"></div>
+                  <div class="h-40 mb-3 flex items-end justify-center space-x-3 slide-in" style="animation-delay: 0.2s;">
+                    <div class="relative group">
+                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
+                        $890.24
+                      </div>
+                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
+                           style="height: 60%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
+                    </div>
+                    <div class="relative group">
+                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
+                        $1,180.35
+                      </div>
+                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
+                           style="height: 80%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
+                    </div>
+                    <div class="relative group">
+                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
+                        $960.42
+                      </div>
+                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
+                           style="height: 65%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
+                    </div>
+                    <div class="relative group">
+                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
+                        $1,475.82
+                      </div>
+                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
+                           style="height: 100%; background: linear-gradient(to top, var(--accent), var(--accent-hover));"></div>
+                    </div>
+                    <div class="relative group">
+                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
+                        $663.91
+                      </div>
+                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
+                           style="height: 45%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
+                    </div>
                   </div>
                   
-                  <div class="text-xs text-gray-500">Feb 1 - Mar 1, 2023</div>
+                  <div class="flex justify-between text-xs" style="color: var(--text-muted);">
+                    <span>Feb 1</span>
+                    <span>Feb 8</span>
+                    <span>Feb 15</span>
+                    <span>Feb 22</span>
+                    <span>Mar 1</span>
+                  </div>
                 </div>
               </div>
             </div>
