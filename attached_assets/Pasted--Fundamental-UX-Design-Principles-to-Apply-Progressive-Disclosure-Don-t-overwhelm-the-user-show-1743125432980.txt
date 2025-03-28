@@ -1,0 +1,99 @@
+🧠 Fundamental UX Design Principles to Apply
+Progressive Disclosure: Don’t overwhelm the user — show only what they need, when they need it.
+
+Affordance & Feedback: Clear buttons, status indicators, inline validation.
+
+Recognition Over Recall: Users should recognize what to do, not remember.
+
+Minimal Friction: Reduce unnecessary clicks or forms.
+
+Hierarchy & Focus: Visually guide the user’s flow.
+
+🧩 Optimal Landing Page (App Entry Point) Structure
+This is the first screen they see after logging in or arriving (not marketing site):
+
+🔷 1. Welcome + Onboarding Guidance (optional for first-time users)
+Show this only once or if no transactions exist.
+
+Content:
+
+Friendly welcome message ("Let's get started with your budget")
+
+Step-by-step indicators (horizontal or vertical):
+
+Upload Statements
+
+Review Transactions
+
+Categorize
+
+Generate Reports
+
+✅ This sets the mental model.
+
+🔷 2. Primary Action Area: Upload Statements
+If no transactions exist yet, this is the focus.
+
+UI Elements:
+
+Drag & drop zone (with icons for PDF/CSV/XML)
+
+Or file picker
+
+Dropdown: Select Account or Bank (optional)
+
+Submit button → parses on upload
+
+🔷 3. Secondary Option: Sample Data
+If they just want to play around.
+
+UI Elements:
+
+Button: “Try with Sample Data”
+
+Useful for first-time users with no files on hand
+
+🔷 4. Recent Uploads or Upload History (optional)
+Useful once they’ve started using the app
+
+UI Elements:
+
+Table or card view of:
+
+Upload date
+
+File name
+
+of transactions parsed
+Status: Parsed / Needs Review / Categorized
+
+Clicking one would deep-link into the tagging view.
+
+🔷 5. Tagging Progress Overview
+Once they have data, show progress bar:
+
+"You’ve tagged 150 of 432 transactions"
+
+CTA: “Continue Tagging”
+
+🔷 6. Access Reports (Once Data Exists)
+Becomes a secondary action if there’s data
+
+UI Elements:
+
+Button: “View Reports”
+
+Mini chart previews (optional)
+
+🧭 Suggested Flow Logic
+App State	What to Show
+No uploads yet	Welcome + Upload Area + Sample Data
+Uploads exist, no tags	Uploads List + Start Tagging
+Transactions tagged	Show Tagging Progress + Reports CTA
+Fully tagged	Emphasize Reports UI
+🎨 Visual Layout Recommendation
+Responsive 2-Column Grid:
+
+Left Column	Right Column
+Onboarding steps, tagging progress, recent uploads	Upload box, sample data CTA, reports preview
+Use card components, progress indicators, and modals for file uploads or tagging walkthroughs.
