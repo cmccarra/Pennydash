@@ -37,6 +37,38 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 
+// Debug endpoint for development only
+app.get('/api/debug/transaction-tags', async (req, res) => {
+  try {
+    const { getDB } = require('./db/sequelize');
+    const sequelize = getDB();
+    const { Transaction } = sequelize.models;
+    
+    // Get the latest transactions
+    const transactions = await Transaction.findAll({
+      limit: 10,
+      order: [['createdAt', 'DESC']]
+    });
+    
+    // Check tags on each transaction
+    const results = transactions.map(tx => ({
+      id: tx.id,
+      description: tx.description,
+      tags: tx.tags,
+      tagsType: Array.isArray(tx.tags) ? 'array' : typeof tx.tags,
+      rawData: tx.dataValues
+    }));
+    
+    res.json({
+      message: 'Latest transactions with tag information',
+      transactions: results
+    });
+  } catch (error) {
+    console.error('Debug endpoint error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Serve static files from the root
 app.use(express.static(path.join(__dirname, '../../')));
 

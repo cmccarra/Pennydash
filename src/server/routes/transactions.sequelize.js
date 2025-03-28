@@ -225,6 +225,37 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Debug endpoint for testing tags
+router.get('/debug/tags-test', async (req, res) => {
+  try {
+    const testTags = ["tag1", "tag2", "tag3"];
+    const { Transaction } = getModels();
+    
+    // Create a test transaction with explicit tags
+    const transaction = await Transaction.create({
+      date: new Date().toISOString().split('T')[0],
+      description: "Test transaction with tags",
+      amount: 100,
+      type: "expense",
+      tags: testTags
+    });
+    
+    // Get the transaction back from the database
+    const saved = await Transaction.findByPk(transaction.id);
+    
+    res.json({
+      message: "Tags test",
+      tagsBeforeSave: testTags,
+      tagsAfterSave: saved.tags,
+      tagsType: Array.isArray(saved.tags) ? "array" : typeof saved.tags,
+      fullTransaction: saved
+    });
+  } catch (error) {
+    console.error("Error in tags test:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Upload transactions from file
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
@@ -255,6 +286,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     try {
       transactions = await FileParser.parseFile(filePath);
       console.log(`Successfully parsed ${transactions.length} transactions from file`);
+      
+      // Debug the first parsed transaction's tags field
+      if (transactions.length > 0) {
+        console.log('🔍 First parsed transaction:', JSON.stringify({
+          description: transactions[0].description,
+          tags: transactions[0].tags,
+          Tags: transactions[0].Tags
+        }));
+      }
     } catch (parseError) {
       console.error('Error parsing file:', parseError);
       return res.status(400).json({ 
@@ -294,7 +334,21 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       if (!updatedTransaction.tags) {
         updatedTransaction.tags = [];
       } else if (typeof updatedTransaction.tags === 'string') {
-        updatedTransaction.tags = updatedTransaction.tags.split(',').map(tag => tag.trim());
+        // Check for both semicolon and comma separators
+        if (updatedTransaction.tags.includes(';')) {
+          updatedTransaction.tags = updatedTransaction.tags.split(';').map(tag => tag.trim());
+        } else if (updatedTransaction.tags.includes(',')) {
+          updatedTransaction.tags = updatedTransaction.tags.split(',').map(tag => tag.trim());
+        } else {
+          updatedTransaction.tags = [updatedTransaction.tags.trim()];
+        }
+        console.log(`📋 Converted tags for transaction "${updatedTransaction.description}": ${JSON.stringify(updatedTransaction.tags)}`);
+      } else if (Array.isArray(updatedTransaction.tags)) {
+        console.log(`📋 Tags already array for "${updatedTransaction.description}": ${JSON.stringify(updatedTransaction.tags)}`);
+      } else {
+        console.log(`📋 Unknown tags type for "${updatedTransaction.description}": ${typeof updatedTransaction.tags}`);
+        // Default to empty array if we can't determine the format
+        updatedTransaction.tags = [];
       }
       
       return updatedTransaction;
@@ -427,6 +481,13 @@ router.post('/import/csv', upload.single('file'), async (req, res) => {
         } else {
           updatedTransaction.tags = [updatedTransaction.tags.trim()];
         }
+        console.log(`📋 Converted tags for transaction "${updatedTransaction.description}": ${JSON.stringify(updatedTransaction.tags)}`);
+      } else if (Array.isArray(updatedTransaction.tags)) {
+        console.log(`📋 Tags already array for "${updatedTransaction.description}": ${JSON.stringify(updatedTransaction.tags)}`);
+      } else {
+        console.log(`📋 Unknown tags type for "${updatedTransaction.description}": ${typeof updatedTransaction.tags}`);
+        // Default to empty array if we can't determine the format
+        updatedTransaction.tags = [];
       }
       
       return updatedTransaction;

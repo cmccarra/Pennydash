@@ -168,6 +168,9 @@ class Transaction extends Model {
     const normalizedRow = {};
     Object.keys(csvRow).forEach(key => {
       normalizedRow[key.toLowerCase()] = csvRow[key];
+      
+      // Preserve original keys as well to handle fields with mixed case
+      normalizedRow[key] = csvRow[key];
     });
     
     // Parse amount and fix the sign convention
@@ -226,6 +229,32 @@ class Transaction extends Model {
     
     // Extract tags if any, supporting multiple separator formats
     let tags = [];
+    
+    // Show detailed debugging - raw values including capitalized Tags
+    console.log('🔍 CSV row object:', Object.keys(csvRow));
+    console.log('🔍 Looking for "tags" (lowercase):', normalizedRow.tags);
+    console.log('🔍 Looking for "Tags" (capitalized):', normalizedRow.Tags);
+    console.log('🔍 All keys in normalized row:', Object.keys(normalizedRow));
+    
+    // Check for Tags first in original case format and directly use it if found
+    if (csvRow.Tags) {
+      console.log('📌 FOUND "Tags" (uppercase) in original CSV row:', csvRow.Tags);
+      
+      // Process Tags directly from the original CSV row
+      if (typeof csvRow.Tags === 'string') {
+        if (csvRow.Tags.includes(';')) {
+          tags = csvRow.Tags.split(';').map(tag => tag.trim());
+          console.log('📌 Direct tags from CSV.Tags (semicolon):', JSON.stringify(tags));
+        } else if (csvRow.Tags.includes(',')) {
+          tags = csvRow.Tags.split(',').map(tag => tag.trim());
+          console.log('📌 Direct tags from CSV.Tags (comma):', JSON.stringify(tags)); 
+        } else {
+          tags = [csvRow.Tags.trim()];
+          console.log('📌 Direct tags from CSV.Tags (single):', JSON.stringify(tags));
+        }
+      }
+    }
+    
     if (normalizedRow.tags) {
       if (typeof normalizedRow.tags === 'string') {
         console.log(`📌 Tags string value: "${normalizedRow.tags}"`);
@@ -248,7 +277,24 @@ class Transaction extends Model {
         console.log('📌 Tags unknown type:', typeof normalizedRow.tags);
       }
     } else {
-      console.log('📌 No tags found in data');
+      console.log('📌 No tags field found in CSV data');
+      
+      // Special case: Check for "Tags" (capital T) since CSV headers might be case-sensitive
+      if (normalizedRow.Tags) {
+        console.log(`📌 Found "Tags" (capital T): ${normalizedRow.Tags}`);
+        if (typeof normalizedRow.Tags === 'string') {
+          if (normalizedRow.Tags.includes(';')) {
+            tags = normalizedRow.Tags.split(';').map(tag => tag.trim());
+            console.log('📌 Split by semicolon:', JSON.stringify(tags));
+          } else if (normalizedRow.Tags.includes(',')) {
+            tags = normalizedRow.Tags.split(',').map(tag => tag.trim());
+            console.log('📌 Split by comma:', JSON.stringify(tags));
+          } else {
+            tags = [normalizedRow.Tags.trim()];
+            console.log('📌 Single tag:', JSON.stringify(tags));
+          }
+        }
+      }
     }
     
     // Parse balance if provided
@@ -262,7 +308,7 @@ class Transaction extends Model {
     }
     
     // Create transaction object
-    return {
+    const txObject = {
       date: normalizedRow.date || new Date().toISOString().split('T')[0],
       description: normalizedRow.description || 'Unknown transaction',
       amount: amount,
@@ -277,6 +323,13 @@ class Transaction extends Model {
       importSource: normalizedRow.importsource || 'CSV Import',
       originalText: JSON.stringify(csvRow)
     };
+    
+    console.log('📦 Final transaction object with tags:', JSON.stringify({
+      description: txObject.description,
+      tags: txObject.tags
+    }));
+    
+    return txObject;
   }
 
   /**

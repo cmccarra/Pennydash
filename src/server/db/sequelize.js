@@ -63,8 +63,8 @@ const initDB = async () => {
     console.log('Connection to database has been established successfully.');
 
     // Sync models with database with force option to apply schema changes
-    // Set force to true to recreate tables with updated schema
-    const force = true; // process.env.NODE_ENV === 'development' && process.env.DB_FORCE_SYNC === 'true';
+    // Set force to false to preserve existing data, true will recreate tables
+    const force = false; // Only use true when you need to reset the schema
     await sequelize.sync({ force });
     console.log('Database synchronized with force =', force);
 
