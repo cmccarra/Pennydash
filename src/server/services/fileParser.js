@@ -1,5 +1,5 @@
 const fs = require('fs');
-const csvParse = require('csv-parse');
+const { parse: csvParse } = require('csv-parse');
 const xml2js = require('xml2js');
 const XLSX = require('xlsx');
 const pdfParse = require('pdf-parse');
