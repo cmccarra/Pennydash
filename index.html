@@ -1186,6 +1186,24 @@
                       {{ transactionSort.direction === 'asc' ? '↑' : '↓' }}
                     </span>
                   </th>
+                  <th @click="sortTransactions('account')" class="cursor-pointer">
+                    Account
+                    <span v-if="transactionSort.field === 'account'">
+                      {{ transactionSort.direction === 'asc' ? '↑' : '↓' }}
+                    </span>
+                  </th>
+                  <th @click="sortTransactions('accountType')" class="cursor-pointer">
+                    Account Type
+                    <span v-if="transactionSort.field === 'accountType'">
+                      {{ transactionSort.direction === 'asc' ? '↑' : '↓' }}
+                    </span>
+                  </th>
+                  <th @click="sortTransactions('currency')" class="cursor-pointer">
+                    Currency
+                    <span v-if="transactionSort.field === 'currency'">
+                      {{ transactionSort.direction === 'asc' ? '↑' : '↓' }}
+                    </span>
+                  </th>
                   <th>Category</th>
                   <th>Actions</th>
                 </tr>
@@ -1194,7 +1212,7 @@
               <!-- Table Body -->
               <tbody>
                 <tr v-if="state.loading.transactions">
-                  <td colspan="6" class="text-center py-8">
+                  <td colspan="9" class="text-center py-8">
                     <div class="flex justify-center items-center">
                       <span class="loading loading-spinner loading-md mr-2"></span>
                       Loading transactions...
@@ -1203,7 +1221,7 @@
                 </tr>
                 
                 <tr v-else-if="filteredTransactions.length === 0">
-                  <td colspan="6" class="text-center py-8">
+                  <td colspan="9" class="text-center py-8">
                     No transactions found. Adjust your filters or upload new transactions.
                   </td>
                 </tr>
@@ -1226,6 +1244,13 @@
                   <td :class="tx.type === 'income' ? 'text-success' : 'text-error'">
                     {{ tx.type === 'income' ? '+' : '-' }} {{ formatCurrency(Math.abs(tx.amount)) }}
                   </td>
+                  <td>{{ tx.account || 'Not specified' }}</td>
+                  <td>
+                    <div class="badge badge-outline">
+                      {{ formatAccountType(tx.accountType) }}
+                    </div>
+                  </td>
+                  <td>{{ tx.currency || 'USD' }}</td>
                   <td>
                     <div class="badge" :style="{ backgroundColor: getCategoryColor(tx.categoryId), color: 'white' }">
                       {{ getCategoryName(tx.categoryId) }}
@@ -1233,7 +1258,7 @@
                   </td>
                   <td>
                     <div class="flex space-x-1">
-                      <button class="btn btn-xs btn-ghost">
+                      <button class="btn btn-xs btn-ghost" @click="editTransaction(tx)">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                         </svg>
@@ -1771,6 +1796,128 @@
       </div>
     </div>
     
+    <!-- Transaction Edit Modal -->
+    <div class="modal" :class="{'modal-open': isTransactionModalOpen}">
+      <div class="modal-box relative max-w-2xl">
+        <h3 class="font-bold text-lg mb-4">{{ editingTransactionId ? 'Edit' : 'Add' }} Transaction</h3>
+        
+        <form @submit.prevent="saveTransaction">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Date</span>
+              </label>
+              <input type="date" class="input input-bordered" v-model="transactionForm.date" required />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Amount</span>
+              </label>
+              <input type="number" step="0.01" class="input input-bordered" v-model.number="transactionForm.amount" required placeholder="0.00" />
+            </div>
+          </div>
+          
+          <div class="form-control mt-2">
+            <label class="label">
+              <span class="label-text">Description</span>
+            </label>
+            <input type="text" class="input input-bordered" v-model="transactionForm.description" required placeholder="Transaction description" />
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Transaction Type</span>
+              </label>
+              <select class="select select-bordered w-full" v-model="transactionForm.type">
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+              </select>
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Merchant (Optional)</span>
+              </label>
+              <input type="text" class="input input-bordered" v-model="transactionForm.merchant" placeholder="e.g. Amazon, Starbucks" />
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Account</span>
+              </label>
+              <input type="text" class="input input-bordered" v-model="transactionForm.account" placeholder="e.g. Chase Checking, Amex Platinum" />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Account Type</span>
+              </label>
+              <select class="select select-bordered w-full" v-model="transactionForm.accountType">
+                <option value="bank">Bank Account</option>
+                <option value="credit_card">Credit Card</option>
+                <option value="investment">Investment</option>
+                <option value="cash">Cash</option>
+                <option value="wallet">Digital Wallet</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Currency</span>
+              </label>
+              <input type="text" class="input input-bordered" v-model="transactionForm.currency" placeholder="USD" maxlength="3" />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Category</span>
+              </label>
+              <select class="select select-bordered w-full" v-model="transactionForm.categoryId">
+                <option value="">Uncategorized</option>
+                <optgroup label="Income Categories" v-if="getIncomeCategories(state.categories).length">
+                  <option v-for="category in getIncomeCategories(state.categories)" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </optgroup>
+                <optgroup label="Expense Categories" v-if="getExpenseCategories(state.categories).length">
+                  <option v-for="category in getExpenseCategories(state.categories)" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-control mt-2">
+            <label class="label">
+              <span class="label-text">Tags (Comma separated)</span>
+            </label>
+            <input type="text" class="input input-bordered" v-model="transactionForm.tagsInput" placeholder="e.g. vacation, business, recurring" />
+          </div>
+          
+          <div class="form-control mt-2">
+            <label class="label">
+              <span class="label-text">Notes (Optional)</span>
+            </label>
+            <textarea class="textarea textarea-bordered" v-model="transactionForm.notes" placeholder="Add notes about this transaction"></textarea>
+          </div>
+          
+          <div class="modal-action">
+            <button type="button" class="btn" @click="closeTransactionModal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+      <label class="modal-backdrop" @click="closeTransactionModal"></label>
+    </div>
+    
     <!-- Transaction Enrichment Modal -->
     <div class="modal" :class="{'modal-open': state.enrichment.showModal}">
       <div class="modal-box relative max-w-4xl">
@@ -2233,6 +2380,23 @@
           type: 'expense',
           color: '#6366F1', // Default color (indigo)
           description: ''
+        });
+        
+        // for transaction modal
+        const isTransactionModalOpen = ref(false);
+        const editingTransactionId = ref(null);
+        const transactionForm = reactive({
+          date: new Date().toISOString().split('T')[0],
+          description: '',
+          amount: 0,
+          type: 'expense',
+          merchant: '',
+          account: '',
+          accountType: 'bank',
+          currency: 'USD',
+          categoryId: '',
+          tagsInput: '',
+          notes: ''
         });
         const colorPalette = [
           '#EF4444', // Red
@@ -2747,6 +2911,23 @@
           return category ? category.color : '#718096';
         };
         
+        // Format account type for display
+        const formatAccountType = (accountType) => {
+          if (!accountType) return 'Unknown';
+          
+          // Convert snake_case to Title Case
+          const mapping = {
+            'bank': 'Bank Account',
+            'credit_card': 'Credit Card',
+            'investment': 'Investment',
+            'cash': 'Cash',
+            'wallet': 'Digital Wallet',
+            'other': 'Other'
+          };
+          
+          return mapping[accountType] || accountType.charAt(0).toUpperCase() + accountType.slice(1).replace(/_/g, ' ');
+        };
+        
         // Filter transactions based on search query and filters
         const filterTransactions = () => {
           // Reset pagination when filter changes
@@ -2862,6 +3043,12 @@
               comparison = a.amount - b.amount;
             } else if (transactionSort.field === 'description') {
               comparison = a.description.localeCompare(b.description);
+            } else if (transactionSort.field === 'account') {
+              comparison = (a.account || '').localeCompare(b.account || '');
+            } else if (transactionSort.field === 'accountType') {
+              comparison = (a.accountType || '').localeCompare(b.accountType || '');
+            } else if (transactionSort.field === 'currency') {
+              comparison = (a.currency || 'USD').localeCompare(b.currency || 'USD');
             }
             
             return transactionSort.direction === 'asc' ? comparison : -comparison;
@@ -3011,6 +3198,83 @@
           openCategoryModal(category.id);
         };
         
+        // Transaction editing functions
+        const editTransaction = (transaction) => {
+          editingTransactionId.value = transaction.id;
+          
+          // Convert from ISO date string to YYYY-MM-DD
+          const isoDate = new Date(transaction.date);
+          const formattedDate = isoDate.toISOString().split('T')[0];
+          
+          // Map transaction data to form
+          transactionForm.date = formattedDate;
+          transactionForm.description = transaction.description;
+          transactionForm.amount = Math.abs(transaction.amount);
+          transactionForm.type = transaction.type;
+          transactionForm.merchant = transaction.merchant || '';
+          transactionForm.account = transaction.account || '';
+          transactionForm.accountType = transaction.accountType || 'bank';
+          transactionForm.currency = transaction.currency || 'USD';
+          transactionForm.categoryId = transaction.categoryId || '';
+          transactionForm.notes = transaction.notes || '';
+          
+          // Convert tags array to comma-separated string
+          if (transaction.tags && Array.isArray(transaction.tags)) {
+            transactionForm.tagsInput = transaction.tags.join(', ');
+          } else {
+            transactionForm.tagsInput = '';
+          }
+          
+          // Open the modal
+          isTransactionModalOpen.value = true;
+        };
+        
+        const closeTransactionModal = () => {
+          isTransactionModalOpen.value = false;
+        };
+        
+        const saveTransaction = async () => {
+          try {
+            // Convert tags input to array
+            const tags = transactionForm.tagsInput
+              ? transactionForm.tagsInput.split(',').map(tag => tag.trim())
+              : [];
+            
+            // Create transaction object from form data
+            // Always use absolute value for amount - the type field determines income/expense
+            const transaction = {
+              date: transactionForm.date,
+              description: transactionForm.description,
+              amount: Math.abs(transactionForm.amount),
+              type: transactionForm.type,
+              merchant: transactionForm.merchant || null,
+              account: transactionForm.account || null,
+              accountType: transactionForm.accountType,
+              currency: transactionForm.currency,
+              categoryId: transactionForm.categoryId || null,
+              tags: tags,
+              notes: transactionForm.notes || null
+            };
+            
+            if (editingTransactionId.value) {
+              // Update existing transaction
+              await api.transactions.update(editingTransactionId.value, transaction);
+            } else {
+              // Create new transaction
+              await api.transactions.create(transaction);
+            }
+            
+            // Refresh transactions list
+            await fetchTransactions();
+            
+            // Close the modal
+            closeTransactionModal();
+          } catch (error) {
+            console.error('Failed to save transaction:', error);
+            state.errors.transactions = error.message;
+          }
+        };
+        
         // Get income categories only
         const incomeCategories = computed(() => {
           return state.categories.filter(category => category.type === 'income');
@@ -3131,6 +3395,14 @@
           batchNotes,
           isFilterDropdownOpen,
           
+          // Transaction modal
+          isTransactionModalOpen,
+          editingTransactionId,
+          transactionForm,
+          editTransaction,
+          closeTransactionModal,
+          saveTransaction,
+          
           // Category management
           isCategoryModalOpen,
           editingCategoryId,
@@ -3147,6 +3419,7 @@
           formatCurrency,
           getCategoryName,
           getCategoryColor,
+          formatAccountType,
           filterTransactions,
           sortTransactions,
           toggleSelectAll,

@@ -199,24 +199,12 @@ class Transaction extends Model {
     });
     
     // Parse amount and fix the sign convention
-    // For expenses (negative values in CSV): Store as positive, type = 'expense'
-    // For income (positive values in CSV): Store as positive, type = 'income'
+    // We always store positive amounts in the database and use the type field to determine
+    // whether it's an income or expense
     let amount = parseFloat(normalizedRow.amount || 0);
     let type = 'expense';
     
-    // Determine transaction type based on amount sign
-    if (amount < 0) {
-      // Negative amounts are considered expenses in most bank statements
-      type = 'expense';
-      amount = Math.abs(amount);
-    } else {
-      // Positive amounts are considered income
-      type = 'income';
-    }
-    
-    // Special handling for credit card transactions where:
-    // - Positive values are charges (expenses)
-    // - Negative values are payments (income)
+    // Detect account type early to correctly interpret the amount sign
     const accountType = (normalizedRow.accounttype || '').toLowerCase();
     const account = (normalizedRow.account || '').toLowerCase();
     
@@ -227,10 +215,31 @@ class Transaction extends Model {
       account.includes('amex') ||
       account.includes('mastercard') ||
       account.includes('visa');
-      
-    // If it's a credit card, flip the type
+    
+    // For regular bank accounts:
+    // - Negative values are expenses (money going out)
+    // - Positive values are income (money coming in)
+    //
+    // For credit cards:
+    // - Positive values are expenses (charges to the card)
+    // - Negative values are income (payments to the card)
+    
     if (isLikelyCreditCard) {
-      type = type === 'income' ? 'expense' : 'income';
+      // Credit card logic - positive means expense, negative means income
+      if (amount < 0) {
+        type = 'income';  // Payment to the credit card
+        amount = Math.abs(amount);
+      } else {
+        type = 'expense'; // Charge on the credit card
+      }
+    } else {
+      // Regular bank account logic - negative means expense, positive means income
+      if (amount < 0) {
+        type = 'expense'; // Money leaving the account
+        amount = Math.abs(amount);
+      } else {
+        type = 'income';  // Money entering the account
+      }
     }
     
     // Determine account type if not explicitly specified
@@ -363,47 +372,64 @@ class Transaction extends Model {
    * @returns {Object} Data formatted for Transaction model
    */
   static fromXML(xmlItem) {
-    // Parse amount with correct sign convention (similar to CSV logic)
+    // Parse amount with correct sign convention
     let amount = parseFloat(xmlItem.amount || 0);
     let type = 'expense';
     
-    if (amount < 0) {
-      type = 'expense';
-      amount = Math.abs(amount);
-    } else {
-      type = 'income';
-    }
-    
     // Try to detect if this is a credit card statement
     const account = ((xmlItem.account && xmlItem.account[0]) || '').toLowerCase();
+    const rawAccountType = (xmlItem.accountType && xmlItem.accountType[0] || '').toLowerCase();
+    
     const isLikelyCreditCard = 
+      rawAccountType === 'credit_card' ||
       account.includes('credit') || 
       account.includes('card') ||
       account.includes('amex') ||
       account.includes('mastercard') ||
       account.includes('visa');
-      
-    // If it's likely a credit card, flip the type
+    
+    // For regular bank accounts:
+    // - Negative values are expenses (money going out)
+    // - Positive values are income (money coming in)
+    //
+    // For credit cards:
+    // - Positive values are expenses (charges to the card)
+    // - Negative values are income (payments to the card)
+    
     if (isLikelyCreditCard) {
-      type = type === 'income' ? 'expense' : 'income';
+      // Credit card logic - positive means expense, negative means income
+      if (amount < 0) {
+        type = 'income';  // Payment to the credit card
+        amount = Math.abs(amount);
+      } else {
+        type = 'expense'; // Charge on the credit card
+      }
+    } else {
+      // Regular bank account logic - negative means expense, positive means income
+      if (amount < 0) {
+        type = 'expense'; // Money leaving the account
+        amount = Math.abs(amount);
+      } else {
+        type = 'income';  // Money entering the account
+      }
     }
     
-    // Determine account type if not specified
-    let accountType = (xmlItem.accountType && xmlItem.accountType[0]) || null;
-    if (!accountType && xmlItem.account) {
+    // Determine final account type if not specified
+    let finalAccountType = (xmlItem.accountType && xmlItem.accountType[0]) || null;
+    if (!finalAccountType && xmlItem.account) {
       const accountLower = (xmlItem.account[0] || '').toLowerCase();
       if (accountLower.includes('credit') || accountLower.includes('card')) {
-        accountType = 'credit_card';
+        finalAccountType = 'credit_card';
       } else if (accountLower.includes('check') || accountLower.includes('saving') || accountLower.includes('bank')) {
-        accountType = 'bank';
+        finalAccountType = 'bank';
       } else if (accountLower.includes('invest') || accountLower.includes('401k') || accountLower.includes('ira')) {
-        accountType = 'investment';
+        finalAccountType = 'investment';
       } else if (accountLower.includes('cash')) {
-        accountType = 'cash';
+        finalAccountType = 'cash';
       } else if (accountLower.includes('paypal') || accountLower.includes('venmo') || accountLower.includes('wallet')) {
-        accountType = 'wallet';
+        finalAccountType = 'wallet';
       } else {
-        accountType = 'other';
+        finalAccountType = 'other';
       }
     }
     
@@ -424,7 +450,7 @@ class Transaction extends Model {
       type: type,
       merchant: xmlItem.merchant?.[0] || xmlItem.payee?.[0] || null,
       account: xmlItem.account?.[0] || null,
-      accountType: accountType,
+      accountType: finalAccountType,
       balance: xmlItem.balance?.[0] || null,
       currency: xmlItem.currency?.[0] || 'USD',
       tags: tags,
