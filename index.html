@@ -687,6 +687,12 @@
                 <span>{{ state.errors.upload }}</span>
               </div>
               
+              <!-- Success Alert (only show when there's a success message) -->
+              <div v-if="state.successMessages.upload" class="mt-4 alert alert-success">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>{{ state.successMessages.upload }}</span>
+              </div>
+              
               <!-- Upload Progress (only show when something is uploaded) -->
               <div v-if="uploadProgress > 0" class="mt-4">
                 <div class="flex justify-between items-center mb-2">
@@ -1181,6 +1187,9 @@
           },
           budgetStatus: null,
           settings: null,
+          successMessages: {
+            upload: null
+          },
           errors: {
             transactions: null,
             categories: null,
@@ -1300,6 +1309,7 @@
           
           state.loading.upload = true;
           state.errors.upload = null;
+          state.successMessages.upload = null;
           uploadProgress.value = 10;
           
           try {
@@ -1326,9 +1336,17 @@
             
             hasData.value = true;
             
+            // Show success message
+            state.successMessages.upload = `Successfully uploaded ${file.name}. ${result.count || 'Multiple'} transactions imported.`;
+            
             // Reset upload progress after a delay
             setTimeout(() => {
               uploadProgress.value = 0;
+              
+              // Clear success message after 5 seconds
+              setTimeout(() => {
+                state.successMessages.upload = null;
+              }, 5000);
             }, 2000);
             
             return result;
