@@ -19,6 +19,27 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
+  <!-- Reports View Styles -->
+  <style>
+    .reports-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    .chart-container {
+      position: relative;
+      height: 300px;
+      width: 100%;
+    }
+    
+    .loading-placeholder {
+      height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+  
   <!-- Tailwind Config -->
   <script>
     tailwind.config = {
@@ -517,8 +538,12 @@
   
   <script type="module">
     import { createApp, ref, computed } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
+    import ReportsView from './src/client/components/ReportsView.js';
     
     const App = {
+      components: {
+        ReportsView
+      },
       setup() {
         const hasData = ref(false);
         const isUploadActive = ref(false);
@@ -1323,6 +1348,11 @@
                     </div>
                   </div>
                 </div>
+              </div>
+              
+              <!-- Reports View -->
+              <div v-if="activeTab === 'reports'" class="fade-in">
+                <ReportsView></ReportsView>
               </div>
             </main>
           </div>
