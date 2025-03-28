@@ -1,0 +1,94 @@
+Create styling specifications based on the Riverside app design:
+
+COLOR PALETTE:
+- Primary background: Pure black (#000000)
+- Secondary background: Dark gray (#121212) for content areas
+- Accent purple: #7C3AED (for CTAs, highlights, and important elements)
+- Secondary accent: Yellow/gold (#FFD700) for PRO badges
+- Text colors:
+  * Primary text: White (#FFFFFF)
+  * Secondary text: Light gray (#ABABAB)
+  * Disabled text: Medium gray (#666666)
+
+TYPOGRAPHY:
+- Font family: Sans-serif (Inter or similar)
+- Font weights:
+  * Bold: 600-700 for headings and CTAs
+  * Medium: 500 for subheadings and important text
+  * Regular: 400 for body text
+- Font sizes:
+  * Large headings: 24-28px
+  * Medium headings: 20-22px
+  * Small headings: 18px
+  * Body text: 14-16px
+  * Small text: 13px
+  * Micro text: 12px
+- Line height: 1.4-1.5 for optimal readability
+
+SPACING SYSTEM:
+- Base unit: 4px
+- Content padding: 24px
+- Margin between sections: 40px
+- Margin between related elements: 16px
+- Button padding: 12px 24px (medium), 8px 16px (small)
+- Card padding: 24px
+- Grid gap: 20px
+
+COMPONENT STYLING:
+
+BUTTONS:
+- Primary: #7C3AED background, white text, 8px border radius
+- Secondary: Dark gray (#222222) background, white text, 8px border radius
+- Text buttons: No background, purple text, with hover underline
+- Icon buttons: 40px x 40px, circular for standalone icons
+- Button states:
+  * Hover: 10% brightness increase
+  * Active: 5% brightness decrease from normal
+  * Disabled: 50% opacity
+- Consistent height: 40px for standard, 32px for compact
+
+CARDS:
+- Background: Dark gray (#121212)
+- Border radius: 12px
+- Subtle shadow: 0 2px 10px rgba(0,0,0,0.2)
+- Consistent padding: 24px
+- Hover state: Slight brightness increase (5%)
+
+INPUTS:
+- Dark background (#222222)
+- White text
+- 8px border radius
+- 40px height for text inputs
+- Border: None in default state
+- Focus state: Purple (#7C3AED) 2px border
+- Placeholder text: Medium gray (#666666)
+- Padding: 12px 16px
+
+MEDIA ELEMENTS:
+- Thumbnail border radius: 8px
+- Video container radius: 12px
+- Play button overlay: Semi-transparent black with white icon
+- Time indicators: Small white text on dark semi-transparent background
+
+BADGES & TAGS:
+- "PRO" badge: Gold/yellow (#FFD700) text on dark background
+- Status badges: Rounded pill shape (16px border radius)
+- Tag padding: 4px 12px
+
+ICONS:
+- Consistent weight and style
+- Size: 20px standard, 16px small
+- Color: White for primary, light gray for secondary
+- Interactive icons: Clear hover state with color change
+
+WHITE SPACE:
+- Generous padding inside containers (24px)
+- Consistent margin between groups of elements (40px)
+- Breathing room around text content (16px minimum)
+- Clear separation between distinct sections (40-50px)
+
+TRANSITIONS & EFFECTS:
+- Duration: 150-200ms
+- Easing: Ease-out for natural feel
+- Hover brightness change: 10%
+- Subtle scale effect on interactive elements: 1.02
