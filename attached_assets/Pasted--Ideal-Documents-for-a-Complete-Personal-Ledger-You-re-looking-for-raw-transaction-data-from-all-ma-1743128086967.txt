@@ -1,0 +1,87 @@
+✅ Ideal Documents for a Complete Personal Ledger
+You’re looking for raw transaction data from all major account types:
+
+🏦 1. Bank Account Statements
+What’s in it: Direct deposits (income), ATM withdrawals, bill payments, transfers.
+
+Formats commonly available: PDF, CSV, XLSX, OFX, QFX, sometimes XML.
+
+From: Chequing, savings, and high-interest accounts.
+
+💳 2. Credit Card Statements
+What’s in it: Purchases, interest charges, payments (often via linked bank account).
+
+Formats: PDF (default), CSV/XLSX (many banks offer export).
+
+💰 3. PayPal / Stripe / Digital Wallet Exports
+What’s in it: Freelance income, online purchases, peer-to-peer payments.
+
+Formats: CSV or XLSX
+
+📥 4. Payroll Deposits / Income Export
+Optional, but helpful if user has inconsistent income (e.g. contractors).
+
+Could be imported from:
+
+PDF payslips
+
+CSV from payroll platforms (ADP, Gusto)
+
+📂 What You Should Support in the Upload Section
+🧾 File Types:
+PDF (statements, system-generated)
+
+CSV (most common for exports from banks, credit cards)
+
+XLS/XLSX (frequent with digital wallets, payroll)
+
+OFX / QFX (Open Financial Exchange — used by budgeting apps)
+
+XML (rare, but worth supporting)
+
+📦 Upload Experience:
+Drag & drop area with icons and previews
+
+Option to tag file type: “Bank,” “Credit Card,” “Wallet,” etc.
+
+Progress indicator + preview of parsed rows
+
+Auto-detect bank name and statement type if possible
+
+🧭 What You Should Guide Users to Do for Best Results
+This is key: clear instruction = better uploads = better reports.
+
+📝 Upload Instructions (onboarding or upload page):
+🗂️ To get the most complete picture of your finances, please upload:
+
+Your latest bank account statements — these include your income, transfers, and spending.
+
+Your credit card statements — so we can categorize all your purchases.
+
+Any wallet or payment exports (e.g. PayPal, Stripe, etc.).
+
+Bonus: If you use a payroll service, you can upload your recent payslips or CSV exports too.
+
+📁 We accept PDF, CSV, XLS, XML, and OFX files.
+
+🧠 The more you upload, the better we can help you tag, track, and report.
+
+🚀 Bonus: Power Tip for Onboarding
+Let users connect their bank manually (as an optional flow), or let them upload a ZIP file with everything — and you sort/detect file types server-side.
+
+🧠 What to Extract From These Documents:
+Date
+
+Description / Merchant
+
+Amount
+
+Type (debit/credit)
+
+Account Name
+
+Balance (if available)
+
+Transaction ID or reference
+
+Currency (multi-currency support)

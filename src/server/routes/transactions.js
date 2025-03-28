@@ -27,15 +27,30 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    // Accept only CSV and XML files
-    if (file.mimetype === 'text/csv' || 
-        file.mimetype === 'application/xml' || 
-        file.mimetype === 'text/xml' ||
-        file.originalname.endsWith('.csv') ||
-        file.originalname.endsWith('.xml')) {
+    // Get file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    // Accept CSV, XML, Excel (xlsx, xls), PDF, and OFX/QFX files
+    if (
+      // Check by mimetype
+      file.mimetype === 'text/csv' || 
+      file.mimetype === 'application/xml' || 
+      file.mimetype === 'text/xml' ||
+      file.mimetype === 'application/vnd.ms-excel' ||
+      file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.mimetype === 'application/pdf' ||
+      // Check by extension
+      ext === '.csv' ||
+      ext === '.xml' ||
+      ext === '.xlsx' ||
+      ext === '.xls' ||
+      ext === '.pdf' ||
+      ext === '.ofx' ||
+      ext === '.qfx'
+    ) {
       cb(null, true);
     } else {
-      cb(new Error('Only CSV and XML files are allowed'), false);
+      cb(new Error('Supported file formats: CSV, XML, Excel, PDF, OFX/QFX'), false);
     }
   }
 });
@@ -128,21 +143,72 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     
     const filePath = req.file.path;
     const fileName = path.basename(filePath);
+    const fileExtension = path.extname(fileName).toLowerCase().slice(1);
+    
+    // Get account type from request body if provided
+    const accountType = req.body.accountType || '';
+    const accountName = req.body.accountName || '';
     
     // Parse the file based on its extension
     const transactions = await FileParser.parseFile(filePath);
     
-    // Add source file information
-    const processedTransactions = transactions.map(transaction => ({
-      ...transaction,
-      sourceFileName: fileName
-    }));
+    // Add source file information and override account info if provided
+    const processedTransactions = transactions.map(transaction => {
+      // Create a new transaction object with the existing data
+      const updatedTransaction = { ...transaction };
+      
+      // Set the source file name
+      updatedTransaction.sourceFileName = fileName;
+      
+      // Override account type and name if provided in the request
+      if (accountType && !updatedTransaction.accountType) {
+        updatedTransaction.accountType = accountType;
+      }
+      
+      if (accountName && !updatedTransaction.account) {
+        updatedTransaction.account = accountName;
+      }
+      
+      return updatedTransaction;
+    });
     
     // Save transactions to database
     const savedTransactions = await db.addTransactions(processedTransactions);
     
+    // Calculate some statistics
+    const incomeTransactions = savedTransactions.filter(t => t.type === 'income');
+    const expenseTransactions = savedTransactions.filter(t => t.type === 'expense');
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
+    
+    // Find date range
+    let minDate = null;
+    let maxDate = null;
+    
+    if (savedTransactions.length > 0) {
+      const dates = savedTransactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
+      if (dates.length > 0) {
+        minDate = new Date(Math.min(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+        maxDate = new Date(Math.max(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+      }
+    }
+    
     res.status(201).json({
       message: `Successfully imported ${savedTransactions.length} transactions`,
+      fileType: fileExtension,
+      fileName: fileName,
+      dateRange: {
+        from: minDate,
+        to: maxDate
+      },
+      statistics: {
+        totalTransactions: savedTransactions.length,
+        incomeTransactions: incomeTransactions.length,
+        expenseTransactions: expenseTransactions.length,
+        totalIncome: totalIncome,
+        totalExpense: totalExpense,
+        netAmount: totalIncome - totalExpense
+      },
       transactions: savedTransactions
     });
   } catch (error) {
@@ -219,6 +285,121 @@ router.get('/filter/uncategorized', async (req, res) => {
   try {
     const transactions = await db.getUncategorizedTransactions();
     res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get upload statistics (unique source file names, account types, etc.)
+router.get('/upload-stats', async (req, res) => {
+  try {
+    const transactions = await db.getAllTransactions();
+    
+    // Get unique source files
+    const uploadedFiles = {};
+    transactions.forEach(t => {
+      if (t.sourceFileName && !uploadedFiles[t.sourceFileName]) {
+        uploadedFiles[t.sourceFileName] = {
+          fileName: t.sourceFileName,
+          fileType: t.sourceFileName.split('.').pop().toLowerCase(),
+          source: t.source,
+          count: 0,
+          accounts: new Set(),
+          accountTypes: new Set(),
+          dateRange: {
+            from: null,
+            to: null
+          },
+          income: 0,
+          expense: 0
+        };
+      }
+      
+      if (t.sourceFileName) {
+        const fileStats = uploadedFiles[t.sourceFileName];
+        fileStats.count++;
+        
+        if (t.account) fileStats.accounts.add(t.account);
+        if (t.accountType) fileStats.accountTypes.add(t.accountType);
+        
+        // Track date range
+        const date = new Date(t.date);
+        if (!isNaN(date.getTime())) {
+          if (!fileStats.dateRange.from || date < new Date(fileStats.dateRange.from)) {
+            fileStats.dateRange.from = t.date;
+          }
+          if (!fileStats.dateRange.to || date > new Date(fileStats.dateRange.to)) {
+            fileStats.dateRange.to = t.date;
+          }
+        }
+        
+        // Track financials
+        if (t.type === 'income') {
+          fileStats.income += t.amount;
+        } else {
+          fileStats.expense += t.amount;
+        }
+      }
+    });
+    
+    // Convert sets to arrays for JSON serialization
+    const uploadStats = Object.values(uploadedFiles).map(file => ({
+      ...file,
+      accounts: Array.from(file.accounts),
+      accountTypes: Array.from(file.accountTypes),
+      netAmount: file.income - file.expense
+    }));
+    
+    // Get account stats
+    const accounts = {};
+    transactions.forEach(t => {
+      if (t.account) {
+        if (!accounts[t.account]) {
+          accounts[t.account] = {
+            name: t.account,
+            type: t.accountType || 'unknown',
+            transactionCount: 0,
+            income: 0,
+            expense: 0
+          };
+        }
+        
+        accounts[t.account].transactionCount++;
+        if (t.type === 'income') {
+          accounts[t.account].income += t.amount;
+        } else {
+          accounts[t.account].expense += t.amount;
+        }
+      }
+    });
+    
+    const accountStats = Object.values(accounts).map(account => ({
+      ...account,
+      balance: account.income - account.expense
+    }));
+    
+    // Overall stats
+    const totalTransactions = transactions.length;
+    const categorizedTransactions = transactions.filter(t => t.categoryId).length;
+    const totalIncome = transactions.filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = transactions.filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    res.json({
+      overallStats: {
+        totalTransactions,
+        categorizedTransactions,
+        uncategorizedTransactions: totalTransactions - categorizedTransactions,
+        categorizationProgress: totalTransactions > 0 ? 
+          Math.round((categorizedTransactions / totalTransactions) * 100) : 0,
+        totalIncome,
+        totalExpense,
+        netAmount: totalIncome - totalExpense
+      },
+      uploadedFiles: uploadStats,
+      accounts: accountStats
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
