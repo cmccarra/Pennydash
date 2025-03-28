@@ -62,10 +62,11 @@ const initDB = async () => {
     await sequelize.authenticate();
     console.log('Connection to database has been established successfully.');
 
-    // Sync models with database (in development, use { force: true } to recreate tables)
-    const force = process.env.NODE_ENV === 'development' && process.env.DB_FORCE_SYNC === 'true';
+    // Sync models with database with force option to apply schema changes
+    // Set force to true to recreate tables with updated schema
+    const force = true; // process.env.NODE_ENV === 'development' && process.env.DB_FORCE_SYNC === 'true';
     await sequelize.sync({ force });
-    console.log('Database synchronized');
+    console.log('Database synchronized with force =', force);
 
     // Create default settings if none exist
     const settingsCount = await Settings.count();

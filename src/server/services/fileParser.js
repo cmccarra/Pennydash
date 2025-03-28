@@ -44,6 +44,7 @@ class FileParser {
         }))
         .on('data', (row) => {
           try {
+            console.log('Raw CSV row:', JSON.stringify(row));
             const transaction = Transaction.fromCSV(row);
             transactions.push(transaction);
           } catch (error) {

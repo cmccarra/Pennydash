@@ -74,6 +74,12 @@ router.get('/', async (req, res) => {
           model: Category,
           as: 'category',
           attributes: ['id', 'name', 'color', 'icon']
+        },
+        {
+          model: Category,
+          as: 'subcategory',
+          attributes: ['id', 'name', 'color', 'icon'],
+          required: false
         }
       ],
       order: [['date', 'DESC']]
@@ -94,6 +100,12 @@ router.get('/:id', async (req, res) => {
           model: Category,
           as: 'category',
           attributes: ['id', 'name', 'color', 'icon']
+        },
+        {
+          model: Category,
+          as: 'subcategory',
+          attributes: ['id', 'name', 'color', 'icon'],
+          required: false
         }
       ]
     });
@@ -114,13 +126,21 @@ router.post('/', async (req, res) => {
     const { Transaction } = getModels();
     const transactionData = req.body;
     
+    // Convert tags from string to array if needed
+    if (transactionData.tags && typeof transactionData.tags === 'string') {
+      transactionData.tags = transactionData.tags.split(',').map(tag => tag.trim());
+    }
+    
     // Validate the transaction data
     try {
       const newTransaction = await Transaction.create(transactionData);
       
-      // Fetch the created transaction with its category
+      // Fetch the created transaction with its category and subcategory
       const savedTransaction = await Transaction.findByPk(newTransaction.id, {
-        include: [{ model: getModels().Category, as: 'category' }]
+        include: [
+          { model: getModels().Category, as: 'category' },
+          { model: getModels().Category, as: 'subcategory', required: false }
+        ]
       });
       
       res.status(201).json(savedTransaction);
@@ -144,6 +164,11 @@ router.put('/:id', async (req, res) => {
     const { Transaction } = getModels();
     const transactionData = req.body;
     
+    // Convert tags from string to array if needed
+    if (transactionData.tags && typeof transactionData.tags === 'string') {
+      transactionData.tags = transactionData.tags.split(',').map(tag => tag.trim());
+    }
+    
     // Find the transaction first
     const transaction = await Transaction.findByPk(req.params.id);
     
@@ -154,9 +179,12 @@ router.put('/:id', async (req, res) => {
     // Update the transaction
     await transaction.update(transactionData);
     
-    // Get the updated transaction with its category
+    // Get the updated transaction with its category and subcategory
     const updatedTransaction = await Transaction.findByPk(req.params.id, {
-      include: [{ model: getModels().Category, as: 'category' }]
+      include: [
+        { model: getModels().Category, as: 'category' },
+        { model: getModels().Category, as: 'subcategory', required: false }
+      ]
     });
     
     res.json(updatedTransaction);
@@ -215,9 +243,10 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const fileName = path.basename(filePath);
     const fileExtension = path.extname(fileName).toLowerCase().slice(1);
     
-    // Get account type from request body if provided
+    // Get account information from request body if provided
     const accountType = req.body.accountType || '';
     const accountName = req.body.accountName || '';
+    const accountTypeEnum = req.body.accountTypeEnum || '';
     
     console.log(`Parsing file with extension: ${fileExtension}`);
     
@@ -248,13 +277,24 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       // Set the source file name
       updatedTransaction.importSource = fileName;
       
-      // Override account type and name if provided in the request
+      // Override source, account, accountType if provided in the request
       if (accountType) {
         updatedTransaction.source = accountType;
       }
       
-      if (accountName && !updatedTransaction.merchant) {
-        updatedTransaction.merchant = accountName;
+      if (accountName) {
+        updatedTransaction.account = accountName;
+      }
+      
+      if (accountTypeEnum) {
+        updatedTransaction.accountType = accountTypeEnum;
+      }
+      
+      // Make sure tags is always an array
+      if (!updatedTransaction.tags) {
+        updatedTransaction.tags = [];
+      } else if (typeof updatedTransaction.tags === 'string') {
+        updatedTransaction.tags = updatedTransaction.tags.split(',').map(tag => tag.trim());
       }
       
       return updatedTransaction;
@@ -312,10 +352,146 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// Import CSV file specifically - uses the same functionality as /upload but with clearer endpoint
+router.post('/import/csv', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No CSV file uploaded' });
+    }
+    
+    const filePath = req.file.path;
+    const fileName = req.file.originalname;
+    const fileExt = path.extname(fileName).toLowerCase();
+    
+    // Verify it's a CSV file
+    if (fileExt !== '.csv') {
+      return res.status(400).json({ error: 'File must be a CSV file' });
+    }
+    
+    console.log(`Processing CSV file: ${filePath}`);
+    
+    // Parse the CSV file
+    let transactions;
+    try {
+      transactions = await FileParser.parseCSV(filePath);
+      console.log(`Successfully parsed ${transactions.length} transactions from CSV`);
+      
+      // Debug the first parsed transaction
+      if (transactions.length > 0) {
+        console.log('First parsed transaction:', JSON.stringify(transactions[0], null, 2));
+      }
+    } catch (parseError) {
+      return res.status(400).json({ 
+        error: 'CSV parsing error', 
+        details: parseError.message
+      });
+    }
+    
+    if (transactions.length === 0) {
+      return res.status(400).json({ error: 'No transactions found in the CSV file' });
+    }
+    
+    // Get the Transaction model
+    const { Transaction } = getModels();
+    
+    // Add source file information and override account info if provided
+    const processedTransactions = transactions.map(transaction => {
+      // Create a new transaction object with the existing data
+      const updatedTransaction = { ...transaction };
+      
+      // Set the import source filename
+      updatedTransaction.importSource = fileName;
+      
+      // Override account info if provided in the request
+      if (req.body.accountType) {
+        updatedTransaction.source = req.body.accountType;
+      }
+      
+      if (req.body.accountName) {
+        updatedTransaction.account = req.body.accountName;
+      }
+      
+      if (req.body.accountTypeEnum) {
+        updatedTransaction.accountType = req.body.accountTypeEnum;
+      }
+      
+      // Make sure tags is always an array
+      if (!updatedTransaction.tags) {
+        updatedTransaction.tags = [];
+      } else if (typeof updatedTransaction.tags === 'string') {
+        // Check for both semicolon and comma separators
+        if (updatedTransaction.tags.includes(';')) {
+          updatedTransaction.tags = updatedTransaction.tags.split(';').map(tag => tag.trim());
+        } else if (updatedTransaction.tags.includes(',')) {
+          updatedTransaction.tags = updatedTransaction.tags.split(',').map(tag => tag.trim());
+        } else {
+          updatedTransaction.tags = [updatedTransaction.tags.trim()];
+        }
+      }
+      
+      return updatedTransaction;
+    });
+    
+    console.log(`Saving ${processedTransactions.length} transactions to database`);
+    
+    // Save transactions to database
+    const savedTransactions = await Transaction.bulkCreate(processedTransactions, {
+      returning: true
+    });
+    
+    // Calculate some statistics
+    const incomeTransactions = savedTransactions.filter(t => t.type === 'income');
+    const expenseTransactions = savedTransactions.filter(t => t.type === 'expense');
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+    const totalExpense = expenseTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+    
+    // Find date range
+    let minDate = null;
+    let maxDate = null;
+    
+    if (savedTransactions.length > 0) {
+      const dates = savedTransactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
+      if (dates.length > 0) {
+        minDate = new Date(Math.min(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+        maxDate = new Date(Math.max(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+      }
+    }
+    
+    res.status(201).json({
+      message: `Successfully imported ${savedTransactions.length} transactions from CSV`,
+      fileType: 'csv',
+      fileName: fileName,
+      added: savedTransactions.length,
+      skipped: 0,
+      failed: 0,
+      total: transactions.length,
+      dateRange: {
+        from: minDate,
+        to: maxDate
+      },
+      statistics: {
+        totalTransactions: savedTransactions.length,
+        incomeTransactions: incomeTransactions.length,
+        expenseTransactions: expenseTransactions.length,
+        totalIncome: totalIncome,
+        totalExpense: totalExpense,
+        netAmount: totalIncome - totalExpense
+      },
+      transactions: savedTransactions
+    });
+  } catch (error) {
+    console.error('CSV import endpoint error:', error);
+    res.status(500).json({ 
+      error: error.message, 
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+    });
+  }
+});
+
 // Update multiple transactions' category at once
 router.post('/batch-categorize', async (req, res) => {
   try {
-    const { transactionIds, categoryId } = req.body;
+    const { transactionIds, categoryId, subcategoryId } = req.body;
     
     if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
       return res.status(400).json({ error: 'Transaction IDs array is required' });
@@ -333,8 +509,26 @@ router.post('/batch-categorize', async (req, res) => {
       return res.status(404).json({ error: 'Category not found' });
     }
     
+    // Verify subcategory if provided
+    if (subcategoryId) {
+      const subcategory = await Category.findByPk(subcategoryId);
+      if (!subcategory) {
+        return res.status(404).json({ error: 'Subcategory not found' });
+      }
+    }
+    
+    // Prepare update data
+    const updateData = { categoryId };
+    
+    // Add subcategory if provided
+    if (subcategoryId) {
+      updateData.subcategoryId = subcategoryId;
+    }
+    
+    console.log(`Applying category ID ${categoryId} to transaction IDs: ${transactionIds.join(', ')}`);
+    
     // Update all transactions
-    await Transaction.update({ categoryId }, {
+    await Transaction.update(updateData, {
       where: {
         id: {
           [Op.in]: transactionIds
@@ -349,7 +543,10 @@ router.post('/batch-categorize', async (req, res) => {
           [Op.in]: transactionIds
         }
       },
-      include: [{ model: Category, as: 'category' }]
+      include: [
+        { model: Category, as: 'category' },
+        { model: Category, as: 'subcategory', required: false }
+      ]
     });
     
     res.json({
@@ -413,6 +610,12 @@ router.get('/filter/uncategorized', async (req, res) => {
           as: 'category',
           attributes: ['id', 'name', 'color', 'icon'],
           required: false
+        },
+        {
+          model: Category,
+          as: 'subcategory',
+          attributes: ['id', 'name', 'color', 'icon'],
+          required: false
         }
       ],
       order: [['date', 'DESC']]
@@ -457,8 +660,11 @@ router.get('/upload-stats', async (req, res) => {
         const fileStats = uploadedFiles[t.importSource];
         fileStats.count++;
         
-        if (t.merchant) fileStats.accounts.add(t.merchant);
-        if (t.source) fileStats.accountTypes.add(t.source);
+        if (t.account) fileStats.accounts.add(t.account);
+        else if (t.merchant) fileStats.accounts.add(t.merchant);
+        
+        if (t.accountType) fileStats.accountTypes.add(t.accountType);
+        else if (t.source) fileStats.accountTypes.add(t.source);
         
         // Track date range
         const date = new Date(t.date);
@@ -491,28 +697,39 @@ router.get('/upload-stats', async (req, res) => {
     // Get account stats
     const accounts = {};
     transactions.forEach(t => {
-      if (t.merchant) {
-        if (!accounts[t.merchant]) {
-          accounts[t.merchant] = {
-            name: t.merchant,
-            type: t.source || 'unknown',
+      // Use account if available, otherwise use merchant
+      const accountName = t.account || t.merchant;
+      
+      if (accountName) {
+        if (!accounts[accountName]) {
+          accounts[accountName] = {
+            name: accountName,
+            type: t.accountType || t.source || 'unknown',
             transactionCount: 0,
             income: 0,
-            expense: 0
+            expense: 0,
+            tags: new Set()
           };
         }
         
-        accounts[t.merchant].transactionCount++;
+        accounts[accountName].transactionCount++;
+        
+        // Add transaction tags to account tags
+        if (t.tags && Array.isArray(t.tags)) {
+          t.tags.forEach(tag => accounts[accountName].tags.add(tag));
+        }
+        
         if (t.type === 'income') {
-          accounts[t.merchant].income += Number(t.amount);
+          accounts[accountName].income += Number(t.amount);
         } else {
-          accounts[t.merchant].expense += Number(t.amount);
+          accounts[accountName].expense += Number(t.amount);
         }
       }
     });
     
     const accountStats = Object.values(accounts).map(account => ({
       ...account,
+      tags: Array.from(account.tags || []),
       balance: account.income - account.expense
     }));
     
