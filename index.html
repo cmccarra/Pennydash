@@ -12,11 +12,95 @@
   <!-- Fonts -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap">
   
-  <!-- Tailwind CSS -->
+  <!-- Tailwind CSS with DaisyUI -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
   
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Tailwind Config -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#251E5A',
+            'primary-focus': '#1C1845',
+            'primary-content': '#FFFFFF',
+            secondary: '#3CD5B0',
+            'secondary-focus': '#2AC19D',
+            'secondary-content': '#FFFFFF',
+            accent: '#FF5C67',
+            'accent-focus': '#F04A55',
+            'accent-content': '#FFFFFF',
+            neutral: '#1E2335',
+            'neutral-focus': '#12151E',
+            'neutral-content': '#FFFFFF',
+            'base-100': '#1A1A2E',
+            'base-200': '#16213E',
+            'base-300': '#0F3460',
+            'base-content': '#F0F2F5',
+            info: '#3ABFF8',
+            success: '#36D399',
+            warning: '#FBBD23',
+            error: '#F87272'
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-out forwards',
+            'slide-in': 'slideIn 0.4s ease-out forwards',
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' }
+            },
+            slideIn: {
+              '0%': { opacity: '0', transform: 'translateX(-10px)' },
+              '100%': { opacity: '1', transform: 'translateX(0)' }
+            }
+          },
+          boxShadow: {
+            'inner-glow': 'inset 0 0 10px rgba(60, 213, 176, 0.5)',
+            'card-hover': '0 8px 30px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08)',
+            'accent-glow': '0 0 15px rgba(255, 92, 103, 0.7)'
+          }
+        }
+      },
+      plugins: [require("daisyui")],
+      daisyui: {
+        themes: [
+          {
+            pennydash: {
+              "primary": "#251E5A",
+              "primary-focus": "#1C1845",
+              "primary-content": "#FFFFFF",
+              "secondary": "#3CD5B0",
+              "secondary-focus": "#2AC19D",
+              "secondary-content": "#FFFFFF",
+              "accent": "#FF5C67",
+              "accent-focus": "#F04A55",
+              "accent-content": "#FFFFFF",
+              "neutral": "#1E2335",
+              "neutral-focus": "#12151E",
+              "neutral-content": "#FFFFFF",
+              "base-100": "#1A1A2E",
+              "base-200": "#16213E",
+              "base-300": "#0F3460",
+              "base-content": "#F0F2F5",
+              "info": "#3ABFF8",
+              "success": "#36D399",
+              "warning": "#FBBD23",
+              "error": "#F87272"
+            }
+          }
+        ],
+        darkTheme: "pennydash"
+      }
+    }
+  </script>
   
   <style>
     :root {
@@ -350,7 +434,7 @@
     }
   </style>
 </head>
-<body>
+<body data-theme="pennydash" class="min-h-screen bg-base-100 text-base-content">
   <div id="app"></div>
   
   <script type="module">
@@ -392,69 +476,80 @@
       },
       template: `
         <!-- Navigation -->
-        <nav class="navbar">
-          <div class="container mx-auto px-4 py-3">
-            <div class="flex justify-between items-center">
-              <div class="flex items-center space-x-3">
-                <div class="icon-circle">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+        <div class="navbar bg-base-300 shadow-lg">
+          <div class="container mx-auto px-4">
+            <div class="navbar-start">
+              <div class="dropdown">
+                <div tabindex="0" role="button" class="btn btn-ghost lg:hidden">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" /></svg>
+                </div>
+                <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52">
+                  <li><a @click="activeTab = 'home'" :class="activeTab === 'home' ? 'active' : ''">Home</a></li>
+                  <li><a @click="activeTab = 'upload'" :class="activeTab === 'upload' ? 'active' : ''">Upload</a></li>
+                  <li><a @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'active' : ''">Transactions</a></li>
+                  <li><a @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'active' : ''">Reports</a></li>
+                </ul>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="btn btn-circle btn-ghost text-accent">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 01-.75.75h-.75m0-1.5h.75a.75.75 0 01.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
                   </svg>
                 </div>
-                <span class="font-semibold text-xl" style="color: var(--accent); font-family: 'DM Serif Display', serif;">PennyDash</span>
+                <a class="font-serif text-xl font-semibold text-accent">PennyDash</a>
               </div>
-              
-              <div class="hidden md:flex items-center space-x-2">
-                <a @click="activeTab = 'home'" :class="['nav-item cursor-pointer', activeTab === 'home' ? 'active' : '']">Home</a>
-                <a @click="activeTab = 'upload'" :class="['nav-item cursor-pointer', activeTab === 'upload' ? 'active' : '']">Upload</a>
-                <a @click="activeTab = 'transactions'" :class="['nav-item cursor-pointer', activeTab === 'transactions' ? 'active' : '']">Transactions</a>
-                <a @click="activeTab = 'reports'" :class="['nav-item cursor-pointer', activeTab === 'reports' ? 'active' : '']">Reports</a>
-              </div>
-              
-              <div class="flex items-center space-x-3">
-                <button class="btn btn-accent px-3 py-1 h-8 text-sm hidden md:flex">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                  Add Transaction
-                </button>
-                <div class="avatar">
+            </div>
+            
+            <div class="navbar-center hidden lg:flex">
+              <ul class="menu menu-horizontal px-1 text-base-content">
+                <li><a @click="activeTab = 'home'" :class="activeTab === 'home' ? 'bg-primary/20 font-semibold' : ''">Home</a></li>
+                <li><a @click="activeTab = 'upload'" :class="activeTab === 'upload' ? 'bg-primary/20 font-semibold' : ''">Upload</a></li>
+                <li><a @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'bg-primary/20 font-semibold' : ''">Transactions</a></li>
+                <li><a @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-primary/20 font-semibold' : ''">Reports</a></li>
+              </ul>
+            </div>
+            
+            <div class="navbar-end gap-2">
+              <button class="btn btn-accent btn-sm hidden md:flex">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add Transaction
+              </button>
+              <div class="avatar placeholder">
+                <div class="bg-secondary text-secondary-content rounded-full w-10">
                   <span>JD</span>
                 </div>
               </div>
             </div>
           </div>
-        </nav>
+        </div>
         
         <!-- Main Content -->
         <main class="container mx-auto px-4 py-8">
           <!-- Welcome Area (First-time users) -->
           <div v-if="!hasData" class="mb-8 fade-in">
-            <div class="card bg-white p-6 md:p-8 mb-6">
-              <h1 class="text-2xl font-semibold mb-2" style="color: var(--accent);">Welcome to PennyDash</h1>
-              <p class="mb-6" style="color: var(--text-muted);">
-                Track your money like it matters. Let's get started with your personal budgeting journey. Follow these steps to gain insights into your spending habits.
-              </p>
-              
-              <div class="flex items-center justify-between mb-8 px-4 py-2">
-                <div class="flex flex-col items-center">
-                  <div class="step-circle active">1</div>
-                  <span class="text-sm text-center mt-2" style="color: var(--primary); font-weight: 500;">Upload<br>Statements</span>
-                </div>
-                <div class="step-line flex-grow mx-2"></div>
-                <div class="flex flex-col items-center">
-                  <div class="step-circle inactive">2</div>
-                  <span class="text-sm text-center mt-2" style="color: var(--text-muted);">Review<br>Transactions</span>
-                </div>
-                <div class="step-line flex-grow mx-2"></div>
-                <div class="flex flex-col items-center">
-                  <div class="step-circle inactive">3</div>
-                  <span class="text-sm text-center mt-2" style="color: var(--text-muted);">Categorize<br>Spending</span>
-                </div>
-                <div class="step-line flex-grow mx-2"></div>
-                <div class="flex flex-col items-center">
-                  <div class="step-circle inactive">4</div>
-                  <span class="text-sm text-center mt-2" style="color: var(--text-muted);">Generate<br>Reports</span>
+            <div class="card bg-base-200 shadow-xl p-6 md:p-8 mb-6">
+              <div class="card-body">
+                <h1 class="card-title text-2xl font-serif text-accent">Welcome to PennyDash</h1>
+                <p class="text-base-content/70 mb-6">
+                  Track your money like it matters. Let's get started with your personal budgeting journey. Follow these steps to gain insights into your spending habits.
+                </p>
+                
+                <ul class="steps steps-vertical lg:steps-horizontal w-full mb-6">
+                  <li class="step step-primary">Upload Statements</li>
+                  <li class="step">Review Transactions</li>
+                  <li class="step">Categorize Spending</li>
+                  <li class="step">Generate Reports</li>
+                </ul>
+                
+                <div class="mt-2 flex justify-center">
+                  <button class="btn btn-primary btn-wide" @click="activeTab = 'upload'">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    Get Started
+                  </button>
                 </div>
               </div>
             </div>
@@ -511,43 +606,51 @@
               </div>
               
               <!-- Features overview (first-time users) -->
-              <div v-if="!hasData" class="card bg-white p-6 mb-6 fade-in">
-                <h2 class="text-lg font-semibold mb-4">Key Features</h2>
-                
-                <div class="space-y-5">
-                  <div class="flex items-start slide-in" style="animation-delay: 0.1s">
-                    <div class="icon-circle flex-shrink-0">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                      </svg>
-                    </div>
-                    <div class="ml-4">
-                      <h3 class="font-medium text-lg" style="color: var(--text-default);">Easy Import</h3>
-                      <p class="text-sm mt-1" style="color: var(--text-muted);">Upload CSV or XML files from your bank with intuitive drag-and-drop functionality.</p>
-                    </div>
-                  </div>
+              <div v-if="!hasData" class="card bg-base-200 shadow-md p-6 mb-6 fade-in">
+                <div class="card-body p-2">
+                  <h2 class="card-title text-lg mb-3">Key Features</h2>
                   
-                  <div class="flex items-start slide-in" style="animation-delay: 0.2s">
-                    <div class="icon-circle flex-shrink-0" style="background-color: var(--accent-light); color: var(--accent);">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
-                      </svg>
+                  <div class="space-y-6">
+                    <div class="flex items-start slide-in" style="animation-delay: 0.1s">
+                      <div class="avatar placeholder">
+                        <div class="bg-primary text-primary-content rounded-btn w-12 h-12">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="ml-4">
+                        <h3 class="font-medium text-lg text-base-content">Easy Import</h3>
+                        <p class="text-sm mt-1 text-base-content/70">Upload CSV, XML, Excel, PDF or OFX files from your bank with intuitive drag-and-drop functionality.</p>
+                      </div>
                     </div>
-                    <div class="ml-4">
-                      <h3 class="font-medium text-lg" style="color: var(--text-default);">Smart Categorization</h3>
-                      <p class="text-sm mt-1" style="color: var(--text-muted);">AI-powered suggestions automatically organize your transactions into meaningful categories.</p>
+                    
+                    <div class="flex items-start slide-in" style="animation-delay: 0.2s">
+                      <div class="avatar placeholder">
+                        <div class="bg-accent text-accent-content rounded-btn w-12 h-12">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="ml-4">
+                        <h3 class="font-medium text-lg text-base-content">Smart Categorization</h3>
+                        <p class="text-sm mt-1 text-base-content/70">AI-powered suggestions automatically organize your transactions into meaningful categories.</p>
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div class="flex items-start slide-in" style="animation-delay: 0.3s">
-                    <div class="icon-circle flex-shrink-0" style="background-color: rgba(52, 199, 89, 0.1); color: var(--success);">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
-                      </svg>
-                    </div>
-                    <div class="ml-4">
-                      <h3 class="font-medium text-lg" style="color: var(--text-default);">Visual Reports</h3>
-                      <p class="text-sm mt-1" style="color: var(--text-muted);">Gain insights with interactive charts showing spending patterns and financial trends over time.</p>
+                    
+                    <div class="flex items-start slide-in" style="animation-delay: 0.3s">
+                      <div class="avatar placeholder">
+                        <div class="bg-secondary text-secondary-content rounded-btn w-12 h-12">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div class="ml-4">
+                        <h3 class="font-medium text-lg text-base-content">Visual Reports</h3>
+                        <p class="text-sm mt-1 text-base-content/70">Gain insights with interactive charts showing spending patterns and financial trends over time.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -557,100 +660,128 @@
             <!-- Right Column -->
             <div class="md:order-2 order-1">
               <!-- Upload Zone -->
-              <div class="card bg-white p-6 mb-6 fade-in">
-                <h2 class="text-lg font-semibold mb-3">Upload Transactions</h2>
-                <p class="text-sm text-gray-600 mb-4">
-                  Import your bank statements to start tracking your finances.
-                </p>
-                
-                <div 
-                  class="upload-zone p-8 mb-4 flex flex-col items-center justify-center text-center"
-                  :class="{ 'active': isUploadActive }"
-                  @dragover.prevent="setUploadActive(true)"
-                  @dragleave.prevent="setUploadActive(false)"
-                  @drop.prevent="setUploadActive(false); setHasData()">
+              <div class="card bg-base-200 shadow-lg p-6 mb-6 fade-in">
+                <div class="card-body p-2">
+                  <h2 class="card-title text-lg">Upload Transactions</h2>
+                  <p class="text-sm text-base-content/70 mb-4">
+                    Import your bank statements to start tracking your finances.
+                  </p>
                   
-                  <div class="icon-circle mb-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                    </svg>
-                  </div>
-                  
-                  <p class="font-medium mb-1">Drag & drop your files here</p>
-                  <p class="text-sm text-gray-500 mb-4">Supports CSV and XML formats</p>
-                  
-                  <div class="flex flex-wrap justify-center gap-3 mb-2">
-                    <button class="btn btn-primary" @click="setHasData">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                      </svg>
-                      Browse Files
-                    </button>
+                  <div 
+                    class="border-2 border-dashed border-base-300 bg-base-100/50 hover:bg-base-100 p-8 mb-4 rounded-lg flex flex-col items-center justify-center text-center transition-all"
+                    :class="{ 'bg-primary/5 border-primary': isUploadActive }"
+                    @dragover.prevent="setUploadActive(true)"
+                    @dragleave.prevent="setUploadActive(false)"
+                    @drop.prevent="setUploadActive(false); setHasData()">
                     
-                    <button class="btn btn-secondary" @click="useSampleData">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-                      </svg>
-                      Try Sample Data
-                    </button>
+                    <div class="avatar placeholder mb-3">
+                      <div class="bg-primary text-primary-content rounded-full w-16 h-16">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
+                      </div>
+                    </div>
+                    
+                    <p class="font-medium mb-1 text-base-content">Drag & drop your files here</p>
+                    <p class="text-sm text-base-content/60 mb-4">Supports CSV, XML, Excel, PDF, and OFX/QFX formats</p>
+                    
+                    <div class="flex flex-wrap justify-center gap-3 mb-2">
+                      <button class="btn btn-primary" @click="setHasData">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
+                        Browse Files
+                      </button>
+                      
+                      <button class="btn btn-secondary" @click="useSampleData">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                        </svg>
+                        Try Sample Data
+                      </button>
+                    </div>
+                    
+                    <div class="badge badge-neutral mt-2">Maximum file size: 10MB</div>
                   </div>
                   
-                  <span class="text-xs text-gray-500">Maximum file size: 10MB</span>
+                  <div class="divider divider-neutral text-xs text-base-content/60">Supported File Types</div>
+                  
+                  <div class="flex flex-wrap justify-center gap-2">
+                    <div class="badge badge-primary badge-outline">CSV</div>
+                    <div class="badge badge-primary badge-outline">XML</div>
+                    <div class="badge badge-primary badge-outline">XLSX</div>
+                    <div class="badge badge-primary badge-outline">PDF</div>
+                    <div class="badge badge-primary badge-outline">OFX/QFX</div>
+                  </div>
                 </div>
               </div>
               
               <!-- Reports Preview (if data exists) -->
-              <div v-if="hasData" class="card bg-white p-6 mb-6 fade-in">
-                <div class="flex justify-between items-center mb-4">
-                  <h2 class="text-lg font-semibold">Reports</h2>
-                  <button class="btn btn-primary px-4 py-1 text-sm">
-                    View All
-                  </button>
-                </div>
-                
-                <div class="rounded-lg p-5" style="background-color: var(--primary-50); border: 1px solid var(--primary-light);">
-                  <div class="text-xl font-semibold mb-1" style="color: var(--text-default);">$3,240.50</div>
-                  <div class="text-sm mb-4" style="color: var(--text-muted);">Total Spending This Month</div>
+              <div v-if="hasData" class="card bg-base-200 shadow-lg p-6 mb-6 fade-in">
+                <div class="card-body p-2">
+                  <div class="flex justify-between items-center mb-4">
+                    <h2 class="card-title text-lg">Reports</h2>
+                    <button class="btn btn-primary btn-sm">
+                      View All
+                    </button>
+                  </div>
                   
-                  <div class="h-40 mb-3 flex items-end justify-center space-x-3 slide-in" style="animation-delay: 0.2s;">
-                    <div class="relative group">
-                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
-                        $890.24
-                      </div>
-                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
-                           style="height: 60%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
+                  <div class="stats stats-vertical lg:stats-horizontal shadow bg-base-300/50 w-full">
+                    <div class="stat">
+                      <div class="stat-title">Total Spending</div>
+                      <div class="stat-value text-primary">$3,240.50</div>
+                      <div class="stat-desc">This Month (March)</div>
                     </div>
-                    <div class="relative group">
-                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
-                        $1,180.35
-                      </div>
-                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
-                           style="height: 80%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
+                    
+                    <div class="stat">
+                      <div class="stat-title">Transactions</div>
+                      <div class="stat-value">132</div>
+                      <div class="stat-desc">↗︎ 24 (22%)</div>
                     </div>
-                    <div class="relative group">
-                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
-                        $960.42
-                      </div>
-                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
-                           style="height: 65%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
-                    </div>
-                    <div class="relative group">
-                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
-                        $1,475.82
-                      </div>
-                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
-                           style="height: 100%; background: linear-gradient(to top, var(--accent), var(--accent-hover));"></div>
-                    </div>
-                    <div class="relative group">
-                      <div class="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--text-default);">
-                        $663.91
-                      </div>
-                      <div class="w-10 rounded-t-md transition-all duration-500 ease-out group-hover:opacity-90" 
-                           style="height: 45%; background: linear-gradient(to top, var(--primary), var(--primary-hover));"></div>
+                    
+                    <div class="stat">
+                      <div class="stat-title">Categorized</div>
+                      <div class="stat-value text-success">89%</div>
+                      <div class="stat-desc">14 need review</div>
                     </div>
                   </div>
                   
-                  <div class="flex justify-between text-xs" style="color: var(--text-muted);">
+                  <div class="divider divider-neutral text-xs text-base-content/60">Recent Activity</div>
+                  
+                  <div class="h-40 mb-3 flex items-end justify-center space-x-3 slide-in" style="animation-delay: 0.2s;">
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$890.24">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 60%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$1,180.35">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 80%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$960.42">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 65%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$1,475.82">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-accent to-accent-focus"
+                             style="height: 100%;"></div>
+                      </div>
+                    </div>
+                    <div class="relative group">
+                      <div class="tooltip tooltip-top" data-tip="$663.91">
+                        <div class="w-10 rounded-t-md transition-all duration-500 ease-out bg-gradient-to-t from-primary to-primary-focus"
+                             style="height: 45%;"></div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="flex justify-between text-xs text-base-content/60">
                     <span>Feb 1</span>
                     <span>Feb 8</span>
                     <span>Feb 15</span>
@@ -664,8 +795,17 @@
         </main>
         
         <!-- Footer -->
-        <footer class="container mx-auto p-4 text-center text-sm text-gray-500 mt-8">
-          PennyDash | Track your money like it matters
+        <footer class="footer footer-center p-6 bg-base-300 text-base-content">
+          <div>
+            <div class="avatar placeholder">
+              <div class="bg-neutral-focus text-neutral-content rounded-full w-10">
+                <span class="text-xl">P</span>
+              </div>
+            </div>
+            <p class="font-serif font-bold text-xl">PennyDash</p>
+            <p class="text-sm opacity-70">Track your money like it matters</p>
+            <p class="text-xs opacity-50">© 2025 - All rights reserved</p>
+          </div>
         </footer>
       `
     };
