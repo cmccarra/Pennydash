@@ -18,8 +18,50 @@ class Transaction extends Model {
       date: {
         type: DataTypes.DATEONLY,
         allowNull: false,
-        validate: {
-          isDate: true
+        get() {
+          // Return the date in YYYY-MM-DD format
+          const value = this.getDataValue('date');
+          if (!value) return null;
+          
+          // Handle string dates (already in YYYY-MM-DD format)
+          if (typeof value === 'string') {
+            return value;
+          }
+          
+          // Handle Date objects
+          if (value instanceof Date) {
+            return value.toISOString().split('T')[0];
+          }
+          
+          // Unknown format - return as is
+          return value;
+        },
+        set(value) {
+          // Handle common date formats before storing
+          if (typeof value === 'string') {
+            // Handle "DD MMM YYYY" format (e.g. "02 Sep 2024")
+            const ddMmmYyyyMatch = value.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
+            if (ddMmmYyyyMatch) {
+              const day = ddMmmYyyyMatch[1].padStart(2, '0');
+              const monthStr = ddMmmYyyyMatch[2];
+              const year = ddMmmYyyyMatch[3];
+              
+              const monthMap = {
+                'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+                'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+              };
+              
+              const month = monthMap[monthStr];
+              if (month) {
+                // Store as YYYY-MM-DD
+                this.setDataValue('date', `${year}-${month}-${day}`);
+                return;
+              }
+            }
+          }
+          
+          // Default handling
+          this.setDataValue('date', value);
         }
       },
       description: {

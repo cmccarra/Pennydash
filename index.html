@@ -2480,12 +2480,12 @@
         
         // Complete a batch
         async completeBatch(batchId) {
-          return api.request(`/transactions/batches/${batchId}/complete`, 'PUT');
+          return api.request(`/transactions/batches/${batchId}/complete`, 'POST');
         },
         
         // Complete an upload
         async completeUpload(uploadId) {
-          return api.request(`/transactions/uploads/${uploadId}/complete`, 'PUT');
+          return api.request(`/transactions/uploads/${uploadId}/complete`, 'POST');
         }
       },
       
