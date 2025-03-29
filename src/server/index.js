@@ -28,6 +28,12 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
 // Make the uploads directory available
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -69,12 +75,48 @@ app.get('/api/debug/transaction-tags', async (req, res) => {
   }
 });
 
-// Serve static files from the root
-app.use(express.static(path.join(__dirname, '../../')));
+// Log static file path
+const staticPath = path.join(__dirname, '../../');
+console.log('Serving static files from:', staticPath);
+console.log('Directory exists:', fs.existsSync(staticPath));
+
+// List the contents of the directory
+try {
+  const files = fs.readdirSync(staticPath);
+  console.log('Directory contents:', files);
+} catch (error) {
+  console.error('Error reading directory:', error);
+}
+
+// Serve static files from the root with debugging
+app.use(express.static(staticPath, {
+  index: false,  // Disable automatic index.html serving to handle it manually
+  setHeaders: (res, path, stat) => {
+    console.log('Serving static file:', path);
+  }
+}));
 
 // Serve index.html for the root path and all other non-API routes
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../index.html'));
+  console.log('Serving index.html for root path');
+  const indexPath = path.join(__dirname, '../../index.html');
+  console.log('Index file path:', indexPath);
+  console.log('File exists:', fs.existsSync(indexPath));
+  
+  // Log the size of the file
+  if (fs.existsSync(indexPath)) {
+    const stats = fs.statSync(indexPath);
+    console.log('File size:', stats.size, 'bytes');
+  }
+  
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('Error sending index.html:', err);
+      res.status(500).send('Error serving index.html: ' + err.message);
+    } else {
+      console.log('Successfully sent index.html');
+    }
+  });
 });
 
 // Fallback to index.html for SPA routing
@@ -83,7 +125,16 @@ app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) {
     return next();
   }
-  res.sendFile(path.join(__dirname, '../../index.html'));
+  
+  console.log('Serving index.html for path:', req.path);
+  const indexPath = path.join(__dirname, '../../index.html');
+  
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('Error sending index.html for', req.path, ':', err);
+      res.status(500).send('Error serving index.html: ' + err.message);
+    }
+  });
 });
 
 // Error handling middleware

@@ -2970,14 +2970,18 @@
         
         // Complete the entire upload
         const completeUpload = async (uploadId) => {
+          console.log('Starting completeUpload for uploadId:', uploadId);
           state.loading.enrichment = true;
           
           try {
-            await api.transactions.completeUpload(uploadId);
+            console.log('Calling API to complete upload...');
+            const result = await api.transactions.completeUpload(uploadId);
+            console.log('Upload completed successfully:', result);
             
             // Set the enrichment flow as complete
             state.enrichment.currentStep = 'complete';
             state.enrichment.progress = 100;
+            console.log('Updated enrichment state: currentStep=complete, progress=100%');
             
             // Refresh transactions to show the newly imported data
             await fetchTransactions();
@@ -3438,15 +3442,35 @@
         
         // Finish batch review and show completion screen
         const finishBatchReview = async () => {
+          console.log('Starting finishBatchReview function');
           state.loading.enrichment = true;
           
           try {
+            console.log('Calling completeUpload with uploadId:', state.enrichment.currentUploadId);
+            
+            // Add a fallback if somehow uploadId is missing
+            if (!state.enrichment.currentUploadId) {
+              console.error('Error: Missing uploadId in finishBatchReview');
+              // Try to recover by finding the first batch and extracting uploadId
+              if (state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
+                const firstBatch = state.enrichment.transactionBatches[0];
+                if (firstBatch.batchId) {
+                  const uploadIdMatch = firstBatch.batchId.match(/^(upload_\d+)_/);
+                  if (uploadIdMatch && uploadIdMatch[1]) {
+                    console.log('Recovered uploadId from batch:', uploadIdMatch[1]);
+                    state.enrichment.currentUploadId = uploadIdMatch[1];
+                  }
+                }
+              }
+            }
+            
             // Complete the upload
             await completeUpload(state.enrichment.currentUploadId);
             
             // Move to complete step
             state.enrichment.currentStep = 'complete';
             state.enrichment.progress = 100;
+            console.log('Completed batch review successfully');
           } catch (error) {
             state.errors.enrichment = error.message || 'Failed to complete review';
             console.error('Failed to finish batch review:', error);

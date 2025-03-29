@@ -35,6 +35,8 @@ export const fetchData = async (endpoint) => {
  * @returns {Promise} Promise with the response data
  */
 export const postData = async (endpoint, data) => {
+  console.log(`🔍 [API] POST request to ${endpoint}`, data);
+  
   try {
     const response = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
@@ -44,14 +46,45 @@ export const postData = async (endpoint, data) => {
       body: JSON.stringify(data)
     });
     
+    // Debug logging for issues
+    console.log(`🔍 [API] Response status for ${endpoint}:`, response.status, response.statusText);
+    
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP error ${response.status}`);
+      let errorMessage = `HTTP error ${response.status}`;
+      
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+        console.error(`🔍 [API] Error response data:`, errorData);
+      } catch (jsonError) {
+        // Could not parse JSON response
+        console.error(`🔍 [API] Could not parse error response as JSON:`, jsonError);
+        // Try to get text response
+        try {
+          const textError = await response.text();
+          console.error(`🔍 [API] Error response text:`, textError);
+          if (textError) {
+            errorMessage = textError;
+          }
+        } catch (textError) {
+          console.error(`🔍 [API] Could not get error response text:`, textError);
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
     
-    return await response.json();
+    try {
+      const result = await response.json();
+      console.log(`🔍 [API] Successful response from ${endpoint}:`, result);
+      return result;
+    } catch (jsonError) {
+      console.warn(`🔍 [API] No JSON in response from ${endpoint}:`, jsonError);
+      // For endpoints that might not return JSON
+      return { success: true };
+    }
   } catch (error) {
-    console.error(`Error posting to ${endpoint}:`, error);
+    console.error(`🔍 [API] Error posting to ${endpoint}:`, error);
     throw error;
   }
 };
@@ -63,6 +96,8 @@ export const postData = async (endpoint, data) => {
  * @returns {Promise} Promise with the response data
  */
 export const putData = async (endpoint, data) => {
+  console.log(`🔍 [API] PUT request to ${endpoint}`, data);
+  
   try {
     const response = await fetch(`${API_URL}${endpoint}`, {
       method: 'PUT',
@@ -72,14 +107,45 @@ export const putData = async (endpoint, data) => {
       body: JSON.stringify(data)
     });
     
+    // Debug logging for issues
+    console.log(`🔍 [API] Response status for ${endpoint}:`, response.status, response.statusText);
+    
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP error ${response.status}`);
+      let errorMessage = `HTTP error ${response.status}`;
+      
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+        console.error(`🔍 [API] Error response data:`, errorData);
+      } catch (jsonError) {
+        // Could not parse JSON response
+        console.error(`🔍 [API] Could not parse error response as JSON:`, jsonError);
+        // Try to get text response
+        try {
+          const textError = await response.text();
+          console.error(`🔍 [API] Error response text:`, textError);
+          if (textError) {
+            errorMessage = textError;
+          }
+        } catch (textError) {
+          console.error(`🔍 [API] Could not get error response text:`, textError);
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
     
-    return await response.json();
+    try {
+      const result = await response.json();
+      console.log(`🔍 [API] Successful response from ${endpoint}:`, result);
+      return result;
+    } catch (jsonError) {
+      console.warn(`🔍 [API] No JSON in response from ${endpoint}:`, jsonError);
+      // For endpoints that might not return JSON
+      return { success: true };
+    }
   } catch (error) {
-    console.error(`Error updating ${endpoint}:`, error);
+    console.error(`🔍 [API] Error updating ${endpoint}:`, error);
     throw error;
   }
 };

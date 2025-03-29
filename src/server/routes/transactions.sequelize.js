@@ -1570,15 +1570,21 @@ router.put('/uploads/:uploadId/account-info', async (req, res) => {
 // Complete an entire upload (mark all batches as processed)
 router.post('/uploads/:uploadId/complete', async (req, res) => {
   try {
+    console.log(`🔍 [SERVER] Complete upload endpoint called for uploadId: ${req.params.uploadId}`);
+    console.log(`🔍 [SERVER] Request body:`, JSON.stringify(req.body));
+    
     const { Transaction } = getModels();
     const { uploadId } = req.params;
     
     if (!uploadId) {
+      console.error('🔍 [SERVER] Upload ID is missing in request');
       return res.status(400).json({ error: 'Upload ID is required' });
     }
     
+    console.log(`🔍 [SERVER] Updating transactions for uploadId: ${uploadId}`);
+    
     // Update all transactions for this upload
-    await Transaction.update(
+    const [updatedCount] = await Transaction.update(
       { enrichmentStatus: 'completed' },
       {
         where: {
@@ -1587,6 +1593,8 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
       }
     );
     
+    console.log(`🔍 [SERVER] Updated ${updatedCount} transactions with completed status`);
+    
     // Get the updated transactions
     const transactions = await Transaction.findAll({
       where: {
@@ -1594,15 +1602,21 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
       }
     });
     
+    console.log(`🔍 [SERVER] Found ${transactions.length} transactions for uploadId: ${uploadId}`);
+    
     // Get unique batch IDs
     const batchIds = [...new Set(transactions.map(t => t.batchId).filter(Boolean))];
+    console.log(`🔍 [SERVER] Found ${batchIds.length} unique batch IDs`);
     
-    res.json({
+    const response = {
       message: `Completed upload with ${transactions.length} transactions across ${batchIds.length} batches`,
       uploadId,
       batchIds,
       status: 'completed'
-    });
+    };
+    
+    console.log(`🔍 [SERVER] Sending response for complete upload:`, JSON.stringify(response));
+    res.json(response);
   } catch (error) {
     console.error('Error completing upload:', error);
     res.status(500).json({ error: error.message });
