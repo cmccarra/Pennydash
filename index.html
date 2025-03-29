@@ -795,13 +795,13 @@
               </div>
               
               <!-- Error Alert (only show when there's an upload error) -->
-              <div v-if="state.errors.upload" class="mt-4 alert alert-error">
+              <div v-if="state.errors.upload && state.errors.upload.length > 0" class="mt-4 alert alert-error">
                 <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <span>{{ state.errors.upload }}</span>
               </div>
               
               <!-- Success Alert (only show when there's a success message) -->
-              <div v-if="state.successMessages.upload" class="mt-4 alert alert-success">
+              <div v-if="state.successMessages.upload && state.successMessages.upload.length > 0" class="mt-4 alert alert-success">
                 <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <span>{{ state.successMessages.upload }}</span>
               </div>
@@ -1987,7 +1987,7 @@
           <p class="mt-2">Processing transactions...</p>
         </div>
         
-        <div v-else-if="state.errors.enrichment" class="alert alert-error mb-4">
+        <div v-else-if="state.errors.enrichment && state.errors.enrichment.length > 0" class="alert alert-error mb-4">
           <div>
             <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             <span>{{ state.errors.enrichment }}</span>
@@ -2078,7 +2078,7 @@
             <p class="text-sm mb-4">We've organized your transactions into groups to make them easier to categorize and enrich.</p>
             
             <!-- Error message for batching issues -->
-            <div v-if="state.errors.enrichment" class="alert alert-error mb-4">
+            <div v-if="state.errors.enrichment && state.errors.enrichment.length > 0" class="alert alert-error mb-4">
               <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <div>
                 <span>{{ state.errors.enrichment }}</span>
@@ -2086,7 +2086,7 @@
             </div>
             
             <!-- Success message -->
-            <div v-if="state.successMessages.enrichment" class="alert alert-success mb-4">
+            <div v-if="state.successMessages.enrichment && state.successMessages.enrichment.length > 0" class="alert alert-success mb-4">
               <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <span>{{ state.successMessages.enrichment }}</span>
             </div>
@@ -2653,14 +2653,15 @@
       baseUrl: '/api',
       
       // Generic request handler
-      async request(endpoint, method = 'GET', data = null) {
+      async request(endpoint, method = 'GET', data = null, extraOptions = {}) {
         const url = `${this.baseUrl}${endpoint}`;
         const options = {
           method,
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
-          }
+          },
+          ...extraOptions // Include any additional options like signal for AbortController
         };
         
         if (data && (method === 'POST' || method === 'PUT')) {
@@ -2741,8 +2742,8 @@
         },
         
         // Get batches for an upload
-        async getUploadedBatches(uploadId) {
-          return api.request(`/transactions/uploads/${uploadId}/batches`);
+        async getUploadedBatches(uploadId, options = {}) {
+          return api.request(`/transactions/uploads/${uploadId}/batches`, 'GET', null, options);
         },
         
         // Update file transactions with account info 
@@ -2859,17 +2860,19 @@
             saveSettings: false,
             enrichment: false
           },
+          // Use empty strings instead of null to prevent flash on load
+          // These will be hidden in the UI when empty
           successMessages: {
-            upload: null,
-            enrichment: null
+            upload: "",
+            enrichment: ""
           },
           errors: {
-            transactions: null,
-            categories: null,
-            reports: null,
-            settings: null,
-            upload: null,
-            enrichment: null
+            transactions: "",
+            categories: "",
+            reports: "",
+            settings: "",
+            upload: "",
+            enrichment: ""
           },
           // Enrichment flow state
           enrichment: {
@@ -4269,22 +4272,37 @@
           
           const retryMessage = retryCount > 0 ? ` (Retry ${retryCount}/${maxRetries})` : '';
           console.log(`🔄 [CLIENT] Force refreshing batches for upload: ${state.enrichment.currentUploadId}${retryMessage}`);
+          
+          // Set the loading state and ensure errors are cleared
           state.loading.enrichment = true;
           
+          // Create an independent controller for this request that we can abort
+          const controller = new AbortController();
+          const signal = controller.signal;
+          
+          // Set up a timeout to abort the request if it takes too long
+          const timeoutId = setTimeout(() => {
+            controller.abort();
+            console.warn('⚠️ [CLIENT] Batch refresh request aborted due to timeout');
+          }, 12000); // 12 second timeout
+          
           try {
-            // Make direct API call with timeout to prevent hanging requests
-            const fetchPromise = api.transactions.getUploadedBatches(state.enrichment.currentUploadId);
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Request timed out')), 15000)
+            console.log(`🔍 [CLIENT] Starting batch refresh request with timeout protection`);
+            
+            // Make the API request with abort signal
+            const result = await api.transactions.getUploadedBatches(
+              state.enrichment.currentUploadId, 
+              { signal }
             );
             
-            const result = await Promise.race([fetchPromise, timeoutPromise]);
+            // Clear the timeout since request completed normally
+            clearTimeout(timeoutId);
             
             if (result && result.batches && result.batches.length > 0) {
               console.log(`✅ [CLIENT] Successfully refreshed batches: found ${result.batches.length} batches`);
               state.enrichment.transactionBatches = result.batches;
               state.enrichment.statistics = result.statistics;
-              state.errors.enrichment = null;
+              state.errors.enrichment = "";
               
               // Set success message
               state.successMessages.enrichment = `Refreshed ${result.batches.length} batches successfully.`;
@@ -4304,6 +4322,8 @@
               // Add retry logic
               if (retryCount < maxRetries) {
                 console.log(`🔄 [CLIENT] Retrying batch refresh (${retryCount + 1}/${maxRetries})...`);
+                
+                // Ensure loading state is reset before retry
                 state.loading.enrichment = false;
                 
                 // Exponential backoff: wait longer between each retry
@@ -4317,9 +4337,30 @@
               return false;
             }
           } catch (error) {
+            // Clear the timeout to prevent double handling
+            clearTimeout(timeoutId);
+            
+            if (error.name === 'AbortError' || error.message.includes('abort')) {
+              console.error('🔴 [CLIENT] Batch refresh request aborted:', error);
+              state.errors.enrichment = 'Batch refresh timed out. Please try again.';
+              
+              // Special case for timeouts - try one more time with increased timeout
+              if (retryCount < maxRetries) {
+                console.log(`🔄 [CLIENT] Retrying after timeout (${retryCount + 1}/${maxRetries})...`);
+                state.loading.enrichment = false;
+                
+                // Wait a bit longer before retry after timeout
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                return await forceRefreshBatches(retryCount + 1, maxRetries);
+              }
+              
+              return false;
+            }
+            
             console.error('🔴 [CLIENT] Error refreshing batches:', error);
             
-            // Add retry logic for errors too
+            // Add retry logic for other errors
             if (retryCount < maxRetries) {
               console.log(`🔄 [CLIENT] Retrying batch refresh after error (${retryCount + 1}/${maxRetries})...`);
               state.loading.enrichment = false;
@@ -4334,7 +4375,8 @@
             state.errors.enrichment = `Failed to refresh batches: ${error.message}`;
             return false;
           } finally {
-            if (retryCount === maxRetries || !state.loading.enrichment) {
+            // Always ensure loading state is cleared when we're done
+            if (retryCount === maxRetries) {
               state.loading.enrichment = false;
             }
           }
