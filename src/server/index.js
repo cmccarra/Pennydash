@@ -9,6 +9,7 @@ const { initDB } = require('./db/sequelize');
 
 // Import routes
 const transactionRoutes = require('./routes/transactions.sequelize');
+const transactionReviewedRoutes = require('./routes/transactions-reviewed');
 const categoryRoutes = require('./routes/categories.sequelize');
 const reportRoutes = require('./routes/reports.sequelize');
 const settingsRoutes = require('./routes/settings.sequelize');
@@ -40,6 +41,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Use routes
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/transactions', transactionReviewedRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);

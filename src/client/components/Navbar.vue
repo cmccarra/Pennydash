@@ -92,6 +92,7 @@ export default defineComponent({
       { name: 'Dashboard', path: '/' },
       { name: 'Upload', path: '/upload' },
       { name: 'Transactions', path: '/transactions' },
+      { name: 'Review Queue', path: '/review-queue' },
       { name: 'Categories', path: '/categories' },
       { name: 'Settings', path: '/settings' }
     ];

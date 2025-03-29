@@ -6,6 +6,7 @@ import TransactionUpload from '../views/TransactionUpload.vue';
 import TransactionList from '../views/TransactionList.vue';
 import CategoryManagement from '../views/CategoryManagement.vue';
 import Settings from '../views/Settings.vue';
+import ReviewQueue from '../views/ReviewQueue.vue';
 
 // Define routes
 const routes = [
@@ -26,6 +27,12 @@ const routes = [
     name: 'Transactions',
     component: TransactionList,
     meta: { title: 'Transactions' }
+  },
+  {
+    path: '/review-queue',
+    name: 'ReviewQueue',
+    component: ReviewQueue,
+    meta: { title: 'Transaction Review Queue' }
   },
   {
     path: '/categories',

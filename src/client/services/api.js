@@ -449,9 +449,15 @@ export const transactionsApi = {
   
   // Review queue APIs
   getReviewQueue: (options = {}) => {
-    const { page = 1, limit = 50, confidenceThreshold = 0.7 } = options;
-    return fetchData(`/review-queue?page=${page}&limit=${limit}&confidenceThreshold=${confidenceThreshold}`);
-  }
+    const { page = 1, pageSize = 50, confidenceThreshold = 0.7 } = options;
+    return fetchData(`/review-queue?page=${page}&limit=${pageSize}&confidenceThreshold=${confidenceThreshold}`);
+  },
+  
+  // Mark a transaction as reviewed without updating its category
+  markAsReviewed: (transactionId) => putData(`/transactions/${transactionId}/reviewed`, { reviewed: true }),
+  
+  // Update transaction including its reviewed status
+  updateTransaction: (id, data) => putData(`/transactions/${id}`, data)
 };
 
 // Categories API
