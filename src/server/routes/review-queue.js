@@ -70,9 +70,25 @@ router.get('/', async (req, res) => {
     const totalPages = Math.ceil(totalCount / pageSize);
     
     // Return the transactions with pagination metadata
+    console.log(`[GET /review-queue] Found ${transactions.length} transactions that need review out of ${totalCount} total`);
+    
+    // Ensure we include the suggestedCategoryId as a fallback
+    const enhancedTransactions = transactions.map(tx => {
+      // If the tx is a Sequelize model instance, convert to plain object
+      const plainTx = tx instanceof Object && typeof tx.get === 'function' ? tx.get({ plain: true }) : tx;
+      
+      return {
+        ...plainTx,
+        // If there's no categoryId but there is a suggestedCategoryId, use that as initial value
+        categoryId: plainTx.categoryId || plainTx.suggestedCategoryId,
+        // Ensure confidence is available 
+        confidence: plainTx.categoryConfidence || 0
+      };
+    });
+    
     res.json({
       success: true,
-      transactions,
+      transactions: enhancedTransactions,
       pagination: {
         total: totalCount,
         page: pageNumber,

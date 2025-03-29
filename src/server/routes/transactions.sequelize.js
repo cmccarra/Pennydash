@@ -1667,45 +1667,85 @@ router.get('/batches/needs-enrichment', async (req, res) => {
 
 // Batch enrichment endpoint - update multiple transactions in a batch
 router.put('/batches/:batchId/enrich', async (req, res) => {
+  const { batchId } = req.params;
   try {
+    console.log(`⚡ [PUT /batches/${batchId}/enrich] - Starting batch enrichment process`);
+    
     const { Transaction, Category } = getModels();
-    const { batchId } = req.params;
     const enrichData = req.body;
     
     if (!batchId) {
       return res.status(400).json({ error: 'Batch ID is required' });
     }
     
-    // Verify the batch exists
-    const batchTransactions = await Transaction.findAll({
-      where: {
-        batchId: batchId
-      }
+    // Set a timeout for the entire operation
+    const operationTimeout = 30000; // 30 seconds
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Operation timed out')), operationTimeout);
     });
     
-    if (batchTransactions.length === 0) {
-      return res.status(404).json({ error: 'Batch not found' });
+    // Verify the batch exists with a timeout
+    let batchTransactions = [];
+    try {
+      const findBatchPromise = Transaction.findAll({
+        where: { batchId: batchId },
+        limit: 1000 // Add limit to prevent excessive loading
+      });
+      
+      batchTransactions = await Promise.race([
+        findBatchPromise,
+        new Promise((_, reject) => setTimeout(() => 
+          reject(new Error('Batch verification timed out')), 5000))
+      ]);
+      
+      console.log(`🔍 [PUT /batches/${batchId}/enrich] - Found ${batchTransactions.length} transactions in batch`);
+      
+      if (batchTransactions.length === 0) {
+        return res.status(404).json({ error: 'Batch not found' });
+      }
+    } catch (findError) {
+      console.error(`⚠️ [PUT /batches/${batchId}/enrich] - Error finding batch:`, findError);
+      
+      if (findError.message === 'Batch verification timed out') {
+        return res.status(408).json({
+          error: 'Timed out while verifying batch existence',
+          batchId: batchId,
+          timeoutType: 'verification'
+        });
+      }
+      
+      return res.status(500).json({ 
+        error: `Error finding batch: ${findError.message}`,
+        batchId: batchId 
+      });
     }
     
     // Check if we should generate AI category suggestions for this batch
     if (enrichData.generateSuggestions) {
-      console.log(`[PUT /batches/${batchId}/enrich] - Generating AI category suggestions for batch`);
+      console.log(`🧠 [PUT /batches/${batchId}/enrich] - Generating AI category suggestions for batch`);
       
       // Get confidence threshold from request or use default
       const confidenceThreshold = parseFloat(enrichData.confidenceThreshold) || 0.7;
       
       try {
-        // Generate suggestions for the batch
-        const suggestionResult = await categorySuggestionService.suggestCategoriesForBatch(
+        // Generate suggestions with a timeout
+        const suggestionPromise = categorySuggestionService.suggestCategoriesForBatch(
           batchTransactions, 
           confidenceThreshold
         );
         
-        console.log(`[PUT /batches/${batchId}/enrich] - Generated suggestions with avg confidence: ${suggestionResult.averageConfidence}`);
+        // Use a specific timeout for AI suggestion generation, which might take longer
+        const suggestionResult = await Promise.race([
+          suggestionPromise,
+          new Promise((_, reject) => setTimeout(() => 
+            reject(new Error('Category suggestion generation timed out')), 15000))
+        ]);
+        
+        console.log(`✓ [PUT /batches/${batchId}/enrich] - Generated suggestions with avg confidence: ${suggestionResult.averageConfidence}`);
         
         // If we have a suggested category with high confidence, auto-apply it
         if (suggestionResult.batchCategoryId && !suggestionResult.needsReview) {
-          console.log(`[PUT /batches/${batchId}/enrich] - Auto-applying category ${suggestionResult.batchCategoryId} with high confidence`);
+          console.log(`🔄 [PUT /batches/${batchId}/enrich] - Auto-applying category ${suggestionResult.batchCategoryId} with high confidence`);
           
           // Add the suggested category to the enrichment data
           enrichData.categoryId = suggestionResult.batchCategoryId;
@@ -1716,41 +1756,82 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
           // Also add detailed suggestions to response
           enrichData.suggestions = suggestionResult;
           
-          // We'll also update individual transaction suggestion data for better tracking
-          await Promise.all(suggestionResult.suggestions.map(async (suggestion) => {
-            if (suggestion.transactionId) {
-              await Transaction.update({
-                suggestedCategoryId: suggestion.categoryId,
-                categoryConfidence: suggestion.confidence,
-                suggestionApplied: suggestion.confidence >= confidenceThreshold,
-                needsReview: suggestion.confidence < confidenceThreshold
-              }, {
-                where: { id: suggestion.transactionId }
-              });
-            }
-          }));
+          // Update individual transactions with a timeout
+          try {
+            const updatePromises = suggestionResult.suggestions.map(suggestion => {
+              if (suggestion.transactionId) {
+                return Transaction.update({
+                  suggestedCategoryId: suggestion.categoryId,
+                  categoryConfidence: suggestion.confidence,
+                  suggestionApplied: suggestion.confidence >= confidenceThreshold,
+                  needsReview: suggestion.confidence < confidenceThreshold
+                }, {
+                  where: { id: suggestion.transactionId }
+                });
+              }
+              return Promise.resolve();
+            });
+            
+            // Use Promise.all with a timeout
+            await Promise.race([
+              Promise.all(updatePromises),
+              new Promise((_, reject) => setTimeout(() => 
+                reject(new Error('Individual updates timed out')), 10000))
+            ]);
+            
+            console.log(`✓ [PUT /batches/${batchId}/enrich] - Updated individual transaction suggestions`);
+          } catch (updateError) {
+            console.warn(`⚠️ [PUT /batches/${batchId}/enrich] - Individual update error:`, updateError.message);
+            // Continue despite this error
+          }
         } else {
-          console.log(`[PUT /batches/${batchId}/enrich] - Suggestions require manual review (confidence: ${suggestionResult.averageConfidence})`);
+          console.log(`🔍 [PUT /batches/${batchId}/enrich] - Suggestions require manual review (confidence: ${suggestionResult.averageConfidence})`);
           enrichData.aiSuggestions = suggestionResult.topCategories;
           enrichData.needsReview = true;
           
-          // Still update the individual transaction suggestion data for review
-          await Promise.all(suggestionResult.suggestions.map(async (suggestion) => {
-            if (suggestion.transactionId) {
-              await Transaction.update({
-                suggestedCategoryId: suggestion.categoryId,
-                categoryConfidence: suggestion.confidence,
-                suggestionApplied: false,
-                needsReview: true
-              }, {
-                where: { id: suggestion.transactionId }
-              });
-            }
-          }));
+          // Update individual transactions with a timeout
+          try {
+            const updatePromises = suggestionResult.suggestions.map(suggestion => {
+              if (suggestion.transactionId) {
+                return Transaction.update({
+                  suggestedCategoryId: suggestion.categoryId,
+                  categoryConfidence: suggestion.confidence,
+                  suggestionApplied: false,
+                  needsReview: true
+                }, {
+                  where: { id: suggestion.transactionId }
+                });
+              }
+              return Promise.resolve();
+            });
+            
+            // Use Promise.all with a timeout
+            await Promise.race([
+              Promise.all(updatePromises),
+              new Promise((_, reject) => setTimeout(() => 
+                reject(new Error('Individual reviews updates timed out')), 10000))
+            ]);
+            
+            console.log(`✓ [PUT /batches/${batchId}/enrich] - Updated individual transaction review flags`);
+          } catch (updateError) {
+            console.warn(`⚠️ [PUT /batches/${batchId}/enrich] - Individual update error:`, updateError.message);
+            // Continue despite this error
+          }
         }
       } catch (suggestionError) {
-        console.error(`[PUT /batches/${batchId}/enrich] - Error generating suggestions:`, suggestionError);
-        // Continue with the update anyway, just log the error
+        console.error(`⚠️ [PUT /batches/${batchId}/enrich] - Error generating suggestions:`, suggestionError);
+        
+        // If it's a timeout error, return a specific response
+        if (suggestionError.message === 'Category suggestion generation timed out') {
+          return res.status(408).json({
+            error: 'Timed out while generating category suggestions',
+            batchId: batchId,
+            timeoutType: 'suggestions',
+            partial: true // Indicate partial processing
+          });
+        }
+        
+        // Otherwise, log and continue with the update
       }
     }
     
@@ -1799,50 +1880,99 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
     // Update enrichment status
     updateData.enrichmentStatus = 'enriched';
     
-    console.log(`[PUT /batches/${batchId}/enrich] - Updating transactions with data:`, JSON.stringify(updateData));
+    console.log(`🔄 [PUT /batches/${batchId}/enrich] - Updating transactions with data:`, JSON.stringify(updateData));
     
-    // Update all transactions in the batch with better error tracking
-    const [updateCount] = await Transaction.update(updateData, {
-      where: {
-        batchId: batchId
-      }
-    });
-    
-    console.log(`[PUT /batches/${batchId}/enrich] - Updated ${updateCount} transactions`);
-    
-    if (updateCount === 0) {
-      console.warn(`[PUT /batches/${batchId}/enrich] - No transactions were updated, possible batch ID issue`);
-      
-      // Double-check if batch exists but update failed for some reason
-      const checkBatch = await Transaction.findAll({
-        attributes: ['id', 'batchId'],
-        where: {
-          batchId: batchId
-        },
-        limit: 1
+    // Update all transactions in the batch with a timeout
+    let updateCount = 0;
+    try {
+      const updatePromise = Transaction.update(updateData, {
+        where: { batchId: batchId }
       });
       
-      if (checkBatch.length === 0) {
-        console.error(`[PUT /batches/${batchId}/enrich] - Batch ID ${batchId} not found after initial check`);
-        return res.status(404).json({
-          error: `Batch ID ${batchId} not found in the database`
+      const updateResult = await Promise.race([
+        updatePromise,
+        new Promise((_, reject) => setTimeout(() => 
+          reject(new Error('Batch update timed out')), 10000))
+      ]);
+      
+      updateCount = updateResult[0];
+      console.log(`✓ [PUT /batches/${batchId}/enrich] - Updated ${updateCount} transactions`);
+      
+      if (updateCount === 0) {
+        console.warn(`⚠️ [PUT /batches/${batchId}/enrich] - No transactions were updated, possible batch ID issue`);
+        
+        // Double-check if batch exists but update failed for some reason
+        const checkBatch = await Transaction.findAll({
+          attributes: ['id', 'batchId'],
+          where: { batchId: batchId },
+          limit: 1
+        });
+        
+        if (checkBatch.length === 0) {
+          console.error(`⚠️ [PUT /batches/${batchId}/enrich] - Batch ID ${batchId} not found after initial check`);
+          return res.status(404).json({
+            error: `Batch ID ${batchId} not found in the database`
+          });
+        }
+      }
+    } catch (updateError) {
+      console.error(`⚠️ [PUT /batches/${batchId}/enrich] - Error updating batch:`, updateError);
+      
+      if (updateError.message === 'Batch update timed out') {
+        return res.status(408).json({
+          error: 'Timed out while updating batch transactions',
+          batchId: batchId,
+          timeoutType: 'batch_update',
+          partial: true
         });
       }
+      
+      // For other errors, continue to try to return some data
     }
     
-    // Get the updated transactions with full category data
-    const updatedTransactions = await Transaction.findAll({
-      where: {
-        batchId: batchId
-      },
-      include: [
-        { model: Category, as: 'category' },
-        { model: Category, as: 'subcategory', required: false }
-      ],
-      order: [['date', 'DESC']]
-    });
-    
-    console.log(`[PUT /batches/${batchId}/enrich] - Returning ${updatedTransactions.length} enriched transactions`);
+    // Get the updated transactions with full category data, with a timeout
+    let updatedTransactions = [];
+    try {
+      const findUpdatedPromise = Transaction.findAll({
+        where: { batchId: batchId },
+        include: [
+          { model: Category, as: 'category' },
+          { model: Category, as: 'subcategory', required: false }
+        ],
+        order: [['date', 'DESC']]
+      });
+      
+      updatedTransactions = await Promise.race([
+        findUpdatedPromise,
+        new Promise((_, reject) => setTimeout(() => 
+          reject(new Error('Finding updated transactions timed out')), 8000))
+      ]);
+      
+      console.log(`✓ [PUT /batches/${batchId}/enrich] - Retrieved ${updatedTransactions.length} updated transactions`);
+    } catch (findError) {
+      console.error(`⚠️ [PUT /batches/${batchId}/enrich] - Error retrieving updated transactions:`, findError);
+      
+      if (findError.message === 'Finding updated transactions timed out') {
+        // If we can't get updated transactions, return a simplified response with just the update count
+        return res.json({
+          success: true,
+          message: `Enriched ${updateCount} transactions (retrieval timed out)`,
+          batchId,
+          partial: true,
+          timedOut: true,
+          updateCount
+        });
+      }
+      
+      // For other errors, try to return a meaningful response with minimal data
+      return res.json({
+        success: true,
+        message: `Batch enriched but detailed information unavailable`,
+        batchId,
+        error: findError.message,
+        updateCount
+      });
+    }
     
     // Calculate statistics for the batch
     const statistics = calculateBatchStatistics(updatedTransactions);
@@ -1866,12 +1996,14 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
       response.needsReview = enrichData.needsReview;
     }
     
+    console.log(`✓ [PUT /batches/${batchId}/enrich] - Successfully completed batch enrichment`);
     res.json(response);
   } catch (error) {
-    console.error(`[PUT /batches/${batchId}/enrich] - Error enriching batch:`, error);
+    console.error(`❌ [PUT /batches/${batchId}/enrich] - Error enriching batch:`, error);
     res.status(500).json({ 
       success: false,
-      error: `Failed to enrich batch: ${error.message}` 
+      error: `Failed to enrich batch: ${error.message}`,
+      batchId
     });
   }
 });
@@ -2199,10 +2331,15 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
     
     console.log(`🔍 [SERVER] Updating transactions for uploadId: ${uploadId}`);
     
+    // Set a timeout for the database operations (to prevent hanging)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Database operation timed out')), 15000);
+    });
+    
     // We need to handle errors more gracefully so the client doesn't hang
     try {
-      // Update all transactions for this upload
-      const [updatedCount] = await Transaction.update(
+      // Create a promise that updates the transactions
+      const updatePromise = Transaction.update(
         { enrichmentStatus: 'completed' },
         {
           where: {
@@ -2210,6 +2347,9 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
           }
         }
       );
+      
+      // Race the update against the timeout
+      const [updatedCount] = await Promise.race([updatePromise, timeoutPromise]);
       
       console.log(`✅ [SERVER] Updated ${updatedCount} transactions with completed status`);
       
@@ -2219,20 +2359,54 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
       }
     } catch (updateError) {
       console.error(`⚠️ [SERVER] Error updating transaction status:`, updateError);
-      // Continue processing despite the error - we'll try to return whatever data we can
+      // If it's a timeout, we should still return some response
+      if (updateError.message === 'Database operation timed out') {
+        console.warn(`⚠️ [SERVER] Database update timed out - returning partial response`);
+        return res.json({
+          message: `Completed upload process (update timed out)`,
+          uploadId,
+          status: 'completed',
+          partial: true,
+          timedOut: true
+        });
+      }
+      // Continue processing despite other errors - we'll try to return whatever data we can
     }
     
-    // Get the updated transactions
-    const transactions = await Transaction.findAll({
-      where: {
-        uploadId: uploadId
+    // Get the updated transactions (with a timeout)
+    let transactions = [];
+    try {
+      const findPromise = Transaction.findAll({
+        where: {
+          uploadId: uploadId
+        },
+        limit: 1000 // Limit to prevent excessive data loading
+      });
+      
+      // Race the find operation against a timeout
+      transactions = await Promise.race([
+        findPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Find operation timed out')), 5000))
+      ]);
+      
+      console.log(`🔍 [SERVER] Found ${transactions.length} transactions for uploadId: ${uploadId}`);
+    } catch (findError) {
+      console.error(`⚠️ [SERVER] Error retrieving transactions:`, findError);
+      // If it's a timeout, we should still return some response
+      if (findError.message === 'Find operation timed out') {
+        console.warn(`⚠️ [SERVER] Transaction retrieval timed out - returning simplified response`);
+        return res.json({
+          message: `Completed upload process (retrieval timed out)`,
+          uploadId,
+          status: 'completed',
+          partial: true,
+          timedOut: true
+        });
       }
-    });
+    }
     
-    console.log(`🔍 [SERVER] Found ${transactions.length} transactions for uploadId: ${uploadId}`);
-    
-    // Get unique batch IDs
-    const batchIds = [...new Set(transactions.map(t => t.batchId).filter(Boolean))];
+    // Get unique batch IDs (safely)
+    const batchIds = [...new Set((transactions || []).map(t => t.batchId).filter(Boolean))];
     console.log(`🔍 [SERVER] Found ${batchIds.length} unique batch IDs`);
     
     const response = {
@@ -2246,7 +2420,11 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error('Error completing upload:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: error.message,
+      uploadId: req.params.uploadId,
+      status: 'error'
+    });
   }
 });
 

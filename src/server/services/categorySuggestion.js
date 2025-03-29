@@ -35,7 +35,53 @@ class CategorySuggestionService {
       
       // Skip training if there are not enough categorized transactions
       if (categorizedTransactions.length < 5) {
-        console.log('Not enough categorized transactions to train classifier');
+        console.log('Not enough categorized transactions to train classifier. Found:', categorizedTransactions.length);
+        
+        // Create some default categorizations if there are categories but not enough transactions
+        const categories = await Category.findAll();
+        
+        if (categories.length > 0) {
+          console.log('Using default categorizations with available categories');
+          
+          // Default training data - common terms for each category
+          const defaultTraining = {
+            'Food & Dining': ['restaurant', 'cafe', 'coffee', 'diner', 'food', 'grocery', 'meal', 'pizza', 'burger', 'sushi'],
+            'Housing': ['rent', 'mortgage', 'property', 'home', 'apartment', 'condo', 'housing', 'maintenance'],
+            'Transportation': ['gas', 'fuel', 'car', 'auto', 'vehicle', 'bus', 'train', 'transit', 'uber', 'lyft', 'taxi'],
+            'Entertainment': ['movie', 'theatre', 'concert', 'entertainment', 'netflix', 'spotify', 'subscription', 'streaming'],
+            'Shopping': ['amazon', 'walmart', 'target', 'shopping', 'store', 'retail', 'clothes', 'purchase'],
+            'Utilities': ['electric', 'water', 'gas', 'power', 'utility', 'bill', 'phone', 'internet', 'cable', 'telecom'],
+            'Travel': ['hotel', 'flight', 'airline', 'travel', 'vacation', 'trip', 'airbnb', 'booking'],
+            'Income': ['salary', 'paycheck', 'deposit', 'income', 'payment', 'wage', 'direct deposit', 'employer'],
+            'Health': ['doctor', 'medical', 'health', 'pharmacy', 'hospital', 'dental', 'insurance'],
+            'Education': ['school', 'college', 'university', 'tuition', 'course', 'education', 'student', 'loan']
+          };
+          
+          this.classifier = new natural.BayesClassifier();
+          
+          // For each category, add default training terms if there's a similar category
+          for (const category of categories) {
+            // Try to find a matching default category
+            const matchingDefaultCategory = Object.keys(defaultTraining).find(
+              defCat => category.name.toLowerCase().includes(defCat.toLowerCase()) || 
+                        defCat.toLowerCase().includes(category.name.toLowerCase())
+            );
+            
+            if (matchingDefaultCategory) {
+              // Add training data for this category
+              for (const term of defaultTraining[matchingDefaultCategory]) {
+                this.classifier.addDocument(term, category.id);
+              }
+            }
+          }
+          
+          // Train the classifier
+          this.classifier.train();
+          this.trained = true;
+          console.log('Trained classifier with default data for available categories');
+          return true;
+        }
+        
         this.trained = false;
         return false;
       }
@@ -203,6 +249,56 @@ class CategorySuggestionService {
    * @returns {Promise<Object>} Object with suggested categories and confidence scores
    */
   async suggestCategoriesForBatch(transactions, confidenceThreshold = 0.7) {
+    console.log(`⏱️ Starting category suggestion for batch of ${transactions.length} transactions with timeout protection`);
+    
+    // Set a processing timeout to prevent hanging (30 seconds should be more than enough)
+    const processingTimeout = 30000;
+    let timeoutId;
+    
+    // Create a promise that will reject after the timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        console.warn(`⚠️ Category suggestion processing timed out after ${processingTimeout/1000} seconds`);
+        reject(new Error('Category suggestion processing timed out after 30 seconds'));
+      }, processingTimeout);
+    });
+    
+    // Create the actual processing promise
+    const processingPromise = this._processSuggestCategoriesForBatch(transactions, confidenceThreshold);
+    
+    try {
+      // Race the processing against the timeout
+      const result = await Promise.race([processingPromise, timeoutPromise]);
+      clearTimeout(timeoutId); // Clear the timeout if processing completed successfully
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId); // Make sure to clear the timeout in case of error
+      console.error('Error in category suggestion with timeout:', error);
+      
+      // Return a degraded but useful response
+      return {
+        suggestions: transactions.map(tx => ({
+          transactionId: tx.id,
+          categoryId: null,
+          confidence: 0,
+          source: 'timeout',
+          needsReview: true
+        })),
+        needsReview: true,
+        confidence: 0,
+        averageConfidence: 0,
+        timedOut: true,
+        message: `Category suggestion processing error: ${error.message}`
+      };
+    }
+  }
+  
+  /**
+   * Internal method to process batch category suggestions
+   * Separated from public method to enable timeout wrapping
+   * @private
+   */
+  async _processSuggestCategoriesForBatch(transactions, confidenceThreshold = 0.7) {
     try {
       // Make sure the classifier is trained
       if (!this.trained) {

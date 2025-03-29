@@ -60,8 +60,8 @@
                     </select>
                   </td>
                   <td>
-                    <div class="radial-progress text-xs" :class="getConfidenceColor(tx.confidence)" :style="{ '--value': tx.confidence * 100 }">
-                      {{ Math.round(tx.confidence * 100) }}%
+                    <div class="radial-progress text-xs" :class="getConfidenceColor(tx.categoryConfidence || tx.confidence || 0)" :style="{ '--value': (tx.categoryConfidence || tx.confidence || 0) * 100 }">
+                      {{ Math.round((tx.categoryConfidence || tx.confidence || 0) * 100) }}%
                     </div>
                   </td>
                   <td>
@@ -135,7 +135,9 @@ export default {
 
     const fetchCategories = async () => {
       try {
-        const response = await categoriesApi.getCategories();
+        console.log('Fetching categories...');
+        const response = await categoriesApi.getAll();
+        console.log('Categories response:', response);
         categories.value = response;
       } catch (err) {
         console.error('Failed to fetch categories:', err);
@@ -153,29 +155,66 @@ export default {
           pageSize: reviewQueue.pageSize 
         });
         
-        const response = await transactionsApi.getReviewQueue({ 
+        // Add a timeout to the API call to prevent hanging UI
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        
+        const fetchPromise = transactionsApi.getReviewQueue({ 
           page: reviewQueue.page, 
           pageSize: reviewQueue.pageSize 
         });
         
+        // Race the fetch against a timeout
+        const response = await Promise.race([
+          fetchPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Review queue request timed out')), 15000))
+        ]);
+        
+        // Clear the timeout
+        clearTimeout(timeoutId);
+        
         console.log('Review queue response:', response);
         
-        reviewQueue.items = response.transactions || [];
-        reviewQueue.totalItems = response.pagination?.total || 0;
+        if (response && response.success) {
+          reviewQueue.items = response.transactions || [];
+          reviewQueue.totalItems = response.pagination?.total || 0;
+          
+          // Add client-side pagination data
+          reviewQueue.page = response.pagination?.page || 1;
+          reviewQueue.pageSize = response.pagination?.pageSize || 50;
+          reviewQueue.totalPages = response.pagination?.totalPages || 1;
+          
+          console.log(`Loaded ${reviewQueue.items.length} transactions that need review (${reviewQueue.totalItems} total)`);
+        } else {
+          console.warn('Review queue response was not successful:', response);
+          error.value = 'Failed to load review queue data. Response format may be incorrect.';
+        }
       } catch (err) {
         console.error('Failed to fetch review queue:', err);
-        error.value = 'Failed to load transactions for review. Please try again later.';
+        
+        if (err.name === 'AbortError' || err.message.includes('timeout')) {
+          error.value = 'Request timed out. The server might be busy processing a large number of transactions.';
+        } else {
+          error.value = `Failed to load transactions for review: ${err.message}`;
+        }
       } finally {
         loading.value = false;
       }
     };
 
     const saveReviewedTransaction = async (transaction) => {
+      loading.value = true;
       try {
+        console.log(`Saving transaction ${transaction.id} with category ${transaction.categoryId}`);
+        
         await transactionsApi.updateTransaction(transaction.id, {
           categoryId: transaction.categoryId,
           reviewed: true
         });
+        
+        console.log(`Successfully updated transaction ${transaction.id}`);
+        
         // Remove from the local list
         reviewQueue.items = reviewQueue.items.filter(item => item.id !== transaction.id);
         reviewQueue.totalItems--;
@@ -187,13 +226,29 @@ export default {
         }
       } catch (err) {
         console.error('Failed to update transaction:', err);
-        alert('Failed to save changes. Please try again.');
+        
+        // More user-friendly error message based on the error type
+        if (err.name === 'AbortError' || err.message.includes('timeout')) {
+          alert('The request timed out. The server might be busy, but your changes may have been saved.');
+        } else if (err.message.includes('404')) {
+          alert('Transaction not found. It might have been deleted or already processed.');
+        } else {
+          alert(`Failed to save changes: ${err.message}. Please try again.`);
+        }
+      } finally {
+        loading.value = false;
       }
     };
 
     const removeFromReviewQueue = async (transactionId) => {
+      loading.value = true;
       try {
+        console.log(`Marking transaction ${transactionId} as reviewed without changing category`);
+        
         await transactionsApi.markAsReviewed(transactionId);
+        
+        console.log(`Successfully marked transaction ${transactionId} as reviewed`);
+        
         // Remove from the local list
         reviewQueue.items = reviewQueue.items.filter(item => item.id !== transactionId);
         reviewQueue.totalItems--;
@@ -205,7 +260,17 @@ export default {
         }
       } catch (err) {
         console.error('Failed to remove transaction from review queue:', err);
-        alert('Failed to remove transaction from review queue. Please try again.');
+        
+        // More user-friendly error message based on the error type
+        if (err.name === 'AbortError' || err.message.includes('timeout')) {
+          alert('The request timed out. The server might be busy, but your changes may have been saved.');
+        } else if (err.message.includes('404')) {
+          alert('Transaction not found. It might have been deleted or already processed.');
+        } else {
+          alert(`Failed to remove from review queue: ${err.message}. Please try again.`);
+        }
+      } finally {
+        loading.value = false;
       }
     };
 

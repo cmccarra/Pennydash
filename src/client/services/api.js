@@ -454,10 +454,180 @@ export const transactionsApi = {
   },
   
   // Mark a transaction as reviewed without updating its category
-  markAsReviewed: (transactionId) => putData(`/transactions/${transactionId}/reviewed`, { reviewed: true }),
+  markAsReviewed: async (transactionId) => {
+    console.log(`🔍 [API] Marking transaction ${transactionId} as reviewed`);
+    
+    let retryCount = 0;
+    const maxRetries = 3;
+    const baseTimeout = 10000; // 10 seconds
+    let lastError = null;
+    
+    // Try the operation with retries
+    while (retryCount <= maxRetries) {
+      try {
+        // Add exponential backoff delay for retries
+        if (retryCount > 0) {
+          const delay = Math.min(Math.pow(2, retryCount - 1) * 1000, 10000);
+          console.log(`🔄 [API] Retry ${retryCount}/${maxRetries} for marking transaction as reviewed after ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        // Create a controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), baseTimeout);
+        
+        console.log(`⏱️ [API] Setting timeout for review action to ${baseTimeout}ms`);
+        
+        const response = await fetch(`${API_URL}/transactions/${transactionId}/reviewed`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reviewed: true }),
+          signal: controller.signal
+        });
+        
+        // Clear timeout
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          let errorMessage = `HTTP error ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch (e) {
+            // If we can't parse JSON, try to get text
+            try {
+              const textError = await response.text();
+              if (textError) errorMessage = textError;
+            } catch (textError) {
+              // Do nothing
+            }
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ [API] Successfully marked transaction ${transactionId} as reviewed`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ [API] Error marking transaction ${transactionId} as reviewed (attempt ${retryCount + 1}/${maxRetries + 1}):`, error);
+        
+        // For AbortError (timeout), retry
+        if (error.name === 'AbortError') {
+          console.warn(`⏱️ [API] Review operation timed out after ${baseTimeout}ms`);
+          retryCount++;
+          continue;
+        }
+        
+        // For server errors (500s), retry
+        if (error.message && error.message.includes('HTTP error 5')) {
+          console.warn(`⚠️ [API] Server error, will retry`);
+          retryCount++;
+          continue;
+        }
+        
+        // For other errors, only retry on network issues, not on 4xx client errors
+        if (error.name === 'TypeError' || (error.message && !error.message.includes('HTTP error 4'))) {
+          retryCount++;
+          continue;
+        }
+        
+        // Client errors should fail immediately
+        break;
+      }
+    }
+    
+    // If we've exhausted all retries, throw the last error
+    throw lastError || new Error('Failed to mark transaction as reviewed after multiple attempts');
+  },
   
   // Update transaction including its reviewed status
-  updateTransaction: (id, data) => putData(`/transactions/${id}`, data)
+  updateTransaction: async (id, data) => {
+    console.log(`🔍 [API] Updating transaction ${id} with data:`, data);
+    
+    let retryCount = 0;
+    const maxRetries = 3;
+    const baseTimeout = 10000; // 10 seconds
+    let lastError = null;
+    
+    // Try the operation with retries
+    while (retryCount <= maxRetries) {
+      try {
+        // Add exponential backoff delay for retries
+        if (retryCount > 0) {
+          const delay = Math.min(Math.pow(2, retryCount - 1) * 1000, 10000);
+          console.log(`🔄 [API] Retry ${retryCount}/${maxRetries} for updating transaction after ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        // Create a controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), baseTimeout);
+        
+        console.log(`⏱️ [API] Setting timeout for transaction update to ${baseTimeout}ms`);
+        
+        const response = await fetch(`${API_URL}/transactions/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+          signal: controller.signal
+        });
+        
+        // Clear timeout
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          let errorMessage = `HTTP error ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch (e) {
+            // If we can't parse JSON, try to get text
+            try {
+              const textError = await response.text();
+              if (textError) errorMessage = textError;
+            } catch (textError) {
+              // Do nothing
+            }
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ [API] Successfully updated transaction ${id}`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ [API] Error updating transaction ${id} (attempt ${retryCount + 1}/${maxRetries + 1}):`, error);
+        
+        // For AbortError (timeout), retry
+        if (error.name === 'AbortError') {
+          console.warn(`⏱️ [API] Transaction update timed out after ${baseTimeout}ms`);
+          retryCount++;
+          continue;
+        }
+        
+        // For server errors (500s), retry
+        if (error.message && error.message.includes('HTTP error 5')) {
+          console.warn(`⚠️ [API] Server error, will retry`);
+          retryCount++;
+          continue;
+        }
+        
+        // For other errors, only retry on network issues, not on 4xx client errors
+        if (error.name === 'TypeError' || (error.message && !error.message.includes('HTTP error 4'))) {
+          retryCount++;
+          continue;
+        }
+        
+        // Client errors should fail immediately
+        break;
+      }
+    }
+    
+    // If we've exhausted all retries, throw the last error
+    throw lastError || new Error('Failed to update transaction after multiple attempts');
+  }
 };
 
 // Categories API
