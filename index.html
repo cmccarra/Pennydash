@@ -2055,8 +2055,40 @@
           
           <!-- Batching Step -->
           <div v-else-if="state.enrichment.currentStep === 'batching'" class="mb-4">
-            <h4 class="font-semibold text-md mb-2">Transaction Batches</h4>
+            <div class="flex justify-between items-center mb-2">
+              <h4 class="font-semibold text-md">Transaction Batches</h4>
+              <button class="btn btn-sm btn-ghost" @click="forceRefreshBatches" title="Refresh batch data">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </button>
+            </div>
+            
             <p class="text-sm mb-4">We've organized your transactions into groups to make them easier to categorize and enrich.</p>
+            
+            <!-- Error message for batching issues -->
+            <div v-if="state.errors.enrichment" class="alert alert-error mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <div>
+                <span>{{ state.errors.enrichment }}</span>
+              </div>
+            </div>
+            
+            <!-- Success message -->
+            <div v-if="state.successMessages.enrichment" class="alert alert-success mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span>{{ state.successMessages.enrichment }}</span>
+            </div>
+            
+            <!-- Empty state if no batches found -->
+            <div v-if="!state.enrichment.transactionBatches || state.enrichment.transactionBatches.length === 0" class="alert alert-warning mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              <div>
+                <span>No batches found. This might be due to a data processing issue.</span>
+                <button class="btn btn-xs btn-warning ml-2" @click="forceRefreshBatches">Refresh Batches</button>
+              </div>
+            </div>
             
             <!-- Card-based batch display with sample transactions and category recommendations -->
             <div class="grid grid-cols-1 gap-4">
@@ -2176,15 +2208,20 @@
             </div>
             
             <div class="flex justify-end mt-6">
+              <!-- Added error message display when button is disabled -->
+              <div v-if="state.enrichment.transactionBatches.length === 0" class="mr-4 text-error">
+                No batches available. If you see this for too long, refresh the page or try uploading again.
+              </div>
               <button 
                 class="btn btn-primary" 
                 @click="startEnrichAllBatches()"
-                :disabled="state.enrichment.transactionBatches.length === 0"
+                :disabled="state.enrichment.transactionBatches.length === 0 || state.loading.enrichment"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <span v-if="state.loading.enrichment" class="loading loading-spinner loading-sm mr-2"></span>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                 </svg>
-                Enrich All Batches
+                {{ state.loading.enrichment ? 'Processing...' : 'Enrich All Batches' }}
               </button>
             </div>
           </div>
@@ -2811,9 +2848,9 @@
           enrichment: {
             showModal: false,
             currentUploadId: null,
-            transactionBatches: [],
-            processedBatches: [],
-            pendingBatches: [],
+            transactionBatches: [], // All batches for the current upload
+            processedBatches: [], // Batch IDs that have been processed
+            pendingBatches: [], // Batch IDs that need to be processed
             currentStep: 'accountSetup', // 'accountSetup', 'batching', 'enrichment', 'complete'
             progress: 0,
             statistics: {
@@ -2822,10 +2859,18 @@
               sources: []
             },
             uploadedFiles: [], // Files with account info (source and type)
-            currentBatch: null,
-            currentBatchIndex: 0,
+            currentBatch: null, // The batch currently being viewed in the UI
+            currentBatchIndex: 0, // Index of the current batch
             showCategorySelector: false,
-            suggestedCategory: null
+            suggestedCategory: null,
+            debugInfo: { // For diagnosis and debugging
+              lastApiRequest: null,
+              lastApiResponse: null,
+              fetchTime: null,
+              batchCount: 0,
+              networkErrors: 0,
+              retryCount: 0
+            }
           },
           
           // Transaction Review Modal state
@@ -4040,14 +4085,84 @@
           }
         };
         
+        // Debugging function to log batch state
+        const debugBatchState = () => {
+          console.log('🔍 [CLIENT] Debug Batch State:', {
+            currentStep: state.enrichment.currentStep,
+            batchCount: state.enrichment.transactionBatches?.length || 0,
+            pendingBatchCount: state.enrichment.pendingBatches?.length || 0,
+            processedBatchCount: state.enrichment.processedBatches?.length || 0,
+            firstBatchId: state.enrichment.transactionBatches?.[0]?.batchId || 'none',
+            currentBatchId: state.enrichment.currentBatch?.batchId || 'none',
+            uploadId: state.enrichment.currentUploadId,
+            hasCurrentBatch: !!state.enrichment.currentBatch,
+            progress: state.enrichment.progress
+          });
+          
+          // Check if batches contain transactions
+          if (state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
+            const txCounts = state.enrichment.transactionBatches.map(b => 
+              b.transactions?.length || 0
+            );
+            console.log('🔍 [CLIENT] Transaction counts per batch:', txCounts);
+          }
+        };
+        
+        // Force refresh batches in case of issues
+        const forceRefreshBatches = async () => {
+          if (!state.enrichment.currentUploadId) {
+            console.error('🔴 [CLIENT] Cannot refresh batches: No upload ID');
+            return;
+          }
+          
+          console.log('🔄 [CLIENT] Force refreshing batches for upload:', state.enrichment.currentUploadId);
+          state.loading.enrichment = true;
+          
+          try {
+            // Make direct API call
+            const result = await api.transactions.getUploadedBatches(state.enrichment.currentUploadId);
+            if (result && result.batches && result.batches.length > 0) {
+              console.log(`✅ [CLIENT] Successfully refreshed batches: found ${result.batches.length} batches`);
+              state.enrichment.transactionBatches = result.batches;
+              state.enrichment.statistics = result.statistics;
+              state.errors.enrichment = null;
+              
+              // Set success message
+              state.successMessages.enrichment = `Refreshed ${result.batches.length} batches successfully.`;
+              return true;
+            } else {
+              console.warn('⚠️ [CLIENT] Refresh returned no batches');
+              return false;
+            }
+          } catch (error) {
+            console.error('🔴 [CLIENT] Error refreshing batches:', error);
+            state.errors.enrichment = `Failed to refresh batches: ${error.message}`;
+            return false;
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
         // Start process to enrich all batches at once
-        const startEnrichAllBatches = () => {
+        const startEnrichAllBatches = async () => {
           console.log('🔍 [CLIENT] Starting enrichment for all batches');
+          debugBatchState();
           
           // Validate that we have batches to process
           if (!state.enrichment.transactionBatches || state.enrichment.transactionBatches.length === 0) {
             console.warn('⚠️ [CLIENT] Cannot start enrichment: No batches available');
-            state.errors.enrichment = 'No batches available for enrichment.';
+            
+            // Try to refresh batches once before showing error
+            if (await forceRefreshBatches()) {
+              // If refresh succeeded and we have batches now, try again
+              if (state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
+                console.log('✅ [CLIENT] Successfully refreshed batches, retrying enrichment');
+                setTimeout(() => startEnrichAllBatches(), 500); // Try again after a short delay
+                return;
+              }
+            }
+            
+            state.errors.enrichment = 'No batches available for enrichment. Try refreshing the page.';
             return;
           }
           
@@ -4092,6 +4207,9 @@
             state.enrichment.progress = 75;
             state.enrichment.currentStep = 'enrichment';
             console.log(`✅ [CLIENT] Successfully moved to enrichment step`);
+            
+            // Final debug log after state changes
+            debugBatchState();
           } catch (error) {
             console.error('🔴 [CLIENT] Error starting enrichment:', error);
             state.errors.enrichment = `Failed to start enrichment: ${error.message}`;
