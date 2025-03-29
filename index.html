@@ -1958,48 +1958,117 @@
         </div>
         
         <div v-else>
+          <!-- Account Setup Step -->
+          <div v-if="state.enrichment.currentStep === 'accountSetup'" class="mb-4">
+            <h4 class="font-semibold text-md mb-2">Account Information</h4>
+            <p class="text-sm mb-4">Before we process your transactions, please provide some information about the account they belong to.</p>
+            
+            <div v-for="(file, index) in state.enrichment.uploadedFiles" :key="index" class="card bg-base-200 mb-4">
+              <div class="card-body">
+                <h5 class="card-title text-sm font-medium">File: {{ file.fileName }}</h5>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Account Source</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      class="input input-bordered w-full" 
+                      placeholder="e.g. RBC Chequing, Scotiabank Visa"
+                      v-model="file.accountSource"
+                    />
+                  </div>
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Account Type</span>
+                    </label>
+                    <select class="select select-bordered w-full" v-model="file.accountType">
+                      <option value="" disabled>Select account type</option>
+                      <option value="bank">Debit Account / Checking</option>
+                      <option value="credit">Credit Card</option>
+                      <option value="savings">Savings</option>
+                      <option value="investment">Investment</option>
+                      <option value="wallet">Digital Wallet</option>
+                      <option value="cash">Cash</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex justify-end mt-6">
+              <button 
+                class="btn btn-primary" 
+                @click="processAccountSetup()"
+                :disabled="!areAccountDetailsComplete()"
+              >
+                Continue to Review
+              </button>
+            </div>
+          </div>
+          
           <!-- Batching Step -->
-          <div v-if="state.enrichment.currentStep === 'batching'" class="mb-4">
+          <div v-else-if="state.enrichment.currentStep === 'batching'" class="mb-4">
             <h4 class="font-semibold text-md mb-2">Transaction Batches</h4>
             <p class="text-sm mb-4">We've organized your transactions into groups to make them easier to categorize and enrich.</p>
             
-            <div class="overflow-x-auto">
-              <table class="table w-full">
-                <thead>
-                  <tr>
-                    <th>Batch</th>
-                    <th>Transactions</th>
-                    <th>Amount</th>
-                    <th>Date Range</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(batch, index) in state.enrichment.transactionBatches" :key="batch.batchId">
-                    <td>Batch {{ index + 1 }}</td>
-                    <td>{{ batch.transactions?.length || batch.transactionCount || 0 }} transactions</td>
-                    <td>
-                      <span :class="batch.statistics?.netDirection === 'negative' ? 'text-error' : 'text-success'">
-                        {{ batch.statistics?.netDirection === 'negative' ? '- ' : '+ ' }}{{ formatCurrency(batch.statistics?.netAmount || 0) }}
-                      </span>
-                    </td>
-                    <td>
+            <!-- New Card-based batch display with sample transactions -->
+            <div class="grid grid-cols-1 gap-4">
+              <div v-for="(batch, index) in state.enrichment.transactionBatches" :key="batch.batchId" 
+                   class="card bg-base-200">
+                <div class="card-body">
+                  <div class="flex justify-between items-center">
+                    <h5 class="card-title text-lg">
+                      <span v-if="getBatchDescription(batch)">{{ getBatchDescription(batch) }}</span>
+                      <span v-else>Batch {{ index + 1 }}</span>
+                    </h5>
+                    <span class="badge badge-lg" :class="batch.statistics?.netDirection === 'negative' ? 'badge-error' : 'badge-success'">
+                      {{ batch.statistics?.netDirection === 'negative' ? '- ' : '+ ' }}{{ formatCurrency(batch.statistics?.netAmount || 0) }}
+                    </span>
+                  </div>
+                  
+                  <div class="flex flex-wrap gap-2 mb-2">
+                    <div class="badge badge-outline">{{ batch.transactions?.length || batch.transactionCount || 0 }} transactions</div>
+                    <div class="badge badge-outline">
                       <span v-if="batch.statistics?.dateRange?.from && batch.statistics?.dateRange?.to">
                         {{ formatDate(batch.statistics.dateRange.from) }} to {{ formatDate(batch.statistics.dateRange.to) }}
                       </span>
-                      <span v-else>N/A</span>
-                    </td>
-                    <td>
-                      <button 
-                        class="btn btn-sm btn-primary"
-                        @click="state.enrichment.currentStep = 'enrichment'; state.enrichment.pendingBatches = [batch.batchId]"
-                      >
-                        Enrich
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                      <span v-else>No date range</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Sample transactions -->
+                  <div class="overflow-x-auto mt-2">
+                    <table class="table table-compact w-full">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Description</th>
+                          <th>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="transaction in getSampleTransactions(batch)" :key="transaction.id">
+                          <td>{{ formatDate(transaction.date) }}</td>
+                          <td>{{ transaction.description }}</td>
+                          <td :class="transaction.type === 'expense' ? 'text-error' : 'text-success'">
+                            {{ transaction.type === 'expense' ? '- ' : '+ ' }}{{ formatCurrency(transaction.amount) }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  <div class="card-actions justify-end mt-4">
+                    <button 
+                      class="btn btn-primary"
+                      @click="reviewBatch(batch.batchId)"
+                    >
+                      Review Transactions
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div class="mt-4">
@@ -2032,62 +2101,177 @@
             </div>
           </div>
           
-          <!-- Enrichment Step -->
+          <!-- Enrichment Step (Tinder-style) -->
           <div v-else-if="state.enrichment.currentStep === 'enrichment'" class="mb-4">
-            <h4 class="font-semibold text-md mb-2">Enrich Transactions</h4>
-            <p class="text-sm mb-4">Add categories and additional information to your transactions.</p>
+            <h4 class="font-semibold text-md mb-2">Batch Review</h4>
+            <p class="text-sm mb-4">Swipe through each batch to quickly review and categorize similar transactions.</p>
             
-            <div v-if="state.enrichment.pendingBatches && state.enrichment.pendingBatches.length > 0">
-              <div class="form-control mb-4">
-                <label class="label">
-                  <span class="label-text">Category</span>
-                </label>
-                <select class="select select-bordered w-full" v-model="batchCategoryId">
-                  <option value="" disabled>Select a category</option>
-                  <optgroup label="Income Categories">
-                    <option v-for="category in getIncomeCategories(state.categories)" :key="category.id" :value="category.id">
-                      {{ category.name }}
-                    </option>
-                  </optgroup>
-                  <optgroup label="Expense Categories">
-                    <option v-for="category in getExpenseCategories(state.categories)" :key="category.id" :value="category.id">
-                      {{ category.name }}
-                    </option>
-                  </optgroup>
-                </select>
-              </div>
-              
-              <div class="form-control mb-4">
-                <label class="label">
-                  <span class="label-text">Tags (comma separated)</span>
-                </label>
-                <input type="text" class="input input-bordered w-full" placeholder="e.g. vacation, travel, important" v-model="batchTags" />
-              </div>
-              
-              <div class="form-control mb-4">
-                <label class="label">
-                  <span class="label-text">Notes</span>
-                </label>
-                <textarea class="textarea textarea-bordered w-full" placeholder="Add notes for these transactions" v-model="batchNotes"></textarea>
-              </div>
-              
-              <div class="alert alert-info mb-4">
-                <div>
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current flex-shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                  <span>These changes will apply to <strong>{{ state.enrichment.pendingBatches.length }}</strong> batch(es) containing multiple transactions.</span>
+            <div v-if="state.enrichment.pendingBatches && state.enrichment.pendingBatches.length > 0 && state.enrichment.currentBatch">
+              <!-- Progress indicator -->
+              <div class="flex justify-between items-center mb-4">
+                <div class="text-sm">
+                  Batch {{ state.enrichment.currentBatchIndex + 1 }} of {{ state.enrichment.pendingBatches.length }}
+                </div>
+                <div class="flex-1 mx-4">
+                  <progress 
+                    class="progress progress-primary" 
+                    :value="state.enrichment.currentBatchIndex + 1" 
+                    :max="state.enrichment.pendingBatches.length">
+                  </progress>
+                </div>
+                <div class="text-sm">
+                  {{ Math.round(((state.enrichment.currentBatchIndex + 1) / state.enrichment.pendingBatches.length) * 100) }}%
                 </div>
               </div>
               
-              <div class="flex justify-end mt-6 space-x-2">
-                <button class="btn" @click="state.enrichment.currentStep = 'batching'; state.enrichment.pendingBatches = []">
-                  Back to Batches
+              <!-- Card UI for current batch -->
+              <div class="card bg-base-200 shadow-lg mb-6">
+                <div class="card-body">
+                  <div class="flex justify-between items-center">
+                    <h5 class="card-title text-lg">
+                      <span v-if="getBatchDescription(state.enrichment.currentBatch)">
+                        {{ getBatchDescription(state.enrichment.currentBatch) }}
+                      </span>
+                      <span v-else>Transaction Batch</span>
+                    </h5>
+                    <span class="badge badge-lg" 
+                      :class="state.enrichment.currentBatch.statistics?.netDirection === 'negative' ? 'badge-error' : 'badge-success'">
+                      {{ state.enrichment.currentBatch.statistics?.netDirection === 'negative' ? '- ' : '+ ' }}
+                      {{ formatCurrency(state.enrichment.currentBatch.statistics?.netAmount || 0) }}
+                    </span>
+                  </div>
+                  
+                  <!-- Sample transactions from this batch -->
+                  <div class="overflow-x-auto mt-3 mb-4">
+                    <table class="table table-zebra w-full">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Description</th>
+                          <th>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="transaction in getSampleTransactions(state.enrichment.currentBatch, 5)" 
+                            :key="transaction.id">
+                          <td>{{ formatDate(transaction.date) }}</td>
+                          <td>{{ transaction.description }}</td>
+                          <td :class="transaction.type === 'expense' ? 'text-error' : 'text-success'">
+                            {{ transaction.type === 'expense' ? '- ' : '+ ' }}{{ formatCurrency(transaction.amount) }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  <!-- Suggested category based on merchant or description -->
+                  <div v-if="state.enrichment.suggestedCategory" class="mb-4">
+                    <div class="flex items-center gap-2 mb-2">
+                      <div class="badge badge-lg badge-primary">Suggested</div>
+                      <h6 class="font-medium">{{ getCategoryName(state.categories, state.enrichment.suggestedCategory) }}</h6>
+                    </div>
+                    
+                    <div class="flex justify-center space-x-3 mb-4">
+                      <button 
+                        class="btn btn-success btn-lg" 
+                        @click="acceptSuggestedCategory()"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Accept
+                      </button>
+                      <button 
+                        class="btn btn-outline btn-lg" 
+                        @click="rejectSuggestedCategory()"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Choose Another
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <!-- Category selection form (shown when rejecting suggestion) -->
+                  <div v-if="state.enrichment.showCategorySelector" class="mb-4">
+                    <div class="form-control mb-4">
+                      <label class="label">
+                        <span class="label-text">Select Category</span>
+                      </label>
+                      <select class="select select-bordered w-full" v-model="batchCategoryId">
+                        <option value="" disabled>Select a category</option>
+                        <optgroup label="Income Categories">
+                          <option v-for="category in getIncomeCategories(state.categories)" :key="category.id" :value="category.id">
+                            {{ category.name }}
+                          </option>
+                        </optgroup>
+                        <optgroup label="Expense Categories">
+                          <option v-for="category in getExpenseCategories(state.categories)" :key="category.id" :value="category.id">
+                            {{ category.name }}
+                          </option>
+                        </optgroup>
+                      </select>
+                    </div>
+                    
+                    <div class="form-control mb-4">
+                      <label class="label">
+                        <span class="label-text">Tags (comma separated)</span>
+                      </label>
+                      <input type="text" class="input input-bordered w-full" placeholder="e.g. vacation, travel, important" v-model="batchTags" />
+                    </div>
+                    
+                    <div class="form-control mb-4">
+                      <label class="label">
+                        <span class="label-text">Notes</span>
+                      </label>
+                      <textarea class="textarea textarea-bordered w-full" placeholder="Add notes for these transactions" v-model="batchNotes"></textarea>
+                    </div>
+                    
+                    <div class="flex justify-center space-x-3">
+                      <button 
+                        class="btn btn-primary" 
+                        @click="applyCustomCategory()"
+                        :disabled="!batchCategoryId"
+                      >
+                        Apply Category
+                      </button>
+                      <button 
+                        class="btn btn-outline" 
+                        @click="state.enrichment.showCategorySelector = false; state.enrichment.suggestedCategory = null"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Navigation controls -->
+              <div class="flex justify-between mt-6">
+                <button class="btn" @click="previousBatch()">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Previous Batch
                 </button>
-                <button 
-                  class="btn btn-primary" 
-                  @click="applyEnrichmentToBatches()"
-                  :disabled="!batchCategoryId"
-                >
-                  Apply Changes
+                
+                <button class="btn" @click="state.enrichment.currentStep = 'batching'">
+                  Cancel Review
+                </button>
+                
+                <button class="btn btn-primary" @click="nextBatch()" v-if="!isLastBatch()">
+                  Skip This Batch
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                
+                <button class="btn btn-success" @click="finishBatchReview()" v-else>
+                  Finish Review
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
                 </button>
               </div>
             </div>
@@ -2111,15 +2295,18 @@
             </div>
           </div>
           
-          <!-- Complete Step -->
+          <!-- Complete Step with Animation and Continue button -->
           <div v-else-if="state.enrichment.currentStep === 'complete'" class="mb-4 text-center py-8">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-success mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h4 class="font-bold text-xl mb-2">Import Complete!</h4>
-            <p class="mb-6">Your transactions have been successfully imported and enriched.</p>
+            <div class="mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 text-success mx-auto animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
             
-            <div class="stats shadow mx-auto">
+            <h3 class="font-bold text-2xl mb-2">All Done!</h3>
+            <p class="text-lg mb-6">Your transactions have been successfully imported and enriched.</p>
+            
+            <div class="stats shadow mx-auto mb-8">
               <div class="stat">
                 <div class="stat-title">Transactions Imported</div>
                 <div class="stat-value">{{ state.enrichment.statistics?.totalTransactions || 0 }}</div>
@@ -2130,6 +2317,22 @@
                   {{ state.enrichment.statistics?.netDirection === 'negative' ? '- ' : '+ ' }}{{ formatCurrency(state.enrichment.statistics?.netAmount || 0) }}
                 </div>
               </div>
+              <div class="stat">
+                <div class="stat-title">Files Processed</div>
+                <div class="stat-value">{{ state.enrichment.uploadedFiles?.length || 1 }}</div>
+              </div>
+            </div>
+            
+            <div class="flex justify-center gap-4">
+              <button class="btn btn-outline" @click="closeEnrichmentModal">
+                Close
+              </button>
+              <button class="btn btn-primary btn-lg" @click="continueToTransactions()">
+                Continue to Transactions
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -2233,6 +2436,31 @@
             console.error('File upload failed:', error);
             throw error;
           }
+        },
+        
+        // Get batches for an upload
+        async getUploadedBatches(uploadId) {
+          return api.request(`/transactions/uploads/${uploadId}/batches`);
+        },
+        
+        // Update file transactions with account info 
+        async updateFileTransactions(fileId, accountInfo) {
+          return api.request(`/transactions/uploads/${fileId}/account-info`, 'PUT', accountInfo);
+        },
+        
+        // Enrich a batch of transactions
+        async batchEnrich(batchId, enrichData) {
+          return api.request(`/transactions/batches/${batchId}/enrich`, 'PUT', enrichData);
+        },
+        
+        // Complete a batch
+        async completeBatch(batchId) {
+          return api.request(`/transactions/batches/${batchId}/complete`, 'PUT');
+        },
+        
+        // Complete an upload
+        async completeUpload(uploadId) {
+          return api.request(`/transactions/uploads/${uploadId}/complete`, 'PUT');
         }
       },
       
@@ -2590,9 +2818,23 @@
               // Update state to show enrichment modal
               state.enrichment.showModal = true;
               state.enrichment.currentUploadId = result.uploadId;
+              
+              // Initialize uploadedFiles array if not already done
+              if (!state.enrichment.uploadedFiles) {
+                state.enrichment.uploadedFiles = [];
+              }
+              
+              // Add current file to uploadedFiles with empty account info
+              state.enrichment.uploadedFiles.push({
+                fileName: file.name,
+                fileId: result.uploadId,
+                accountSource: '',
+                accountType: ''
+              });
+              
               state.enrichment.transactionBatches = result.batches || [];
               state.enrichment.statistics = result.statistics;
-              state.enrichment.currentStep = 'batching';
+              state.enrichment.currentStep = 'accountSetup';  // Start with account setup
               state.enrichment.progress = 25; // First step completed
               
               // Show success message specifically for enrichment mode
@@ -2843,6 +3085,318 @@
         const setDateRange = (range) => {
           selectedDateRange.value = range;
           fetchReportData();
+        };
+        
+        // Check if all account details are complete
+        const areAccountDetailsComplete = () => {
+          if (!state.enrichment.uploadedFiles || state.enrichment.uploadedFiles.length === 0) {
+            return false;
+          }
+          
+          return state.enrichment.uploadedFiles.every(file => 
+            file.accountSource && file.accountSource.trim() !== '' && 
+            file.accountType && file.accountType.trim() !== ''
+          );
+        };
+        
+        // Process account setup and move to the next step
+        const processAccountSetup = async () => {
+          if (!areAccountDetailsComplete()) {
+            return;
+          }
+          
+          state.loading.enrichment = true;
+          
+          try {
+            // Apply account details to transactions
+            for (const file of state.enrichment.uploadedFiles) {
+              // For simplicity, we'll just update the batches with account info
+              // In a real implementation, this would call an API endpoint to update in the database
+              state.enrichment.transactionBatches.forEach(batch => {
+                if (batch.transactions) {
+                  batch.transactions.forEach(tx => {
+                    tx.account = file.accountSource;
+                    tx.accountType = file.accountType;
+                  });
+                }
+              });
+            }
+            
+            // Move to next step
+            state.enrichment.currentStep = 'batching';
+            state.enrichment.progress = 50;
+          } catch (error) {
+            state.errors.enrichment = "Failed to update account information: " + error.message;
+            console.error('Failed to process account setup:', error);
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Get batch description based on the content
+        const getBatchDescription = (batch) => {
+          if (!batch || !batch.transactions || batch.transactions.length === 0) {
+            return '';
+          }
+          
+          // Try to get a common merchant/description pattern
+          const descriptions = batch.transactions.map(t => t.description);
+          const merchants = batch.transactions.map(t => t.merchant).filter(Boolean);
+          
+          if (merchants.length > 0) {
+            // Count occurrences of each merchant
+            const merchantCounts = {};
+            merchants.forEach(m => {
+              merchantCounts[m] = (merchantCounts[m] || 0) + 1;
+            });
+            
+            // Find the most common merchant
+            const mostCommonMerchant = Object.keys(merchantCounts).reduce((a, b) => 
+              merchantCounts[a] > merchantCounts[b] ? a : b
+            );
+            
+            return `${mostCommonMerchant} – ${batch.transactions.length} transactions`;
+          }
+          
+          // If no merchants, try to extract a common pattern from descriptions
+          // This is a simple approach - just use the first few words
+          const firstDescription = descriptions[0] || '';
+          const words = firstDescription.split(' ').slice(0, 2).join(' ');
+          
+          return `${words}... – ${batch.transactions.length} transactions`;
+        };
+        
+        // Get sample transactions for display
+        const getSampleTransactions = (batch, limit = 3) => {
+          if (!batch || !batch.transactions || batch.transactions.length === 0) {
+            return [];
+          }
+          
+          return batch.transactions.slice(0, limit);
+        };
+        
+        // Review a batch (start Tinder-style review)
+        const reviewBatch = (batchId) => {
+          // Find the batch
+          const batch = state.enrichment.transactionBatches.find(b => b.batchId === batchId);
+          if (!batch) return;
+          
+          // Set up the batch for review
+          state.enrichment.currentBatch = batch;
+          state.enrichment.currentBatchIndex = state.enrichment.transactionBatches.findIndex(b => b.batchId === batchId);
+          state.enrichment.pendingBatches = [batchId];
+          
+          // Try to suggest a category based on merchant or description
+          suggestCategoryForBatch(batch);
+          
+          // Move to enrichment step
+          state.enrichment.currentStep = 'enrichment';
+          state.enrichment.progress = 75;
+        };
+        
+        // Suggest a category for the current batch
+        const suggestCategoryForBatch = (batch) => {
+          if (!batch || !batch.transactions || batch.transactions.length === 0) {
+            state.enrichment.suggestedCategory = null;
+            return;
+          }
+          
+          // Get the merchant names
+          const merchants = batch.transactions.map(t => t.merchant).filter(Boolean);
+          const descriptions = batch.transactions.map(t => t.description);
+          
+          // Simple suggestion based on merchant or description keywords
+          const merchantKeywords = {
+            "UBER": "5fe9a5e7-09c8-4d6e-8a92-b1073e6b8a3e", // Transportation
+            "AMAZON": "46c0235a-926b-4ce2-92a3-c1a93334b552", // Shopping
+            "NETFLIX": "89e1743d-12c4-42de-9a3b-b4c5de09d455", // Entertainment
+            "GROCERY": "b24f9d8c-7f37-4079-b1c7-b215be31e559", // Groceries
+            "RESTAURANT": "1e5f61f3-43a9-4bac-b0c5-d1e35a9a75b6", // Dining Out
+            "COFFEE": "1e5f61f3-43a9-4bac-b0c5-d1e35a9a75b6", // Dining Out
+            "GYM": "a0c47efd-de41-4f67-b3a7-46a4f6af6f7c", // Health & Fitness
+            "SALARY": "cb7a07ad-1a65-4e92-aae0-63a958d4c3c2", // Salary & Wages
+            "INTEREST": "102e0968-f6a4-4e35-8405-7f53a8f18a88", // Other Income
+            "RENT": "f4c6b082-5adb-454e-8ec9-d84dbf6c8f28", // Housing
+            "MORTGAGE": "f4c6b082-5adb-454e-8ec9-d84dbf6c8f28", // Housing
+            "INSURANCE": "c29c548c-2b8c-4733-8b92-add6e1c1c276", // Insurance
+            "UTILITY": "58b5d0c1-5d1d-4826-93a0-39f65646b313", // Utilities
+            "PHONE": "58b5d0c1-5d1d-4826-93a0-39f65646b313", // Utilities
+            "INTERNET": "58b5d0c1-5d1d-4826-93a0-39f65646b313", // Utilities
+            "CABLE": "58b5d0c1-5d1d-4826-93a0-39f65646b313", // Utilities
+            "TRAVEL": "9d0b0c1c-1ec9-4681-947f-25746f339dd0", // Travel
+            "HOTEL": "9d0b0c1c-1ec9-4681-947f-25746f339dd0", // Travel
+            "FLIGHT": "9d0b0c1c-1ec9-4681-947f-25746f339dd0", // Travel
+            "MEDICAL": "a0c47efd-de41-4f67-b3a7-46a4f6af6f7c", // Health & Fitness
+            "DOCTOR": "a0c47efd-de41-4f67-b3a7-46a4f6af6f7c", // Health & Fitness
+            "PHARMACY": "a0c47efd-de41-4f67-b3a7-46a4f6af6f7c", // Health & Fitness
+            "EDUCATION": "35d53d3f-fb23-4edd-9df3-e842be8438db", // Education
+            "TUITION": "35d53d3f-fb23-4edd-9df3-e842be8438db", // Education
+            "GAS": "5fe9a5e7-09c8-4d6e-8a92-b1073e6b8a3e", // Transportation
+            "PARKING": "5fe9a5e7-09c8-4d6e-8a92-b1073e6b8a3e", // Transportation
+            "AUTOMOBILE": "5fe9a5e7-09c8-4d6e-8a92-b1073e6b8a3e", // Transportation
+            "CAR": "5fe9a5e7-09c8-4d6e-8a92-b1073e6b8a3e", // Transportation
+            "MEMBERSHIP": "89e1743d-12c4-42de-9a3b-b4c5de09d455", // Entertainment
+            "SUBSCRIPTION": "89e1743d-12c4-42de-9a3b-b4c5de09d455", // Entertainment
+            "DONATION": "dc4f8a91-0d44-4d7a-85df-8e1e25dc5f1f", // Donations
+            "CHARITY": "dc4f8a91-0d44-4d7a-85df-8e1e25dc5f1f", // Donations
+            "TAX": "e3e96c58-8d91-4e1a-bc7c-2a85e0d8a1e9", // Taxes
+            "BILL": "db2b1dbe-5c8c-468e-a385-d18b3d928b0a", // Bills
+            "PAYMENT": "db2b1dbe-5c8c-468e-a385-d18b3d928b0a" // Bills
+          };
+          
+          // Check transaction type (income/expense) to suggest appropriate category
+          const isIncome = batch.transactions[0]?.type === 'income';
+          
+          // For income transactions, suggest income categories
+          if (isIncome) {
+            for (const keyword of ["SALARY", "INTEREST", "PAYMENT RECEIVED"]) {
+              if (merchants.some(m => m && m.toUpperCase().includes(keyword)) || 
+                  descriptions.some(d => d && d.toUpperCase().includes(keyword))) {
+                state.enrichment.suggestedCategory = merchantKeywords[keyword.split(' ')[0]] || "cb7a07ad-1a65-4e92-aae0-63a958d4c3c2"; // Default to Salary & Wages
+                return;
+              }
+            }
+            
+            // Default income category
+            state.enrichment.suggestedCategory = "cb7a07ad-1a65-4e92-aae0-63a958d4c3c2"; // Salary & Wages
+            return;
+          }
+          
+          // For expense transactions, check for keyword matches
+          for (const keyword in merchantKeywords) {
+            if (merchants.some(m => m && m.toUpperCase().includes(keyword)) || 
+                descriptions.some(d => d && d.toUpperCase().includes(keyword))) {
+              state.enrichment.suggestedCategory = merchantKeywords[keyword];
+              return;
+            }
+          }
+          
+          // Default to Shopping for expenses
+          state.enrichment.suggestedCategory = "46c0235a-926b-4ce2-92a3-c1a93334b552"; // Shopping
+        };
+        
+        // Accept suggested category
+        const acceptSuggestedCategory = async () => {
+          if (!state.enrichment.currentBatch || !state.enrichment.suggestedCategory) {
+            return;
+          }
+          
+          // Set the category ID
+          batchCategoryId.value = state.enrichment.suggestedCategory;
+          
+          // Apply the category to the batch
+          await applyCustomCategory();
+          
+          // Move to the next batch
+          nextBatch();
+        };
+        
+        // Reject suggested category
+        const rejectSuggestedCategory = () => {
+          state.enrichment.showCategorySelector = true;
+          state.enrichment.suggestedCategory = null;
+        };
+        
+        // Apply custom category
+        const applyCustomCategory = async () => {
+          if (!state.enrichment.currentBatch || !batchCategoryId.value) {
+            return;
+          }
+          
+          state.loading.enrichment = true;
+          
+          try {
+            // Build the enrichment data
+            const enrichData = {
+              categoryId: batchCategoryId.value,
+              tags: batchTags.value ? batchTags.value.split(',').map(t => t.trim()) : [],
+              notes: batchNotes.value
+            };
+            
+            // Enrich the batch
+            await enrichBatch(state.enrichment.currentBatch.batchId, enrichData);
+            
+            // Reset form
+            state.enrichment.showCategorySelector = false;
+            batchCategoryId.value = '';
+            batchTags.value = '';
+            batchNotes.value = '';
+            
+            // Move to next batch automatically
+            nextBatch();
+          } catch (error) {
+            state.errors.enrichment = error.message || 'Failed to apply category';
+            console.error('Failed to apply custom category:', error);
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Move to previous batch
+        const previousBatch = () => {
+          if (state.enrichment.currentBatchIndex <= 0) {
+            return;
+          }
+          
+          state.enrichment.currentBatchIndex--;
+          state.enrichment.currentBatch = state.enrichment.transactionBatches[state.enrichment.currentBatchIndex];
+          state.enrichment.pendingBatches = [state.enrichment.currentBatch.batchId];
+          state.enrichment.showCategorySelector = false;
+          state.enrichment.suggestedCategory = null;
+          
+          // Suggest a category for the new batch
+          suggestCategoryForBatch(state.enrichment.currentBatch);
+        };
+        
+        // Move to next batch
+        const nextBatch = () => {
+          if (state.enrichment.currentBatchIndex >= state.enrichment.transactionBatches.length - 1) {
+            // This was the last batch, finish review
+            finishBatchReview();
+            return;
+          }
+          
+          state.enrichment.currentBatchIndex++;
+          state.enrichment.currentBatch = state.enrichment.transactionBatches[state.enrichment.currentBatchIndex];
+          state.enrichment.pendingBatches = [state.enrichment.currentBatch.batchId];
+          state.enrichment.showCategorySelector = false;
+          state.enrichment.suggestedCategory = null;
+          
+          // Suggest a category for the new batch
+          suggestCategoryForBatch(state.enrichment.currentBatch);
+        };
+        
+        // Check if this is the last batch
+        const isLastBatch = () => {
+          return state.enrichment.currentBatchIndex >= state.enrichment.transactionBatches.length - 1;
+        };
+        
+        // Finish batch review and show completion screen
+        const finishBatchReview = async () => {
+          state.loading.enrichment = true;
+          
+          try {
+            // Complete the upload
+            await completeUpload(state.enrichment.currentUploadId);
+            
+            // Move to complete step
+            state.enrichment.currentStep = 'complete';
+            state.enrichment.progress = 100;
+          } catch (error) {
+            state.errors.enrichment = error.message || 'Failed to complete review';
+            console.error('Failed to finish batch review:', error);
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Continue to transactions tab after completion
+        const continueToTransactions = () => {
+          // Close the modal
+          closeEnrichmentModal();
+          
+          // Switch to transactions tab
+          activeTab.value = 'transactions';
         };
         
         // Initialize data on component mount
