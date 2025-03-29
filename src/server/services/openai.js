@@ -6,13 +6,20 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+// Flag to simulate API failures (for testing)
+const SIMULATE_FAILURE = process.env.SIMULATE_OPENAI_FAILURE === 'true';
+
 // Tracking metrics and cache to optimize API usage
 const metrics = {
   apiCalls: 0,
   cacheHits: 0,
   batchRequests: 0,
   errors: 0,
-  startTime: Date.now()
+  rateLimitErrors: 0,
+  retries: 0,
+  startTime: Date.now(),
+  lastRateLimitTime: 0,
+  isRateLimited: false
 };
 
 // Simple in-memory cache for OpenAI responses
@@ -25,6 +32,11 @@ const CACHE_SIZE_LIMIT = 1000;
 
 // Cache TTL (24 hours in milliseconds)
 const CACHE_TTL = 24 * 60 * 60 * 1000;
+
+// Rate limiting settings
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute window
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 1000; // 1 second
 
 /**
  * Add an item to the cache with TTL
@@ -123,7 +135,8 @@ async function categorizeTransaction(description, amount, type = 'expense', exis
     // Add instruction to return as JSON
     systemContent += "\n\nRespond with a JSON object containing:\n1. category: The suggested category name\n2. confidence: Your confidence score (0.0-1.0) in this categorization\n3. reasoning: Brief explanation for why this category fits";
 
-    const completion = await openai.chat.completions.create({
+    // Create the API request configuration
+    const requestConfig = {
       model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. Do not change this unless explicitly requested by the user
       messages: [{
         role: "system",
@@ -135,7 +148,12 @@ async function categorizeTransaction(description, amount, type = 'expense', exis
       temperature: 0.2, // Lower temperature for more consistent results
       max_tokens: 300,
       response_format: { type: "json_object" } // Ensure response is formatted as JSON
-    });
+    };
+    
+    // Make API call with retry logic
+    const completion = await callWithRetry(
+      async () => await openai.chat.completions.create(requestConfig)
+    );
     
     // Parse the JSON response
     const responseText = completion.choices[0].message.content.trim();
@@ -305,7 +323,8 @@ async function categorizeBatch(transactions, existingCategories = []) {
       // Instructions for response format
       systemContent += "\n\nRespond with a JSON array where each element corresponds to a transaction and contains:\n1. transactionIndex: The index of the transaction (starting at 0)\n2. category: The suggested category name\n3. confidence: Your confidence score (0.0-1.0) in this categorization\n4. reasoning: Brief explanation for why this category fits";
       
-      const completion = await openai.chat.completions.create({
+      // Create the API request configuration
+      const requestConfig = {
         model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. Do not change this unless explicitly requested by the user
         messages: [{
           role: "system",
@@ -317,7 +336,12 @@ async function categorizeBatch(transactions, existingCategories = []) {
         temperature: 0.3,
         max_tokens: 1000,
         response_format: { type: "json_object" }
-      });
+      };
+      
+      // Make API call with retry logic
+      const completion = await callWithRetry(
+        async () => await openai.chat.completions.create(requestConfig)
+      );
       
       metrics.apiCalls++;
       
@@ -534,6 +558,100 @@ async function categorizeBatch(transactions, existingCategories = []) {
 }
 
 /**
+ * Check if we are currently rate limited or have exceeded quota
+ * @returns {boolean} Whether we are currently rate limited
+ */
+function isRateLimited() {
+  // If simulating failure, always return true
+  if (SIMULATE_FAILURE) {
+    console.log('[OpenAI] Simulating API failure for testing');
+    metrics.isRateLimited = true;
+    return true;
+  }
+  
+  // If we've seen a rate limit error recently, enforce a cooldown period
+  if (metrics.lastRateLimitTime > 0) {
+    const timeSinceLastRateLimit = Date.now() - metrics.lastRateLimitTime;
+    if (timeSinceLastRateLimit < RATE_LIMIT_WINDOW) {
+      // Still in the rate limit cooldown window
+      return true;
+    } else {
+      // Reset rate limit status after cooldown
+      metrics.lastRateLimitTime = 0;
+      metrics.isRateLimited = false;
+    }
+  }
+  
+  return metrics.isRateLimited;
+}
+
+/**
+ * Make an API call with retry logic for rate limits
+ * @param {Function} apiFn - The API function to call
+ * @param {Array} args - Arguments to pass to the API function
+ * @returns {Promise<any>} The API response
+ */
+async function callWithRetry(apiFn, ...args) {
+  let retryCount = 0;
+  let lastError = null;
+  
+  // Check if we're rate limited before even trying
+  if (isRateLimited()) {
+    console.log('[OpenAI] Currently rate limited, using fallback mechanism');
+    throw new Error('OpenAI API rate limited');
+  }
+  
+  while (retryCount <= MAX_RETRIES) {
+    try {
+      // If not the first attempt, add delay with exponential backoff
+      if (retryCount > 0) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount - 1);
+        console.log(`[OpenAI] Retry attempt ${retryCount}/${MAX_RETRIES} after ${delay}ms delay`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        metrics.retries++;
+      }
+      
+      // Make the API call
+      return await apiFn(...args);
+    } catch (error) {
+      lastError = error;
+      
+      // Check for rate limiting errors
+      if (error.status === 429 || 
+          (error.error && (error.error.type === 'insufficient_quota' || 
+                         error.error.code === 'insufficient_quota'))) {
+        console.warn('[OpenAI] Rate limit or quota exceeded');
+        metrics.rateLimitErrors++;
+        metrics.lastRateLimitTime = Date.now();
+        metrics.isRateLimited = true;
+        
+        // Don't retry if we've exceeded our quota
+        if (error.error && (error.error.type === 'insufficient_quota' || 
+                          error.error.code === 'insufficient_quota')) {
+          console.error('[OpenAI] Quota exceeded, will use fallback mechanisms until reset');
+          break;
+        }
+        
+        // If we've retried too many times already, give up
+        if (retryCount >= MAX_RETRIES) {
+          console.warn(`[OpenAI] Exceeded max retries (${MAX_RETRIES})`);
+          break;
+        }
+        
+        retryCount++;
+      } else {
+        // For other errors, don't retry
+        console.error('[OpenAI] API error:', error);
+        break;
+      }
+    }
+  }
+  
+  // If we get here, all retries failed or non-retriable error
+  throw lastError;
+}
+
+/**
  * Get OpenAI usage metrics
  * @returns {Object} Current metrics
  */
@@ -546,7 +664,10 @@ function getMetrics() {
     cacheSize: responseCache.size,
     cacheHitRate: metrics.apiCalls > 0 
       ? Math.round((metrics.cacheHits / (metrics.apiCalls + metrics.cacheHits)) * 100) 
-      : 0
+      : 0,
+    rateLimitErrors: metrics.rateLimitErrors,
+    retries: metrics.retries,
+    isCurrentlyRateLimited: isRateLimited()
   };
 }
 
@@ -558,7 +679,10 @@ function resetMetrics() {
   metrics.cacheHits = 0;
   metrics.batchRequests = 0;
   metrics.errors = 0;
+  metrics.rateLimitErrors = 0;
+  metrics.retries = 0;
   metrics.startTime = Date.now();
+  // Do not reset lastRateLimitTime to maintain rate limit status
 }
 
 /**
@@ -575,5 +699,7 @@ module.exports = {
   findMatchingCategory,
   getMetrics,
   resetMetrics,
-  clearCache
+  clearCache,
+  isRateLimited,
+  callWithRetry
 };

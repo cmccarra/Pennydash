@@ -1,0 +1,119 @@
+[SIMULATE] Setting OpenAI service to simulation mode
+=========================================
+Testing OpenAI Batch Fallback Mechanism
+=========================================
+[MOCK] Training classifier with mock data
+[MOCK] Classifier trained successfully
+
+Initial OpenAI Service Metrics:
+[OpenAI] Simulating API failure for testing
+{
+  apiCalls: 0,
+  cacheHits: 0,
+  batchRequests: 0,
+  errors: 0,
+  rateLimitErrors: 0,
+  retries: 0,
+  startTime: 1743281007645,
+  lastRateLimitTime: 0,
+  isRateLimited: false,
+  runtimeMs: 113,
+  runtimeMinutes: 0,
+  cacheSize: 0,
+  cacheHitRate: 0,
+  isCurrentlyRateLimited: true
+}
+
+1. Testing OpenAI direct batch categorization:
+[OpenAI] Batch categorizing 2 transactions
+[OpenAI] Processing batch 1/1
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[OpenAI] Falling back to individual processing after batch error
+[OpenAI] Categorizing transaction: "GROCERY OUTLET MARKET" for $43.27 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[OpenAI] Categorizing transaction: "NETFLIX SUBSCRIPTION" for $12.99 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+Batch results: [
+  {
+    "transactionId": "txn1",
+    "categoryName": null,
+    "confidence": 0,
+    "reasoning": "Error: OpenAI API rate limited",
+    "error": true
+  },
+  {
+    "transactionId": "txn2",
+    "categoryName": null,
+    "confidence": 0,
+    "reasoning": "Error: OpenAI API rate limited",
+    "error": true
+  }
+]
+
+2. Testing batch suggestions with fallback through CategorySuggestionService:
+⏱️ Starting category suggestion for batch of 4 transactions with timeout protection
+[MOCK] Processing batch suggestions for 4 transactions
+[MOCK] Suggesting category for: "GROCERY OUTLET MARKET" (expense, $43.27)
+[CategorySuggestion] Using OpenAI to suggest category for: "GROCERY OUTLET MARKET" (expense, $43.27)
+[OpenAI] Categorizing transaction: "GROCERY OUTLET MARKET" for $43.27 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[WARNING] OpenAI simulation failure not working as expected
+[MOCK] Suggesting category for: "NETFLIX SUBSCRIPTION" (expense, $12.99)
+[CategorySuggestion] Using OpenAI to suggest category for: "NETFLIX SUBSCRIPTION" (expense, $12.99)
+[OpenAI] Categorizing transaction: "NETFLIX SUBSCRIPTION" for $12.99 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[WARNING] OpenAI simulation failure not working as expected
+[MOCK] Suggesting category for: "SALARY DEPOSIT" (income, $2508.42)
+[CategorySuggestion] Using OpenAI to suggest category for: "SALARY DEPOSIT" (income, $2508.42)
+[OpenAI] Categorizing transaction: "SALARY DEPOSIT" for $2508.42 (income)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[WARNING] OpenAI simulation failure not working as expected
+[MOCK] Suggesting category for: "POWER & ELECTRIC BILL" (expense, $85.33)
+[CategorySuggestion] Using OpenAI to suggest category for: "POWER & ELECTRIC BILL" (expense, $85.33)
+[OpenAI] Categorizing transaction: "POWER & ELECTRIC BILL" for $85.33 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[WARNING] OpenAI simulation failure not working as expected
+Batch suggestion results:
+{
+  "automaticSuggestions": 4,
+  "manualReviewNeeded": 0,
+  "stats": {
+    "total": 4,
+    "automatic": 4,
+    "manualReview": 0,
+    "averageConfidence": 0.9,
+    "percentAutomatic": 100
+  }
+}
+
+3. Individual suggestion details:
+- GROCERY OUTLET MARKET: Unknown (0.90) [openai]
+- NETFLIX SUBSCRIPTION: Unknown (0.90) [openai]
+- SALARY DEPOSIT: Unknown (0.90) [openai]
+- POWER & ELECTRIC BILL: Unknown (0.90) [openai]
+
+Final OpenAI Service Metrics:
+[OpenAI] Simulating API failure for testing
+{
+  apiCalls: 6,
+  cacheHits: 0,
+  batchRequests: 1,
+  errors: 7,
+  rateLimitErrors: 0,
+  retries: 0,
+  startTime: 1743281007645,
+  lastRateLimitTime: 0,
+  isRateLimited: true,
+  runtimeMs: 124,
+  runtimeMinutes: 0,
+  cacheSize: 0,
+  cacheHitRate: 0,
+  isCurrentlyRateLimited: true
+}

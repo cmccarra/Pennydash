@@ -1,0 +1,146 @@
+Below is a comprehensive Product Requirements Document (PRD) for the improvements we discussed. You can copy and paste this document for your team or an LLM agent to implement the necessary changes:
+
+---
+
+# Product Requirements Document (PRD)
+
+## Project Name:  
+**Pennydash – Enhanced Transaction Enrichment & Categorization**
+
+## Overview  
+Pennydash is a personal budgeting platform that enables users to upload their financial statements, automatically extract and enrich transaction data using AI, and ultimately deliver insightful, interactive reports. This PRD outlines improvements to the transaction upload and categorization flow to minimize manual input and enhance reporting accuracy. The focus is on efficient batch grouping of transactions, AI-powered auto-categorization, and a user-friendly review process that adapts to individual needs while providing standardized reporting.
+
+## Objectives  
+- **Reduce User Input:** Leverage AI to auto-suggest categories for uploaded transactions and group similar records into batches for rapid review.
+- **Improve Data Quality:** Ensure every transaction is enriched with key metadata (account source, account type, currency, category, merchant, etc.) for accurate reporting.
+- **Enhance Usability:** Design an intuitive, Tinder-style batch review UI that minimizes friction and allows for quick approval or editing of suggestions.
+- **Flexible Categorization:** Combine a standardized default category framework (with support for subcategories and tags) with the ability for users to create or modify categories as needed.
+- **Enable Actionable Insights:** Facilitate alternate reporting views (e.g., toggle between detailed and high-level frameworks like 50/30/20) for deeper financial analysis.
+
+## Scope & Key Features
+
+### 1. Multi-File Upload & Account Setup  
+- **Multi-File Upload:**  
+  - Allow users to upload one or more statement files simultaneously.  
+  - Supported file formats: CSV, XLS/XLSX, PDF, OFX, QFX, XML.
+
+- **Account Setup Per File:**  
+  - Before processing, each file must be assigned an *Account Source* and *Account Type* via dropdown menus (e.g., “RBC Chequing”, “Scotiabank Visa”, “Debit”, “Credit Card”).  
+  - These values are tied to all transactions extracted from that file.
+
+### 2. Transaction Parsing & Enrichment  
+- **Parsing:**  
+  - Extract transactions from uploaded files into a temporary staging area.  
+  - Each transaction record includes essential fields: date, description, amount, etc.
+
+- **AI-Based Categorization:**  
+  - Automatically analyze transaction descriptions (and other metadata) to suggest a category for each transaction.  
+  - Calculate a confidence score for the AI’s suggestion; low-confidence suggestions should be flagged for manual review.
+
+### 3. Batch Grouping & Review (Transaction Enrichment Flow)  
+- **Batching Logic:**  
+  - Group transactions across all uploaded files based on similarity in descriptions/merchant names.  
+  - Ensure that each batch is associated with a suggested category and accompanying metadata (e.g., tags).
+
+- **Review UI:**  
+  - Display a Tinder-style card or step-by-step review screen for each batch.  
+  - For each batch, show 2–3 sample transactions so users can quickly confirm if the grouping is correct.  
+  - Provide the following actions for each batch:
+    - **Approve:** Accept the AI’s suggested category for the entire batch.
+    - **Edit:** Open a dropdown allowing users to change the suggested category.
+    - **Remove Individual Transactions:** Allow users to remove outlier transactions from the batch; removed transactions revert to an “Uncategorized” group for later review.
+
+- **Completion Confirmation:**  
+  - Once all transactions are reviewed and enriched, display an “All Done!” animation.
+  - Transition the user to the main Transactions tab with all enriched data available for reporting.
+
+### 4. Category & Tag Management  
+- **Default Category Framework:**  
+  - Provide a standardized list of default categories (e.g., Groceries, Restaurants, Rent, Utilities, Entertainment, etc.) with logical groupings and pre-assigned framework buckets (e.g., for 50/30/20 reporting).
+  - Allow subcategories to offer granular distinctions (e.g., “Food & Dining” → “Groceries”, “Restaurants”).
+
+- **Custom Categories:**  
+  - Enable users to create, edit, or delete categories as needed.  
+  - Prevent duplicates by enforcing unique names (or provide warnings for near-duplicates).
+  - Allow merging of similar categories to maintain clarity.
+
+- **Tags:**  
+  - Support free-form tags for additional transaction labeling (e.g., #Vacation, #Subscription).  
+  - Allow multiple tags per transaction to enable cross-cutting analysis without cluttering the core category structure.
+
+- **Guiding Principles:**  
+  - The AI categorizer should use a predefined default taxonomy as a baseline but learn from user edits to improve future suggestions.
+  - Encourage consistency to ensure reporting is accurate and actionable.
+  - Provide a toggle in the reporting interface for alternate frameworks (e.g., 50/30/20) that map detailed categories into high-level buckets.
+
+## Functional Requirements  
+- **FR1:** Allow multiple file uploads with per-file assignment of account source and account type.
+- **FR2:** Parse uploaded files into transaction records; store these in a staging area until enrichment is complete.
+- **FR3:** Integrate an AI service to analyze transaction descriptions and suggest categories, returning confidence scores.
+- **FR4:** Group transactions into batches based on similarity metrics (e.g., fuzzy string matching).
+- **FR5:** Display a batch review UI that:
+  - Shows sample transactions from each batch.
+  - Allows users to approve, edit, or remove transactions from a batch.
+- **FR6:** Allow individual transaction editing (for outliers removed from batches).
+- **FR7:** Enable the creation, editing, deletion, and merging of categories and tags.
+- **FR8:** Provide alternate reporting views that aggregate transactions by predefined frameworks (e.g., 50/30/20).
+- **FR9:** Confirm completion of transaction enrichment with a celebratory animation and transition to the main transactions view.
+
+## Non-Functional Requirements  
+- **Performance:** AI categorization and batch processing should complete within a reasonable time frame (ideally under 10 seconds per file).  
+- **Usability:** The UI should be intuitive, with clear progress indicators and minimal steps required for approval.  
+- **Scalability:** The system should handle large file uploads and thousands of transactions without degrading performance.  
+- **Security:** Ensure sensitive financial data is securely processed and stored.
+
+## User Flow Summary  
+1. **File Upload:**  
+   - User uploads one or more files.
+   - System displays file cards with dropdowns for account source and account type.
+  
+2. **Transaction Parsing:**  
+   - Files are parsed, and transactions are extracted into a staging area.
+
+3. **AI Categorization & Batch Grouping:**  
+   - AI processes transactions, assigns suggested categories, and groups similar transactions into batches.
+
+4. **Batch Review UI:**  
+   - User reviews each batch (Tinder-style card view).
+   - User can approve, edit, or remove transactions from batches.
+   - Outlier transactions are moved to an “Uncategorized” pool.
+
+5. **Completion:**  
+   - Once all transactions are enriched, the app shows an “All Done!” animation.
+   - User is transitioned to the main Transactions tab for full reporting.
+
+## Dependencies  
+- Integration with an AI categorization service or API (e.g., OpenAI or a custom model).
+- Frontend UI libraries for file upload, card-based review, and animations.
+- Backend support for parsing multiple file formats (CSV, PDF, etc.) and storing enriched transaction data.
+- Database updates to support enhanced category, subcategory, and tag models.
+
+## Milestones  
+1. Implement multi-file upload with account source/type assignment.
+2. Enhance file parser to extract transaction data.
+3. Integrate AI categorization and batch grouping logic.
+4. Develop batch review UI (Tinder-style) with approval/edit options.
+5. Build category and tag management tools.
+6. Implement alternate reporting views (e.g., 50/30/20 framework).
+7. QA testing, performance tuning, and user acceptance testing.
+8. Final release and monitoring for iterative improvements.
+
+## Success Metrics  
+- **Reduction in User Effort:** Users should be able to enrich 100 transactions in less than 3 minutes.
+- **AI Accuracy Improvement:** Increase in AI categorization confidence scores over time as user feedback is integrated.
+- **User Satisfaction:** Target a user rating of 4.5/5 or higher for ease of use in categorization and reporting.
+- **Reporting Accuracy:** Consistency between user-approved categorization and subsequent reports, leading to actionable insights.
+
+## Risks and Mitigation  
+- **AI Misclassification:** Mitigate by allowing easy user overrides and continuously learning from user corrections.
+- **Performance Bottlenecks:** Optimize backend parsing and AI service calls; implement progress indicators.
+- **Complexity in Category Management:** Provide clear UI/UX guidelines and merge tools to handle duplicates.
+
+---
+
+This PRD lays out a clear and structured path to enhance Pennydash’s transaction upload and categorization flow, making the app more intuitive, powerful, and insightful for individual consumers. It is designed to reduce manual effort, improve data quality, and ultimately deliver robust financial insights through effective reporting.
+
+Feel free to adjust or expand this document as needed before handing it off to your development team or LLM agent.
