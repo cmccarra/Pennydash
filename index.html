@@ -795,13 +795,13 @@
               </div>
               
               <!-- Error Alert (only show when there's an upload error) -->
-              <div v-if="state.errors.upload && state.errors.upload.length > 0" class="mt-4 alert alert-error">
+              <div v-if="state.errors.upload" class="mt-4 alert alert-error">
                 <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <span>{{ state.errors.upload }}</span>
               </div>
               
               <!-- Success Alert (only show when there's a success message) -->
-              <div v-if="state.successMessages.upload && state.successMessages.upload.length > 0" class="mt-4 alert alert-success">
+              <div v-if="state.successMessages.upload" class="mt-4 alert alert-success">
                 <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <span>{{ state.successMessages.upload }}</span>
               </div>
@@ -1241,6 +1241,7 @@
                     </span>
                   </th>
                   <th>Category</th>
+                  <th>Confidence</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -1291,6 +1292,12 @@
                     <div class="badge" :style="{ backgroundColor: getCategoryColor(tx.categoryId), color: 'white' }">
                       {{ getCategoryName(tx.categoryId) }}
                     </div>
+                  </td>
+                  <td>
+                    <span v-if="tx.suggestionConfidence !== undefined" class="badge badge-sm" :class="getConfidenceBadgeClass(tx.suggestionConfidence)">
+                      {{ Math.round(tx.suggestionConfidence * 100) }}%
+                    </span>
+                    <span v-else class="badge badge-sm badge-neutral">N/A</span>
                   </td>
                   <td>
                     <div class="flex space-x-1">
@@ -2078,7 +2085,7 @@
             <p class="text-sm mb-4">We've organized your transactions into groups to make them easier to categorize and enrich.</p>
             
             <!-- Error message for batching issues -->
-            <div v-if="state.errors.enrichment && state.errors.enrichment.length > 0" class="alert alert-error mb-4">
+            <div v-if="state.errors.enrichment" class="alert alert-error mb-4">
               <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <div>
                 <span>{{ state.errors.enrichment }}</span>
@@ -2086,7 +2093,7 @@
             </div>
             
             <!-- Success message -->
-            <div v-if="state.successMessages.enrichment && state.successMessages.enrichment.length > 0" class="alert alert-success mb-4">
+            <div v-if="state.successMessages.enrichment" class="alert alert-success mb-4">
               <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <span>{{ state.successMessages.enrichment }}</span>
             </div>
@@ -2175,6 +2182,7 @@
                           <th>Date</th>
                           <th>Description</th>
                           <th>Amount</th>
+                          <th>Confidence</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2183,6 +2191,21 @@
                           <td class="max-w-xs truncate">{{ transaction.description }}</td>
                           <td :class="transaction.type === 'expense' ? 'text-error' : 'text-success'">
                             {{ transaction.type === 'expense' ? '- ' : '+ ' }}{{ formatCurrency(transaction.amount) }}
+                          </td>
+                          <td>
+                            <div v-if="transaction.categoryConfidence" class="flex items-center">
+                              <div class="badge badge-xs mr-1" 
+                                   :class="getConfidenceBadgeClass(transaction.categoryConfidence)">
+                                {{ (transaction.categoryConfidence * 100).toFixed(0) }}%
+                              </div>
+                              <div class="w-16 h-1.5 bg-base-300 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full" 
+                                     :class="getConfidenceBadgeClass(transaction.categoryConfidence)"
+                                     :style="`width: ${transaction.categoryConfidence * 100}%`">
+                                </div>
+                              </div>
+                            </div>
+                            <span v-else class="text-xs opacity-50">Unknown</span>
                           </td>
                         </tr>
                       </tbody>
@@ -2587,6 +2610,7 @@
                 <th>Description</th>
                 <th>Category</th>
                 <th>Amount</th>
+                <th>Confidence</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -2611,6 +2635,12 @@
                 </td>
                 <td :class="transaction.type === 'expense' ? 'text-error' : 'text-success'">
                   {{ transaction.type === 'expense' ? '- ' : '+ ' }}{{ formatCurrency(transaction.amount) }}
+                </td>
+                <td>
+                  <span v-if="transaction.suggestionConfidence !== undefined" class="badge badge-sm" :class="getConfidenceBadgeClass(transaction.suggestionConfidence)">
+                    {{ Math.round(transaction.suggestionConfidence * 100) }}%
+                  </span>
+                  <span v-else class="badge badge-sm badge-neutral">N/A</span>
                 </td>
                 <td>
                   <div class="flex items-center gap-1">
@@ -2860,19 +2890,19 @@
             saveSettings: false,
             enrichment: false
           },
-          // Use empty strings instead of null to prevent flash on load
-          // These will be hidden in the UI when empty
+          // Properly initialize messages as null to prevent flash on load
+          // Using null instead of empty strings for better conditional rendering
           successMessages: {
-            upload: "",
-            enrichment: ""
+            upload: null,
+            enrichment: null
           },
           errors: {
-            transactions: "",
-            categories: "",
-            reports: "",
-            settings: "",
-            upload: "",
-            enrichment: ""
+            transactions: null,
+            categories: null,
+            reports: null,
+            settings: null,
+            upload: null,
+            enrichment: null
           },
           // Enrichment flow state
           enrichment: {
@@ -4875,6 +4905,19 @@
           }).format(date);
         };
         
+        // Get the appropriate badge class based on confidence score
+        const getConfidenceBadgeClass = (confidence) => {
+          if (!confidence && confidence !== 0) return 'badge-neutral';
+          
+          // Convert to number if it's a string
+          const score = parseFloat(confidence);
+          
+          if (score >= 0.9) return 'badge-success';
+          if (score >= 0.7) return 'badge-primary';
+          if (score >= 0.5) return 'badge-warning';
+          return 'badge-error';
+        };
+        
         // Format currency for display
         const formatCurrency = (amount) => {
           if (amount === undefined || amount === null) return '$0.00';
@@ -5406,6 +5449,7 @@
           formatCurrency,
           getCategoryName,
           getCategoryColor,
+          getConfidenceBadgeClass,
           formatAccountType,
           filterTransactions,
           sortTransactions,
