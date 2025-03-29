@@ -450,7 +450,7 @@ export const transactionsApi = {
   // Review queue APIs
   getReviewQueue: (options = {}) => {
     const { page = 1, limit = 50, confidenceThreshold = 0.7 } = options;
-    return fetchData(`/transactions/review-queue?page=${page}&limit=${limit}&confidenceThreshold=${confidenceThreshold}`);
+    return fetchData(`/review-queue?page=${page}&limit=${limit}&confidenceThreshold=${confidenceThreshold}`);
   }
 };
 

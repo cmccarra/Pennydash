@@ -12,6 +12,7 @@ const transactionRoutes = require('./routes/transactions.sequelize');
 const categoryRoutes = require('./routes/categories.sequelize');
 const reportRoutes = require('./routes/reports.sequelize');
 const settingsRoutes = require('./routes/settings.sequelize');
+const reviewQueueRoutes = require('./routes/review-queue');
 
 // Initialize express app
 const app = express();
@@ -42,6 +43,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/review-queue', reviewQueueRoutes);
 
 // Debug endpoint for development only
 app.get('/api/debug/transaction-tags', async (req, res) => {
