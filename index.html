@@ -1972,12 +1972,31 @@
                     <label class="label">
                       <span class="label-text">Account Source</span>
                     </label>
-                    <input 
-                      type="text" 
-                      class="input input-bordered w-full" 
-                      placeholder="e.g. RBC Chequing, Scotiabank Visa"
-                      v-model="file.accountSource"
-                    />
+                    <div>
+                      <select 
+                        class="select select-bordered w-full mb-2" 
+                        v-model="file.accountSourceSelection"
+                        @change="updateAccountSource(file)"
+                      >
+                        <option value="" disabled>Select or add account source</option>
+                        <option value="RBC">RBC</option>
+                        <option value="TD">TD</option>
+                        <option value="BMO">BMO</option>
+                        <option value="CIBC">CIBC</option>
+                        <option value="Scotiabank">Scotiabank</option>
+                        <option value="Amex">American Express</option>
+                        <option value="Chase">Chase</option>
+                        <option value="Tangerine">Tangerine</option>
+                        <option value="other">Other (specify)</option>
+                      </select>
+                      <input 
+                        v-if="file.accountSourceSelection === 'other'"
+                        type="text" 
+                        class="input input-bordered w-full" 
+                        placeholder="Enter your account source"
+                        v-model="file.accountSource"
+                      />
+                    </div>
                   </div>
                   <div class="form-control">
                     <label class="label">
@@ -1986,11 +2005,11 @@
                     <select class="select select-bordered w-full" v-model="file.accountType">
                       <option value="" disabled>Select account type</option>
                       <option value="bank">Debit Account / Checking</option>
-                      <option value="credit">Credit Card</option>
-                      <option value="savings">Savings</option>
+                      <option value="credit_card">Credit Card</option>
                       <option value="investment">Investment</option>
                       <option value="wallet">Digital Wallet</option>
                       <option value="cash">Cash</option>
+                      <option value="other">Other</option>
                     </select>
                   </div>
                 </div>
@@ -2836,6 +2855,7 @@
                 fileName: file.name,
                 fileId: result.uploadId,
                 accountSource: '',
+                accountSourceSelection: '',
                 accountType: ''
               });
               
@@ -3027,6 +3047,15 @@
           );
         };
         
+        // Update account source when selection changes
+        const updateAccountSource = (file) => {
+          // If the selection is 'other', keep the text input field visible
+          // Otherwise, set the accountSource to the selected value
+          if (file.accountSourceSelection !== 'other') {
+            file.accountSource = file.accountSourceSelection;
+          }
+        };
+
         // Process account setup and move to next step
         const processAccountSetup = async () => {
           if (!areAccountDetailsComplete()) {
@@ -4032,6 +4061,7 @@
           updateEnrichmentProgress,
           getIncomeCategories,
           getExpenseCategories,
+          updateAccountSource,
           areAccountDetailsComplete,
           processAccountSetup
         };
