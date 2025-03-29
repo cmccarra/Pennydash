@@ -10,20 +10,86 @@ const API_URL = process.env.NODE_ENV === 'production'
 /**
  * Make a GET request to the API
  * @param {string} endpoint - API endpoint
+ * @param {Object} options - Additional options for the request
  * @returns {Promise} Promise with the response data
  */
-export const fetchData = async (endpoint) => {
+export const fetchData = async (endpoint, options = {}) => {
+  console.log(`🔍 [API] GET request to ${endpoint}`);
+  
   try {
-    const response = await fetch(`${API_URL}${endpoint}`);
+    // Add timeout mechanism for requests that might hang
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+    
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      signal: controller.signal,
+      ...options
+    });
+    
+    // Clear timeout once response is received
+    clearTimeout(timeoutId);
+    
+    // Debug logging for issues
+    console.log(`🔍 [API] Response status for ${endpoint}:`, response.status, response.statusText);
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP error ${response.status}`);
+      let errorMessage = `HTTP error ${response.status}`;
+      
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+        console.error(`🔍 [API] Error response data:`, errorData);
+      } catch (jsonError) {
+        // Could not parse JSON response
+        console.error(`🔍 [API] Could not parse error response as JSON:`, jsonError);
+        // Try to get text response
+        try {
+          const textError = await response.text();
+          console.error(`🔍 [API] Error response text:`, textError);
+          if (textError) {
+            errorMessage = textError;
+          }
+        } catch (textError) {
+          console.error(`🔍 [API] Could not get error response text:`, textError);
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
     
-    return await response.json();
+    try {
+      const result = await response.json();
+      
+      // For batches endpoint, perform specific validation
+      if (endpoint.includes('/uploads/') && endpoint.includes('/batches')) {
+        console.log(`🔍 [API] Validating batches response:`, {
+          batchCount: result?.batches?.length || 0,
+          hasBatches: Array.isArray(result?.batches),
+          hasStatistics: !!result?.statistics
+        });
+        
+        // Add validation for batch structure
+        if (result?.batches && Array.isArray(result.batches)) {
+          const missingBatchIds = result.batches.filter(batch => !batch.batchId).length;
+          if (missingBatchIds > 0) {
+            console.warn(`⚠️ [API] Found ${missingBatchIds} batches without IDs in API response`);
+          }
+        }
+      }
+      
+      return result;
+    } catch (jsonError) {
+      console.warn(`🔍 [API] No JSON in response from ${endpoint}:`, jsonError);
+      // For endpoints that might not return JSON
+      return { success: true };
+    }
   } catch (error) {
-    console.error(`Error fetching ${endpoint}:`, error);
+    if (error.name === 'AbortError') {
+      console.error(`🔍 [API] Request to ${endpoint} timed out`);
+      throw new Error(`Request timed out after ${options.timeout || 30000}ms`);
+    }
+    
+    console.error(`🔍 [API] Error fetching ${endpoint}:`, error);
     throw error;
   }
 };
@@ -215,11 +281,103 @@ export const transactionsApi = {
   suggestCategory: (id) => fetchData(`/transactions/${id}/suggest-category`),
   findSimilar: (id, threshold) => fetchData(`/transactions/${id}/similar?threshold=${threshold}`),
   getUncategorized: () => fetchData('/transactions/filter/uncategorized'),
+  
   // Enrichment flow APIs
-  getUploadedBatches: (uploadId) => fetchData(`/transactions/uploads/${uploadId}/batches`),
-  batchEnrich: (batchId, enrichData) => putData(`/transactions/batches/${batchId}/enrich`, enrichData),
+  getUploadedBatches: (uploadId, options = {}) => {
+    console.log(`🔍 [API] Getting batches for upload ${uploadId} with options:`, options);
+    // Use a shorter timeout for batch retrieval by default (20 seconds)
+    return fetchData(`/transactions/uploads/${uploadId}/batches`, { 
+      timeout: options.timeout || 20000,
+      ...options 
+    });
+  },
+  
+  batchEnrich: async (batchId, enrichData, retryConfig = { maxRetries: 2, timeout: 15000 }) => {
+    console.log(`🔍 [API] Enriching batch ${batchId} with data:`, enrichData);
+    
+    const { maxRetries, timeout } = retryConfig;
+    let retryCount = 0;
+    let lastError = null;
+
+    while (retryCount <= maxRetries) {
+      try {
+        if (retryCount > 0) {
+          // Exponential backoff between retries
+          const delay = Math.pow(2, retryCount - 1) * 1000;
+          console.log(`🔄 [API] Retry ${retryCount}/${maxRetries} for batch enrichment after ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        // Create a controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        const response = await fetch(`${API_URL}/transactions/batches/${batchId}/enrich`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(enrichData),
+          signal: controller.signal
+        });
+        
+        // Clear timeout
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          let errorMessage = `HTTP error ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch (e) {
+            // If we can't parse JSON, try to get text
+            try {
+              const textError = await response.text();
+              if (textError) errorMessage = textError;
+            } catch (textError) {
+              // Do nothing
+            }
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ [API] Successfully enriched batch ${batchId}:`, result);
+        return result;
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ [API] Error enriching batch ${batchId} (attempt ${retryCount + 1}/${maxRetries + 1}):`, error);
+        
+        // For timeout errors, we want to retry
+        if (error.name === 'AbortError') {
+          console.warn(`⏱️ [API] Batch enrichment timed out after ${timeout}ms`);
+          retryCount++;
+          continue;
+        }
+        
+        // For server errors (500s), retry
+        if (error.message && error.message.includes('HTTP error 5')) {
+          console.warn(`⚠️ [API] Server error, will retry`);
+          retryCount++;
+          continue;
+        }
+        
+        // For other errors, only retry on network issues, not on 4xx client errors
+        if (error.name !== 'TypeError' && error.message && !error.message.includes('HTTP error 4')) {
+          retryCount++;
+          continue;
+        }
+        
+        // Client errors should fail immediately
+        break;
+      }
+    }
+
+    // All retries failed
+    throw lastError;
+  },
+  
   completeBatch: (batchId) => postData(`/transactions/batches/${batchId}/complete`, {}),
   completeUpload: (uploadId) => postData(`/transactions/uploads/${uploadId}/complete`, {}),
+  
   // Account info APIs
   updateAccountInfo: (uploadId, accountInfo) => putData(`/transactions/uploads/${uploadId}/account-info`, accountInfo),
   getUploadedFiles: (uploadId) => fetchData(`/transactions/uploads/${uploadId}/files`)

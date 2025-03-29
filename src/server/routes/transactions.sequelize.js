@@ -1511,14 +1511,38 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
     // Update enrichment status
     updateData.enrichmentStatus = 'enriched';
     
-    // Update all transactions in the batch
-    await Transaction.update(updateData, {
+    console.log(`[PUT /batches/${batchId}/enrich] - Updating transactions with data:`, JSON.stringify(updateData));
+    
+    // Update all transactions in the batch with better error tracking
+    const [updateCount] = await Transaction.update(updateData, {
       where: {
         batchId: batchId
       }
     });
     
-    // Get the updated transactions
+    console.log(`[PUT /batches/${batchId}/enrich] - Updated ${updateCount} transactions`);
+    
+    if (updateCount === 0) {
+      console.warn(`[PUT /batches/${batchId}/enrich] - No transactions were updated, possible batch ID issue`);
+      
+      // Double-check if batch exists but update failed for some reason
+      const checkBatch = await Transaction.findAll({
+        attributes: ['id', 'batchId'],
+        where: {
+          batchId: batchId
+        },
+        limit: 1
+      });
+      
+      if (checkBatch.length === 0) {
+        console.error(`[PUT /batches/${batchId}/enrich] - Batch ID ${batchId} not found after initial check`);
+        return res.status(404).json({
+          error: `Batch ID ${batchId} not found in the database`
+        });
+      }
+    }
+    
+    // Get the updated transactions with full category data
     const updatedTransactions = await Transaction.findAll({
       where: {
         batchId: batchId
@@ -1530,15 +1554,24 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
       order: [['date', 'DESC']]
     });
     
+    console.log(`[PUT /batches/${batchId}/enrich] - Returning ${updatedTransactions.length} enriched transactions`);
+    
+    // Calculate statistics for the batch
+    const statistics = calculateBatchStatistics(updatedTransactions);
+    
     res.json({
+      success: true,
       message: `Enriched ${updatedTransactions.length} transactions`,
       batchId,
       transactions: updatedTransactions,
-      statistics: calculateBatchStatistics(updatedTransactions)
+      statistics: statistics
     });
   } catch (error) {
-    console.error('Error enriching batch:', error);
-    res.status(500).json({ error: error.message });
+    console.error(`[PUT /batches/${batchId}/enrich] - Error enriching batch:`, error);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to enrich batch: ${error.message}` 
+    });
   }
 });
 

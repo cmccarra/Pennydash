@@ -3974,24 +3974,49 @@
         
         // Accept suggested category
         const acceptSuggestedCategory = async () => {
-          if (!state.enrichment.currentBatch || !state.enrichment.suggestedCategory) {
+          console.log(`🔍 [CLIENT] Accept suggested category called with batch: ${state.enrichment.currentBatch?.batchId}, category: ${state.enrichment.suggestedCategory}`);
+          
+          if (!state.enrichment.currentBatch) {
+            console.error('🔴 [CLIENT] Cannot accept category: No current batch');
             return;
           }
           
-          // Set the category ID
-          batchCategoryId.value = state.enrichment.suggestedCategory;
+          if (!state.enrichment.suggestedCategory) {
+            console.error('🔴 [CLIENT] Cannot accept category: No suggested category');
+            // If for some reason we have no suggested category, show the category selector
+            state.enrichment.showCategorySelector = true;
+            return;
+          }
           
-          // Apply the category to the batch
-          await applyCustomCategory();
-          
-          // Move to the next batch
-          nextBatch();
+          try {
+            // Set the category ID
+            batchCategoryId.value = state.enrichment.suggestedCategory;
+            console.log(`✅ [CLIENT] Using suggested category: ${batchCategoryId.value}`);
+            
+            // Apply the category to the batch
+            await applyCustomCategory();
+            
+            // Move to the next batch
+            nextBatch();
+          } catch (error) {
+            console.error('🔴 [CLIENT] Error accepting suggested category:', error);
+            state.errors.enrichment = `Failed to apply suggested category: ${error.message}`;
+            // Try to recover by showing manual category selector
+            state.enrichment.showCategorySelector = true;
+          }
         };
         
         // Reject suggested category
         const rejectSuggestedCategory = () => {
+          console.log(`🔍 [CLIENT] Reject suggested category called with category: ${state.enrichment.suggestedCategory}`);
+          
+          // Show the category selector regardless of current state
           state.enrichment.showCategorySelector = true;
+          
+          // Reset the suggested category
           state.enrichment.suggestedCategory = null;
+          
+          console.log('✅ [CLIENT] Showing manual category selector');
         };
         
         // Apply custom category
@@ -4226,18 +4251,25 @@
         };
         
         // Force refresh batches in case of issues
-        const forceRefreshBatches = async () => {
+        const forceRefreshBatches = async (retryCount = 0, maxRetries = 3) => {
           if (!state.enrichment.currentUploadId) {
             console.error('🔴 [CLIENT] Cannot refresh batches: No upload ID');
-            return;
+            return false;
           }
           
-          console.log('🔄 [CLIENT] Force refreshing batches for upload:', state.enrichment.currentUploadId);
+          const retryMessage = retryCount > 0 ? ` (Retry ${retryCount}/${maxRetries})` : '';
+          console.log(`🔄 [CLIENT] Force refreshing batches for upload: ${state.enrichment.currentUploadId}${retryMessage}`);
           state.loading.enrichment = true;
           
           try {
-            // Make direct API call
-            const result = await api.transactions.getUploadedBatches(state.enrichment.currentUploadId);
+            // Make direct API call with timeout to prevent hanging requests
+            const fetchPromise = api.transactions.getUploadedBatches(state.enrichment.currentUploadId);
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Request timed out')), 15000)
+            );
+            
+            const result = await Promise.race([fetchPromise, timeoutPromise]);
+            
             if (result && result.batches && result.batches.length > 0) {
               console.log(`✅ [CLIENT] Successfully refreshed batches: found ${result.batches.length} batches`);
               state.enrichment.transactionBatches = result.batches;
@@ -4246,17 +4278,55 @@
               
               // Set success message
               state.successMessages.enrichment = `Refreshed ${result.batches.length} batches successfully.`;
+              
+              // Verify batches have proper IDs
+              const missingBatchIds = result.batches.filter(batch => !batch.batchId).length;
+              if (missingBatchIds > 0) {
+                console.warn(`⚠️ [CLIENT] Found ${missingBatchIds} batches without IDs`);
+                state.errors.enrichment = `Warning: ${missingBatchIds} batches are missing IDs. This may cause issues.`;
+                return false;
+              }
+              
               return true;
             } else {
               console.warn('⚠️ [CLIENT] Refresh returned no batches');
+              
+              // Add retry logic
+              if (retryCount < maxRetries) {
+                console.log(`🔄 [CLIENT] Retrying batch refresh (${retryCount + 1}/${maxRetries})...`);
+                state.loading.enrichment = false;
+                
+                // Exponential backoff: wait longer between each retry
+                const backoffTime = Math.pow(2, retryCount) * 1000;
+                await new Promise(resolve => setTimeout(resolve, backoffTime));
+                
+                return await forceRefreshBatches(retryCount + 1, maxRetries);
+              }
+              
+              state.errors.enrichment = 'No batches found. Please try uploading again.';
               return false;
             }
           } catch (error) {
             console.error('🔴 [CLIENT] Error refreshing batches:', error);
+            
+            // Add retry logic for errors too
+            if (retryCount < maxRetries) {
+              console.log(`🔄 [CLIENT] Retrying batch refresh after error (${retryCount + 1}/${maxRetries})...`);
+              state.loading.enrichment = false;
+              
+              // Exponential backoff: wait longer between each retry
+              const backoffTime = Math.pow(2, retryCount) * 1000;
+              await new Promise(resolve => setTimeout(resolve, backoffTime));
+              
+              return await forceRefreshBatches(retryCount + 1, maxRetries);
+            }
+            
             state.errors.enrichment = `Failed to refresh batches: ${error.message}`;
             return false;
           } finally {
-            state.loading.enrichment = false;
+            if (retryCount === maxRetries || !state.loading.enrichment) {
+              state.loading.enrichment = false;
+            }
           }
         };
         
@@ -4267,12 +4337,14 @@
           
           state.loading.enrichment = true;
           state.errors.enrichment = null;
+          state.successMessages.enrichment = null; // Clear any previous success messages
           
           try {
             // First validate we have an upload ID
             if (!state.enrichment.currentUploadId) {
               console.error('🔴 [CLIENT] Cannot start enrichment: No upload ID');
               state.errors.enrichment = 'Upload ID is missing. Please try uploading the file again.';
+              state.loading.enrichment = false;
               return;
             }
             
@@ -4280,40 +4352,26 @@
             if (!state.enrichment.transactionBatches || state.enrichment.transactionBatches.length === 0) {
               console.warn('⚠️ [CLIENT] Cannot start enrichment: No batches available');
               
-              // Try to refresh batches once before showing error
+              // Try to refresh batches with our improved forceRefreshBatches function
               console.log('🔄 [CLIENT] Attempting to refresh batches before enrichment');
-              try {
-                // Make a direct API call with extra debugging
-                console.log(`🔄 [CLIENT] Direct API call to get batches for upload ${state.enrichment.currentUploadId}`);
-                
-                // Add delay to ensure server has time to process any pending changes
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                const result = await api.transactions.getUploadedBatches(state.enrichment.currentUploadId);
-                console.log('🔄 [CLIENT] Raw API response:', JSON.stringify(result));
-                
-                if (result && result.batches && result.batches.length > 0) {
-                  console.log(`✅ [CLIENT] Successfully refreshed batches: found ${result.batches.length} batches`);
-                  state.enrichment.transactionBatches = result.batches;
-                  state.enrichment.statistics = result.statistics;
-                  
-                  // Wait a short time to ensure state updates
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                  
-                  // Continue with enrichment
-                  console.log('✅ [CLIENT] Continuing enrichment process with refreshed batches');
-                } else {
-                  console.warn('⚠️ [CLIENT] Refresh returned no batches');
-                  state.errors.enrichment = 'No batches available for enrichment. Try refreshing the page or restarting the upload process.';
-                  state.loading.enrichment = false;
-                  return;
-                }
-              } catch (refreshError) {
-                console.error('🔴 [CLIENT] Error refreshing batches:', refreshError);
-                state.errors.enrichment = `Failed to refresh batches: ${refreshError.message}`;
+              const refreshSuccessful = await forceRefreshBatches();
+              
+              if (!refreshSuccessful) {
+                console.error('🔴 [CLIENT] Failed to refresh batches after multiple attempts');
+                state.errors.enrichment = 'No batches available for enrichment. Please try uploading again.';
                 state.loading.enrichment = false;
                 return;
               }
+              
+              // Check if refresh was successful but still no batches
+              if (!state.enrichment.transactionBatches || state.enrichment.transactionBatches.length === 0) {
+                console.error('🔴 [CLIENT] Refresh completed but still no batches available');
+                state.errors.enrichment = 'Refresh completed but no batches were found.';
+                state.loading.enrichment = false;
+                return;
+              }
+              
+              console.log('✅ [CLIENT] Successfully refreshed batches before enrichment');
             }
             
             // Reset any previous enrichment errors
@@ -5344,7 +5402,14 @@
           areAccountDetailsComplete,
           processAccountSetup,
           getBatchDescription,
-          getSampleTransactions
+          getSampleTransactions,
+          forceRefreshBatches,
+          getSuggestedCategoriesForBatch,
+          startEnrichAllBatches,
+          suggestCategoryForBatch,
+          acceptSuggestedCategory,
+          rejectSuggestedCategory,
+          viewAllTransactions
         };
       }
     }).mount('#app');
