@@ -1,0 +1,71 @@
+Feedback: Batching Stage – Transaction Enrichment Flow
+Issue:
+The flow currently allows me to complete:
+
+Step 1: Upload Transactions
+
+Step 2: Account Setup — selecting Account Source and Account Type
+
+However, during Step 3: Processing Transactions (Batching Stage), the system hangs and does not proceed.
+
+Clarification: What the Batching Step Is Supposed to Do
+Purpose of Batching:
+This step should analyze all uploaded transactions and group them into batches based on similarity of description and/or merchant name.
+
+The goal is to:
+
+Present batches of similar transactions to the user
+
+Pre-fill category, tags, and merchant where possible using AI or existing heuristics
+
+Allow the user to approve, edit, or reject the batch's metadata
+
+How Batching Should Be Executed:
+AI or similarity logic should:
+
+Normalize and clean the description fields
+
+Use fuzzy matching or embeddings (if using an AI API) to identify clusters of similar transactions
+
+Assign proposed enrichment values (category, tags, merchant) to each batch
+
+The user interface should:
+
+Display a preview of a few transactions from each batch
+
+Provide options to:
+
+✅ Approve the entire batch
+
+✏️ Manually edit attributes (category, tags, merchant)
+
+❌ Decline the batch and leave those transactions untagged
+
+Suggestion: AI Subscription Key
+If the batching logic is relying on an AI API (e.g., OpenAI, Cohere, or similar), make sure:
+
+An API key is properly connected
+
+There is fallback logic if the API fails or times out
+
+The system can at least attempt a basic similarity match (e.g., string distance) to form batches if AI fails
+
+Required Fixes:
+Please review the instructions and re-verify the logic for Step 3 – Batching Stage:
+
+Ensure the system is not hanging due to an unhandled promise or missing API key
+
+Confirm that the backend or parsing service is returning batches before rendering the UI
+
+Add a loading state or progress indicator so the user knows if analysis is still running
+
+User Experience Note:
+This step is critical for scaling categorization.
+
+The user must have a smooth, intuitive experience to:
+
+Understand the batch
+
+Confirm or correct the data
+
+Keep moving without being blocked

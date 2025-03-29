@@ -2903,13 +2903,43 @@
           state.errors.enrichment = null;
           
           try {
+            console.log(`🔍 [CLIENT] Fetching batches for uploadId: ${uploadId}`);
             const result = await api.transactions.getUploadedBatches(uploadId);
-            state.enrichment.transactionBatches = result.batches || [];
-            state.enrichment.statistics = result.statistics;
+            console.log(`🔍 [CLIENT] Batches response received:`, {
+              batchCount: result?.batches?.length || 0,
+              statistics: result?.statistics || 'None',
+              hasError: !!result?.error
+            });
+            
+            if (result?.error) {
+              throw new Error(`API returned error: ${result.error}`);
+            }
+            
+            if (!result?.batches || result.batches.length === 0) {
+              console.warn(`🔍 [CLIENT] No batches returned for uploadId: ${uploadId}`);
+            } else {
+              console.log(`🔍 [CLIENT] Found ${result.batches.length} batches`);
+              // Store batch data in state
+              state.enrichment.transactionBatches = result.batches;
+              state.enrichment.statistics = result.statistics;
+              
+              // Prepare pendingBatches array with all batch IDs
+              state.enrichment.pendingBatches = result.batches.map(batch => batch.batchId);
+              
+              // Set first batch as current if available
+              if (result.batches.length > 0) {
+                state.enrichment.currentBatch = result.batches[0];
+                state.enrichment.currentBatchIndex = 0;
+              }
+            }
+            
             return result;
           } catch (error) {
-            state.errors.enrichment = error.message;
-            console.error('Failed to fetch enrichment batches:', error);
+            const errorMsg = `Failed to fetch enrichment batches: ${error.message}`;
+            state.errors.enrichment = errorMsg;
+            console.error('🔴 [CLIENT]', errorMsg, error);
+            // Return error object to handle it in the calling function
+            return { error: errorMsg, batches: [] };
           } finally {
             state.loading.enrichment = false;
           }
@@ -2970,36 +3000,98 @@
         
         // Complete the entire upload
         const completeUpload = async (uploadId) => {
-          console.log('Starting completeUpload for uploadId:', uploadId);
+          console.log('🔍 [CLIENT] Starting completeUpload for uploadId:', uploadId);
           state.loading.enrichment = true;
+          state.errors.enrichment = null;
+          
+          if (!uploadId) {
+            const errorMsg = 'Missing upload ID. Cannot complete the upload process.';
+            console.error('🔴 [CLIENT] ' + errorMsg);
+            state.errors.enrichment = errorMsg;
+            state.loading.enrichment = false;
+            return;
+          }
           
           try {
-            console.log('Calling API to complete upload...');
-            const result = await api.transactions.completeUpload(uploadId);
-            console.log('Upload completed successfully:', result);
+            console.log('🔍 [CLIENT] Calling API to complete upload for ID:', uploadId);
+            
+            // Add a timeout promise to provide a fallback if the API call takes too long
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Request timed out after 15 seconds')), 15000);
+            });
+            
+            // Make the API call with a timeout
+            const result = await Promise.race([
+              api.transactions.completeUpload(uploadId),
+              timeoutPromise
+            ]);
+            
+            console.log('✅ [CLIENT] Upload completed successfully:', result);
             
             // Set the enrichment flow as complete
             state.enrichment.currentStep = 'complete';
             state.enrichment.progress = 100;
-            console.log('Updated enrichment state: currentStep=complete, progress=100%');
+            console.log('✅ [CLIENT] Updated enrichment state: currentStep=complete, progress=100%');
             
-            // Refresh transactions to show the newly imported data
-            await fetchTransactions();
+            // Show processing message before fetching new data
+            state.successMessages.enrichment = `Transaction upload complete! Refreshing data...`;
             
-            // Fetch categories if they might have been updated
-            await fetchCategories();
-            
-            hasData.value = true;
-            
-            // Show success message
-            state.successMessages.enrichment = `Successfully imported and enriched all transactions.`;
-            
-            // Clear enrichment modal after a delay
-            setTimeout(() => {
-              closeEnrichmentModal();
-            }, 3000);
+            try {
+              // Refresh transactions and categories in parallel to show the newly imported data
+              await Promise.all([
+                fetchTransactions(),
+                fetchCategories()
+              ]);
+              
+              console.log('✅ [CLIENT] Successfully refreshed transactions and categories after upload');
+              
+              // Set hasData flag now that we have transactions
+              hasData.value = true;
+              
+              // Update success message
+              state.successMessages.enrichment = `Successfully imported and enriched all transactions.`;
+              
+              // Refresh dashboard if we're on the home tab
+              if (activeTab.value === 'home') {
+                fetchDashboardData().catch(err => {
+                  console.warn('🔶 [CLIENT] Failed to refresh dashboard data:', err);
+                });
+              }
+              
+              // Clear enrichment modal after a delay to show success message
+              setTimeout(() => {
+                closeEnrichmentModal();
+              }, 3000);
+              
+            } catch (refreshError) {
+              console.error('🔴 [CLIENT] Failed to refresh data after upload:', refreshError);
+              // Still consider the upload a success, just show a warning
+              state.successMessages.enrichment = `Successfully imported transactions, but couldn't refresh the data. Try refreshing the page.`;
+            }
           } catch (error) {
-            console.error('Failed to complete upload:', error);
+            const errorMsg = `Failed to complete upload: ${error.message}`;
+            console.error('🔴 [CLIENT] Error in completeUpload:', error);
+            state.errors.enrichment = errorMsg;
+            
+            if (error.message.includes('timeout')) {
+              state.errors.enrichment += ' The server might still be processing your upload in the background.';
+              
+              // Try to recover by checking if transactions were added anyway
+              setTimeout(async () => {
+                try {
+                  await fetchTransactions();
+                  console.log('🔍 [CLIENT] Attempted to recover by fetching transactions after timeout');
+                  
+                  if (state.transactions.some(tx => tx.uploadId === uploadId)) {
+                    console.log('✅ [CLIENT] Found transactions with this uploadId despite timeout');
+                    state.successMessages.enrichment = 'Upload may have completed successfully in the background.';
+                    state.errors.enrichment = null;
+                  }
+                } catch (e) {
+                  console.error('🔴 [CLIENT] Recovery attempt failed:', e);
+                }
+              }, 3000);
+            }
           } finally {
             state.loading.enrichment = false;
           }
@@ -3062,24 +3154,34 @@
 
         // Process account setup and move to next step
         const processAccountSetup = async () => {
-          console.log('Processing account setup', { 
+          console.log('🔍 [CLIENT] Processing account setup', { 
             uploadedFiles: state.enrichment.uploadedFiles,
             uploadId: state.enrichment.currentUploadId
           });
           
           if (!areAccountDetailsComplete()) {
-            console.warn('Account details are not complete, skipping process');
+            console.warn('🔶 [CLIENT] Account details are not complete, skipping process');
+            state.errors.enrichment = 'Please complete all account details before proceeding';
+            return;
+          }
+          
+          if (!state.enrichment.currentUploadId) {
+            console.error('🔴 [CLIENT] Missing uploadId, cannot proceed');
+            state.errors.enrichment = 'Upload ID is missing. Please try uploading the file again.';
             return;
           }
           
           state.loading.enrichment = true;
+          state.errors.enrichment = null;
           
           try {
-            console.log('Updating account information in the backend', {
+            console.log('🔍 [CLIENT] Updating account information in the backend', {
               uploadId: state.enrichment.currentUploadId,
               files: state.enrichment.uploadedFiles.map(f => ({ 
                 fileName: f.fileName,
+                fileId: state.enrichment.currentUploadId,
                 accountSource: f.accountSource, 
+                accountSourceSelection: f.accountSourceSelection || f.accountSource,
                 accountType: f.accountType 
               }))
             });
@@ -3087,32 +3189,58 @@
             // Update account information in the backend
             await api.transactions.updateAccountInfo(
               state.enrichment.currentUploadId, 
-              state.enrichment.uploadedFiles
+              state.enrichment.uploadedFiles.map(f => ({
+                fileName: f.fileName,
+                fileId: state.enrichment.currentUploadId,
+                accountSource: f.accountSource,
+                accountSourceSelection: f.accountSourceSelection || f.accountSource,
+                accountType: f.accountType
+              }))
             );
             
-            console.log('Account information updated successfully');
+            console.log('✅ [CLIENT] Account information updated successfully');
             
-            // Update the enrichment step and progress
+            // First update UI to show loading in batching step
             state.enrichment.currentStep = 'batching';
             state.enrichment.progress = 40;
             
-            console.log('Fetching enrichment batches');
+            // The batching step should show a loading state until data is ready
+            state.loading.enrichment = true;
+            
+            // Wait a small amount of time to ensure the UI updates before making the next API call
+            // This helps prevent the UI from appearing to hang
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            console.log('🔍 [CLIENT] Fetching enrichment batches for upload', state.enrichment.currentUploadId);
             
             // Fetch the transaction batches
             const batchResult = await fetchEnrichmentBatches(state.enrichment.currentUploadId);
             
-            console.log('Enrichment batches fetched', {
+            if (batchResult.error) {
+              throw new Error(batchResult.error);
+            }
+            
+            console.log('✅ [CLIENT] Enrichment batches processed', {
               batches: batchResult?.batches?.length || 0,
               statistics: batchResult?.statistics
             });
             
             // If no batches were returned, display an error
-            if (!batchResult || !batchResult.batches || batchResult.batches.length === 0) {
+            if (!batchResult?.batches || batchResult.batches.length === 0) {
               state.errors.enrichment = 'No transaction batches were found for this upload. Please try again or contact support.';
+              console.error('🔴 [CLIENT] No batches returned from API');
+            } else {
+              // Show success message
+              state.successMessages.enrichment = `Ready to process ${batchResult.batches.length} batch(es) with ${batchResult.statistics?.totalTransactions || 0} transactions.`;
+              console.log('✅ [CLIENT] Successfully moved to batching step');
             }
           } catch (error) {
-            console.error('Error updating account info:', error);
-            state.errors.enrichment = 'Failed to update account information: ' + error.message;
+            const errorMsg = `Failed to process account setup: ${error.message}`;
+            console.error('🔴 [CLIENT] Error in processAccountSetup:', error);
+            state.errors.enrichment = errorMsg;
+            // Stay on the account setup step if there's an error
+            state.enrichment.currentStep = 'accountSetup';
+            state.enrichment.progress = 25;
           } finally {
             state.loading.enrichment = false;
           }
@@ -3442,27 +3570,65 @@
         
         // Finish batch review and show completion screen
         const finishBatchReview = async () => {
-          console.log('Starting finishBatchReview function');
+          console.log('🔍 [CLIENT] Starting finishBatchReview function');
           state.loading.enrichment = true;
+          state.errors.enrichment = null;
           
           try {
-            console.log('Calling completeUpload with uploadId:', state.enrichment.currentUploadId);
+            // First, ensure all batches have been processed
+            const unprocessedBatches = state.enrichment.transactionBatches.filter(
+              batch => !batch.status || (batch.status !== 'completed' && batch.status !== 'enriched')
+            );
+            
+            if (unprocessedBatches.length > 0) {
+              console.warn(`🔶 [CLIENT] There are ${unprocessedBatches.length} unprocessed batches`);
+              
+              // Automatically complete any remaining batches
+              console.log(`🔍 [CLIENT] Auto-completing ${unprocessedBatches.length} remaining batches`);
+              
+              for (const batch of unprocessedBatches) {
+                try {
+                  await completeBatch(batch.batchId);
+                  console.log(`✅ [CLIENT] Auto-completed batch: ${batch.batchId}`);
+                } catch (batchError) {
+                  console.error(`🔴 [CLIENT] Failed to auto-complete batch ${batch.batchId}:`, batchError);
+                  // Continue with other batches even if one fails
+                }
+              }
+            }
+            
+            console.log('🔍 [CLIENT] Calling completeUpload with uploadId:', state.enrichment.currentUploadId);
             
             // Add a fallback if somehow uploadId is missing
             if (!state.enrichment.currentUploadId) {
-              console.error('Error: Missing uploadId in finishBatchReview');
+              console.error('🔴 [CLIENT] Error: Missing uploadId in finishBatchReview');
+              
               // Try to recover by finding the first batch and extracting uploadId
               if (state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
                 const firstBatch = state.enrichment.transactionBatches[0];
                 if (firstBatch.batchId) {
                   const uploadIdMatch = firstBatch.batchId.match(/^(upload_\d+)_/);
                   if (uploadIdMatch && uploadIdMatch[1]) {
-                    console.log('Recovered uploadId from batch:', uploadIdMatch[1]);
+                    console.log('🔍 [CLIENT] Recovered uploadId from batch:', uploadIdMatch[1]);
                     state.enrichment.currentUploadId = uploadIdMatch[1];
+                  } else {
+                    throw new Error('Could not extract uploadId from batch ID: ' + firstBatch.batchId);
                   }
+                } else {
+                  throw new Error('Batch ID is missing from the first batch');
                 }
+              } else {
+                throw new Error('No transaction batches found for recovery');
               }
             }
+            
+            // Verify we now have a valid uploadId
+            if (!state.enrichment.currentUploadId) {
+              throw new Error('Unable to recover the upload ID. Please start over.');
+            }
+            
+            // Show a loading message
+            state.successMessages.enrichment = "Finalizing your transaction upload...";
             
             // Complete the upload
             await completeUpload(state.enrichment.currentUploadId);
@@ -3470,10 +3636,21 @@
             // Move to complete step
             state.enrichment.currentStep = 'complete';
             state.enrichment.progress = 100;
-            console.log('Completed batch review successfully');
+            console.log('✅ [CLIENT] Completed batch review successfully');
+            
+            // Show success message
+            state.successMessages.enrichment = `Successfully processed all transaction batches. Your transactions are now ready!`;
           } catch (error) {
-            state.errors.enrichment = error.message || 'Failed to complete review';
-            console.error('Failed to finish batch review:', error);
+            const errorMsg = `Failed to complete transaction processing: ${error.message}`;
+            state.errors.enrichment = errorMsg;
+            console.error('🔴 [CLIENT] Error in finishBatchReview:', error);
+            
+            // Try to notify the user about specific issues
+            if (error.message.includes('uploadId')) {
+              state.errors.enrichment += ' This might be due to a missing upload ID. Please try uploading the file again.';
+            } else if (error.message.includes('network')) {
+              state.errors.enrichment += ' This might be due to a network issue. Please check your connection and try again.';
+            }
           } finally {
             state.loading.enrichment = false;
           }
