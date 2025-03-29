@@ -1,6 +1,5 @@
-[SIMULATE] Setting OpenAI service to simulation mode
 =========================================
-Testing OpenAI Batch Fallback Mechanism
+Testing OpenAI Fallback Mechanisms
 =========================================
 [MOCK] Training classifier with mock data
 [MOCK] Classifier trained successfully
@@ -14,18 +13,100 @@ Initial OpenAI Service Metrics:
   errors: 0,
   rateLimitErrors: 0,
   retries: 0,
-  startTime: 1743281007645,
+  startTime: 1743283223618,
   lastRateLimitTime: 0,
   isRateLimited: false,
-  runtimeMs: 113,
+  runtimeMs: 575,
   runtimeMinutes: 0,
   cacheSize: 0,
   cacheHitRate: 0,
   isCurrentlyRateLimited: true
 }
 
+Testing direct OpenAI categorization first:
+[OpenAI] Categorizing transaction: "GROCERY OUTLET MARKET" for $43.27 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+OpenAI Result: {
+  categoryName: null,
+  confidence: 0,
+  reasoning: 'Error: OpenAI API rate limited',
+  error: true
+}
+[OpenAI] Simulating API failure for testing
+
+Is OpenAI currently rate limited? true
+
+Testing fallback categorization through CategorySuggestionService (Individual Mode):
+
+Categorizing: "GROCERY OUTLET MARKET" ($43.27, expense)
+[CategorySuggestion] Using OpenAI to suggest category for: "GROCERY OUTLET MARKET" (expense, $43.27)
+[OpenAI] Categorizing transaction: "GROCERY OUTLET MARKET" for $43.27 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
+{
+  categoryName: 'Groceries',
+  categoryId: 'cat1',
+  confidence: 0.19047619047619047,
+  source: 'bayes-classifier'
+}
+
+Categorizing: "NETFLIX SUBSCRIPTION" ($12.99, expense)
+[CategorySuggestion] Using OpenAI to suggest category for: "NETFLIX SUBSCRIPTION" (expense, $12.99)
+[OpenAI] Categorizing transaction: "NETFLIX SUBSCRIPTION" for $12.99 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
+{
+  categoryName: 'Entertainment',
+  categoryId: 'cat4',
+  confidence: 0.2857142857142857,
+  source: 'bayes-classifier'
+}
+
+Categorizing: "SALARY DEPOSIT" ($2508.42, income)
+[CategorySuggestion] Using OpenAI to suggest category for: "SALARY DEPOSIT" (income, $2508.42)
+[OpenAI] Categorizing transaction: "SALARY DEPOSIT" for $2508.42 (income)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
+{
+  categoryName: 'Salary',
+  categoryId: 'cat5',
+  confidence: 0.2857142857142857,
+  source: 'bayes-classifier'
+}
+
+Categorizing: "POWER & ELECTRIC BILL" ($85.33, expense)
+[CategorySuggestion] Using OpenAI to suggest category for: "POWER & ELECTRIC BILL" (expense, $85.33)
+[OpenAI] Categorizing transaction: "POWER & ELECTRIC BILL" for $85.33 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
+{
+  categoryName: 'Utilities',
+  categoryId: 'cat3',
+  confidence: 0.2857142857142857,
+  source: 'bayes-classifier'
+}
+
+Individual Fallback Test Results:
+- Transactions processed: 4
+- OpenAI categorizations: 0
+- Bayes classifier fallbacks: 4
+- Other sources: 0
+
+Transaction Categorization Summary:
+- GROCERY OUTLET MARKET: Groceries (0.19) [bayes-classifier]
+- NETFLIX SUBSCRIPTION: Entertainment (0.29) [bayes-classifier]
+- SALARY DEPOSIT: Salary (0.29) [bayes-classifier]
+- POWER & ELECTRIC BILL: Utilities (0.29) [bayes-classifier]
+
+Testing batch categorization with fallback:
+
 1. Testing OpenAI direct batch categorization:
-[OpenAI] Batch categorizing 2 transactions
+[OpenAI] Batch categorizing 4 transactions
 [OpenAI] Processing batch 1/1
 [OpenAI] Simulating API failure for testing
 [OpenAI] Currently rate limited, using fallback mechanism
@@ -34,6 +115,12 @@ Initial OpenAI Service Metrics:
 [OpenAI] Simulating API failure for testing
 [OpenAI] Currently rate limited, using fallback mechanism
 [OpenAI] Categorizing transaction: "NETFLIX SUBSCRIPTION" for $12.99 (expense)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[OpenAI] Categorizing transaction: "SALARY DEPOSIT" for $2508.42 (income)
+[OpenAI] Simulating API failure for testing
+[OpenAI] Currently rate limited, using fallback mechanism
+[OpenAI] Categorizing transaction: "POWER & ELECTRIC BILL" for $85.33 (expense)
 [OpenAI] Simulating API failure for testing
 [OpenAI] Currently rate limited, using fallback mechanism
 Batch results: [
@@ -50,6 +137,20 @@ Batch results: [
     "confidence": 0,
     "reasoning": "Error: OpenAI API rate limited",
     "error": true
+  },
+  {
+    "transactionId": "txn3",
+    "categoryName": null,
+    "confidence": 0,
+    "reasoning": "Error: OpenAI API rate limited",
+    "error": true
+  },
+  {
+    "transactionId": "txn4",
+    "categoryName": null,
+    "confidence": 0,
+    "reasoning": "Error: OpenAI API rate limited",
+    "error": true
   }
 ]
 
@@ -61,59 +162,97 @@ Batch results: [
 [OpenAI] Categorizing transaction: "GROCERY OUTLET MARKET" for $43.27 (expense)
 [OpenAI] Simulating API failure for testing
 [OpenAI] Currently rate limited, using fallback mechanism
-[WARNING] OpenAI simulation failure not working as expected
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
 [MOCK] Suggesting category for: "NETFLIX SUBSCRIPTION" (expense, $12.99)
 [CategorySuggestion] Using OpenAI to suggest category for: "NETFLIX SUBSCRIPTION" (expense, $12.99)
 [OpenAI] Categorizing transaction: "NETFLIX SUBSCRIPTION" for $12.99 (expense)
 [OpenAI] Simulating API failure for testing
 [OpenAI] Currently rate limited, using fallback mechanism
-[WARNING] OpenAI simulation failure not working as expected
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
 [MOCK] Suggesting category for: "SALARY DEPOSIT" (income, $2508.42)
 [CategorySuggestion] Using OpenAI to suggest category for: "SALARY DEPOSIT" (income, $2508.42)
 [OpenAI] Categorizing transaction: "SALARY DEPOSIT" for $2508.42 (income)
 [OpenAI] Simulating API failure for testing
 [OpenAI] Currently rate limited, using fallback mechanism
-[WARNING] OpenAI simulation failure not working as expected
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
 [MOCK] Suggesting category for: "POWER & ELECTRIC BILL" (expense, $85.33)
 [CategorySuggestion] Using OpenAI to suggest category for: "POWER & ELECTRIC BILL" (expense, $85.33)
 [OpenAI] Categorizing transaction: "POWER & ELECTRIC BILL" for $85.33 (expense)
 [OpenAI] Simulating API failure for testing
 [OpenAI] Currently rate limited, using fallback mechanism
-[WARNING] OpenAI simulation failure not working as expected
+[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier
 Batch suggestion results:
 {
-  "automaticSuggestions": 4,
-  "manualReviewNeeded": 0,
+  "suggestions": [
+    {
+      "transactionId": "txn1",
+      "categoryId": "cat1",
+      "confidence": 0.19047619047619047,
+      "source": "bayes-classifier",
+      "needsReview": true
+    },
+    {
+      "transactionId": "txn2",
+      "categoryId": "cat4",
+      "confidence": 0.2857142857142857,
+      "source": "bayes-classifier",
+      "needsReview": true
+    },
+    {
+      "transactionId": "txn3",
+      "categoryId": "cat5",
+      "confidence": 0.2857142857142857,
+      "source": "bayes-classifier",
+      "needsReview": true
+    },
+    {
+      "transactionId": "txn4",
+      "categoryId": "cat3",
+      "confidence": 0.2857142857142857,
+      "source": "bayes-classifier",
+      "needsReview": true
+    }
+  ],
   "stats": {
     "total": 4,
-    "automatic": 4,
-    "manualReview": 0,
-    "averageConfidence": 0.9,
-    "percentAutomatic": 100
-  }
+    "automatic": 0,
+    "manualReview": 4,
+    "averageConfidence": 0.26190476190476186,
+    "percentAutomatic": 0
+  },
+  "automaticSuggestions": 0,
+  "manualReviewNeeded": 4
 }
 
 3. Individual suggestion details:
-- GROCERY OUTLET MARKET: Unknown (0.90) [openai]
-- NETFLIX SUBSCRIPTION: Unknown (0.90) [openai]
-- SALARY DEPOSIT: Unknown (0.90) [openai]
-- POWER & ELECTRIC BILL: Unknown (0.90) [openai]
+- GROCERY OUTLET MARKET: Groceries (0.19) [bayes-classifier]
+- NETFLIX SUBSCRIPTION: Entertainment (0.29) [bayes-classifier]
+- SALARY DEPOSIT: Salary (0.29) [bayes-classifier]
+- POWER & ELECTRIC BILL: Utilities (0.29) [bayes-classifier]
 
 Final OpenAI Service Metrics:
 [OpenAI] Simulating API failure for testing
 {
-  apiCalls: 6,
+  apiCalls: 13,
   cacheHits: 0,
   batchRequests: 1,
-  errors: 7,
+  errors: 14,
   rateLimitErrors: 0,
   retries: 0,
-  startTime: 1743281007645,
+  startTime: 1743283223618,
   lastRateLimitTime: 0,
   isRateLimited: true,
-  runtimeMs: 124,
+  runtimeMs: 594,
   runtimeMinutes: 0,
   cacheSize: 0,
   cacheHitRate: 0,
   isCurrentlyRateLimited: true
 }
+
+Verifying fallback behavior with simulation enabled:
+
+✅ SUCCESS: OpenAI individual fallback is working properly!
+All individual transactions were categorized using the Bayes classifier, as expected with simulated failures.
+
+✅ SUCCESS: OpenAI batch fallback is working properly!
+All batch transactions were categorized using the Bayes classifier, as expected with simulated failures.

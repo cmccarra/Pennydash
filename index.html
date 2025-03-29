@@ -2339,11 +2339,57 @@
                     </table>
                   </div>
                   
-                  <!-- Suggested category based on merchant or description -->
-                  <div v-if="state.enrichment.suggestedCategory" class="mb-4">
+                  <!-- Loading indicator for AI suggestions -->
+                  <div v-if="state.loading.suggestions" class="mb-4 flex justify-center">
+                    <div class="flex flex-col items-center">
+                      <span class="loading loading-spinner loading-md text-primary mb-2"></span>
+                      <p class="text-sm text-base-content opacity-70">Generating AI-powered category suggestions...</p>
+                    </div>
+                  </div>
+                  
+                  <!-- Error message for suggestions -->
+                  <div v-if="state.errors.suggestions" class="alert alert-error mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span>{{ state.errors.suggestions }}</span>
+                  </div>
+                  
+                  <!-- Suggested category based on AI with confidence score -->
+                  <div v-if="state.enrichment.suggestedCategory && !state.loading.suggestions" class="mb-4">
                     <div class="flex items-center gap-2 mb-2">
-                      <div class="badge badge-lg badge-primary">Suggested</div>
+                      <div class="badge badge-lg badge-primary">AI Suggested</div>
                       <h6 class="font-medium">{{ getCategoryName(state.categories, state.enrichment.suggestedCategory) }}</h6>
+                      <!-- Confidence badge -->
+                      <div class="badge badge-sm" 
+                        :class="{
+                          'badge-success': state.enrichment.suggestedCategoryConfidence >= 0.8,
+                          'badge-warning': state.enrichment.suggestedCategoryConfidence >= 0.6 && state.enrichment.suggestedCategoryConfidence < 0.8,
+                          'badge-error': state.enrichment.suggestedCategoryConfidence < 0.6
+                        }">
+                        {{ Math.round((state.enrichment.suggestedCategoryConfidence || 0) * 100) }}% confidence
+                      </div>
+                    </div>
+                    
+                    <!-- Confidence bar -->
+                    <div class="w-full bg-base-200 rounded-full h-2 mb-3">
+                      <div class="h-2 rounded-full"
+                        :style="{
+                          width: `${(state.enrichment.suggestedCategoryConfidence || 0) * 100}%`,
+                          backgroundColor: getConfidenceColor(state.enrichment.suggestedCategoryConfidence || 0)
+                        }">
+                      </div>
+                    </div>
+                    
+                    <!-- Alternative suggestions -->
+                    <div v-if="state.enrichment.aiSuggestions?.topCategories && state.enrichment.aiSuggestions.topCategories.length > 1" 
+                         class="mb-3 flex flex-wrap gap-2">
+                      <span class="text-sm opacity-70">Alternatives:</span>
+                      <div v-for="(altCategory, i) in state.enrichment.aiSuggestions.topCategories.slice(1, 4)" :key="i" 
+                          class="badge badge-sm cursor-pointer hover:opacity-80"
+                          :style="{ backgroundColor: getCategoryColor(state.categories, altCategory.categoryId) }"
+                          @click="selectAlternativeCategory(altCategory.categoryId)">
+                        {{ getCategoryName(state.categories, altCategory.categoryId) }}
+                        ({{ Math.round(altCategory.avgConfidence * 100) }}%)
+                      </div>
                     </div>
                     
                     <div class="flex justify-center space-x-3 mb-4">
@@ -2888,7 +2934,8 @@
             reports: false,
             upload: false,
             saveSettings: false,
-            enrichment: false
+            enrichment: false,
+            suggestions: false
           },
           // Properly initialize messages as null to prevent flash on load
           // Using null instead of empty strings for better conditional rendering
@@ -2902,7 +2949,8 @@
             reports: null,
             settings: null,
             upload: null,
-            enrichment: null
+            enrichment: null,
+            suggestions: null
           },
           // Enrichment flow state
           enrichment: {
@@ -2923,6 +2971,12 @@
             currentBatchIndex: 0, // Index of the current batch
             showCategorySelector: false,
             suggestedCategory: null,
+            suggestedCategoryConfidence: 0,
+            aiSuggestions: {
+              topCategories: [], // Array of objects with categoryId and confidence
+              reasoning: null, // AI's reasoning for the suggestion
+              source: null // Source of the suggestion ('openai' or 'bayes')
+            },
             debugInfo: { // For diagnosis and debugging
               lastApiRequest: null,
               lastApiResponse: null,
@@ -3934,28 +3988,73 @@
           state.enrichment.progress = 75;
         };
         
-        // Suggest a category for the current batch
-        const suggestCategoryForBatch = (batch) => {
+        // Suggest a category for the current batch using AI service
+        const suggestCategoryForBatch = async (batch) => {
           if (!batch || !batch.transactions || batch.transactions.length === 0) {
             state.enrichment.suggestedCategory = null;
             return;
           }
           
-          // Get the merchant names
-          const merchants = batch.transactions.map(t => t.merchant).filter(Boolean);
-          const descriptions = batch.transactions.map(t => t.description);
+          // Reset AI suggestions state
+          state.enrichment.suggestedCategory = null;
+          state.enrichment.suggestedCategoryConfidence = 0;
+          state.enrichment.aiSuggestions = {
+            topCategories: [],
+            reasoning: null,
+            source: null
+          };
           
-          // Simple suggestion based on merchant or description keywords
-          const merchantKeywords = {
-            "UBER": "5fe9a5e7-09c8-4d6e-8a92-b1073e6b8a3e", // Transportation
-            "AMAZON": "46c0235a-926b-4ce2-92a3-c1a93334b552", // Shopping
-            "NETFLIX": "89e1743d-12c4-42de-9a3b-b4c5de09d455", // Entertainment
-            "GROCERY": "b24f9d8c-7f37-4079-b1c7-b215be31e559", // Groceries
-            "RESTAURANT": "1e5f61f3-43a9-4bac-b0c5-d1e35a9a75b6", // Dining Out
-            "COFFEE": "1e5f61f3-43a9-4bac-b0c5-d1e35a9a75b6", // Dining Out
-            "GYM": "a0c47efd-de41-4f67-b3a7-46a4f6af6f7c", // Health & Fitness
-            "SALARY": "cb7a07ad-1a65-4e92-aae0-63a958d4c3c2", // Salary & Wages
-            "INTEREST": "102e0968-f6a4-4e35-8405-7f53a8f18a88", // Other Income
+          // Show loading indicator for suggestions
+          state.loading.suggestions = true;
+          state.errors.suggestions = null;
+          
+          try {
+            console.log(`🧠 [CLIENT] Requesting AI category suggestions for batch: ${batch.batchId}`);
+            
+            // Use the AI-powered suggestion service
+            const result = await api.transactions.generateCategorySuggestions(
+              batch.batchId, 
+              0.7 // Default confidence threshold
+            );
+            
+            console.log(`✅ [CLIENT] AI suggestion result:`, {
+              batchCategory: result.batchCategoryId || 'None',
+              confidence: result.averageConfidence || 0,
+              source: result.suggestionSource || 'unknown',
+              needsReview: result.needsReview,
+              topCategories: result.topCategories?.length || 0
+            });
+            
+            // Store the suggested category and other data
+            state.enrichment.suggestedCategory = result.batchCategoryId;
+            state.enrichment.suggestedCategoryConfidence = result.averageConfidence || 0;
+            
+            // Store full AI suggestion data
+            state.enrichment.aiSuggestions = {
+              topCategories: result.topCategories || [],
+              reasoning: result.reasoning || null,
+              source: result.suggestionSource || null
+            };
+            
+            // If no category was suggested or confidence is very low, fallback to keyword matching
+            if (!state.enrichment.suggestedCategory) {
+              console.log(`⚠️ [CLIENT] No AI category suggestions available, falling back to keyword matching`);
+              
+              // Get the merchant names and descriptions for fallback
+              const merchants = batch.transactions.map(t => t.merchant).filter(Boolean);
+              const descriptions = batch.transactions.map(t => t.description);
+              
+              // Simple suggestion based on merchant or description keywords
+              const merchantKeywords = {
+                "UBER": "5fe9a5e7-09c8-4d6e-8a92-b1073e6b8a3e", // Transportation
+                "AMAZON": "46c0235a-926b-4ce2-92a3-c1a93334b552", // Shopping
+                "NETFLIX": "89e1743d-12c4-42de-9a3b-b4c5de09d455", // Entertainment
+                "GROCERY": "b24f9d8c-7f37-4079-b1c7-b215be31e559", // Groceries
+                "RESTAURANT": "1e5f61f3-43a9-4bac-b0c5-d1e35a9a75b6", // Dining Out
+                "COFFEE": "1e5f61f3-43a9-4bac-b0c5-d1e35a9a75b6", // Dining Out
+                "GYM": "a0c47efd-de41-4f67-b3a7-46a4f6af6f7c", // Health & Fitness
+                "SALARY": "cb7a07ad-1a65-4e92-aae0-63a958d4c3c2", // Salary & Wages
+                "INTEREST": "102e0968-f6a4-4e35-8405-7f53a8f18a88", // Other Income
             "RENT": "f4c6b082-5adb-454e-8ec9-d84dbf6c8f28", // Housing
             "MORTGAGE": "f4c6b082-5adb-454e-8ec9-d84dbf6c8f28", // Housing
             "INSURANCE": "c29c548c-2b8c-4733-8b92-add6e1c1c276", // Insurance
@@ -4939,6 +5038,30 @@
           if (!categoryId) return '#718096'; // Default gray color
           const category = state.categories.find(c => c.id === categoryId);
           return category ? category.color : '#718096';
+        };
+        
+        // Get confidence indicator color
+        const getConfidenceColor = (confidenceScore) => {
+          if (confidenceScore >= 0.8) return '#36D399'; // success
+          if (confidenceScore >= 0.6) return '#FBBD23'; // warning
+          return '#F87272'; // error
+        };
+        
+        // Select an alternative category
+        const selectAlternativeCategory = (categoryId) => {
+          if (!categoryId) return;
+          
+          console.log(`🔍 [CLIENT] Selected alternative category: ${categoryId}`);
+          state.enrichment.suggestedCategory = categoryId;
+          
+          // Find the category in top categories to get confidence
+          if (state.enrichment.aiSuggestions?.topCategories) {
+            const altCategory = state.enrichment.aiSuggestions.topCategories.find(c => c.categoryId === categoryId);
+            if (altCategory) {
+              state.enrichment.suggestedCategoryConfidence = altCategory.avgConfidence;
+              console.log(`✅ [CLIENT] Updated confidence to: ${altCategory.avgConfidence}`);
+            }
+          }
         };
         
         // Format account type for display

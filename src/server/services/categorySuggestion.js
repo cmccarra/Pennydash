@@ -211,10 +211,13 @@ class CategorySuggestionService {
             };
           } else if (openaiSuggestion?.error) {
             console.error(`[CategorySuggestion] OpenAI error: ${openaiSuggestion.reasoning}`);
+            // Set a flag to indicate OpenAI failed so we know to use the Bayes classifier below
+            console.log('[CategorySuggestion] OpenAI categorization failed, will use Bayes classifier');
             // Fall through to classifier fallback
           }
         } catch (openaiError) {
           console.error('[CategorySuggestion] OpenAI error, falling back to classifier:', openaiError);
+          console.log('[CategorySuggestion] Error details:', openaiError.message);
           // Fall back to classifier below
         }
       }
