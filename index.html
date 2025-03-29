@@ -3140,33 +3140,62 @@
           
           try {
             console.log(`🔍 [CLIENT] Fetching batches for uploadId: ${uploadId}`);
+            
+            // Validate the upload ID before making the request
+            if (!uploadId) {
+              throw new Error('Upload ID is missing. Please try uploading the file again.');
+            }
+            
+            if (!uploadId.startsWith('upload_')) {
+              console.warn(`⚠️ [CLIENT] Upload ID does not match expected format: ${uploadId}`);
+            }
+            
+            // Make the API request
             const result = await api.transactions.getUploadedBatches(uploadId);
+            
             console.log(`🔍 [CLIENT] Batches response received:`, {
               batchCount: result?.batches?.length || 0,
               statistics: result?.statistics || 'None',
               hasError: !!result?.error
             });
             
+            // Check for API errors
             if (result?.error) {
               throw new Error(`API returned error: ${result.error}`);
             }
             
+            // Handle empty batches case
             if (!result?.batches || result.batches.length === 0) {
-              console.warn(`🔍 [CLIENT] No batches returned for uploadId: ${uploadId}`);
+              console.warn(`⚠️ [CLIENT] No batches returned for uploadId: ${uploadId}`);
+              state.errors.enrichment = 'No transaction batches were found for this upload. This may indicate an issue with the file format or data.';
+              return { batches: [], statistics: result?.statistics || { totalTransactions: 0 } };
+            } 
+            
+            // Handle successful response
+            console.log(`✅ [CLIENT] Found ${result.batches.length} batches`);
+            
+            // Check if batch transactions are present
+            const firstBatchWithTransactions = result.batches.find(batch => 
+              batch.transactions && batch.transactions.length > 0
+            );
+            
+            if (!firstBatchWithTransactions) {
+              console.warn(`⚠️ [CLIENT] Batches exist but contain no transactions`);
             } else {
-              console.log(`🔍 [CLIENT] Found ${result.batches.length} batches`);
-              // Store batch data in state
-              state.enrichment.transactionBatches = result.batches;
-              state.enrichment.statistics = result.statistics;
-              
-              // Prepare pendingBatches array with all batch IDs
-              state.enrichment.pendingBatches = result.batches.map(batch => batch.batchId);
-              
-              // Set first batch as current if available
-              if (result.batches.length > 0) {
-                state.enrichment.currentBatch = result.batches[0];
-                state.enrichment.currentBatchIndex = 0;
-              }
+              console.log(`✅ [CLIENT] First batch has ${firstBatchWithTransactions.transactions.length} transactions`);
+            }
+            
+            // Store batch data in state
+            state.enrichment.transactionBatches = result.batches;
+            state.enrichment.statistics = result.statistics;
+            
+            // Prepare pendingBatches array with all batch IDs
+            state.enrichment.pendingBatches = result.batches.map(batch => batch.batchId);
+            
+            // Set first batch as current if available
+            if (result.batches.length > 0) {
+              state.enrichment.currentBatch = result.batches[0];
+              state.enrichment.currentBatchIndex = 0;
             }
             
             return result;
@@ -3174,6 +3203,7 @@
             const errorMsg = `Failed to fetch enrichment batches: ${error.message}`;
             state.errors.enrichment = errorMsg;
             console.error('🔴 [CLIENT]', errorMsg, error);
+            
             // Return error object to handle it in the calling function
             return { error: errorMsg, batches: [] };
           } finally {
@@ -3465,10 +3495,18 @@
             if (!batchResult?.batches || batchResult.batches.length === 0) {
               state.errors.enrichment = 'No transaction batches were found for this upload. Please try again or contact support.';
               console.error('🔴 [CLIENT] No batches returned from API');
+              
+              // Stay on the account setup step if there's an error
+              state.enrichment.currentStep = 'accountSetup';
+              state.enrichment.progress = 25;
             } else {
               // Show success message
               state.successMessages.enrichment = `Ready to process ${batchResult.batches.length} batch(es) with ${batchResult.statistics?.totalTransactions || 0} transactions.`;
               console.log('✅ [CLIENT] Successfully moved to batching step');
+              
+              // Make sure we're in the right state if batches were found 
+              state.enrichment.currentStep = 'batching';
+              state.enrichment.progress = 50;
             }
           } catch (error) {
             const errorMsg = `Failed to process account setup: ${error.message}`;

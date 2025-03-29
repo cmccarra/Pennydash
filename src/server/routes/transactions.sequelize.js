@@ -749,12 +749,30 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
         
-        // Save batch metadata
+        // Save batch metadata with detailed logging
         const batchId = `${uploadId}_batch_${i}`;
+        console.log(`Creating batch ${batchId} with ${batch.length} transactions`);
+        
         batch.forEach(transaction => {
+          // Make sure we're explicitly setting these values to avoid null/undefined
           transaction.batchId = batchId;
           transaction.uploadId = uploadId;
           transaction.enrichmentStatus = 'pending';
+          
+          // Validate required fields
+          if (!transaction.description) {
+            transaction.description = 'No description';
+          }
+          
+          if (!transaction.amount && transaction.amount !== 0) {
+            console.log(`⚠️ [WARNING] Transaction missing amount, defaulting to 0: ${transaction.description}`);
+            transaction.amount = 0;
+          }
+          
+          if (!transaction.date) {
+            console.log(`⚠️ [WARNING] Transaction missing date, defaulting to today: ${transaction.description}`);
+            transaction.date = new Date();
+          }
         });
         
         // Save this batch of transactions
@@ -1272,10 +1290,27 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     
     // Group transactions by batchId
     const batchMap = {};
+    let transactionsWithoutBatch = 0;
+    
     refreshedTransactions.forEach(transaction => {
       const batchId = transaction.batchId;
+      
+      // Log transactions without batches and try to recover
       if (!batchId) {
-        console.log(`Transaction without batchId: ${transaction.id} - ${transaction.description}`);
+        transactionsWithoutBatch++;
+        console.log(`⚠️ [WARNING] Transaction without batchId: ${transaction.id} - ${transaction.description}`);
+        
+        // Try to recover by using the uploadId to create a batch ID
+        // This is a fallback in case batch IDs weren't properly assigned during upload
+        if (transaction.uploadId) {
+          const recoveredBatchId = `${transaction.uploadId}_batch_recovered`;
+          console.log(`🔄 [RECOVERY] Creating recovered batch ID: ${recoveredBatchId} for transaction ${transaction.id}`);
+          
+          if (!batchMap[recoveredBatchId]) {
+            batchMap[recoveredBatchId] = [];
+          }
+          batchMap[recoveredBatchId].push(transaction);
+        }
         return;
       }
       
@@ -1284,6 +1319,11 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
       }
       batchMap[batchId].push(transaction);
     });
+    
+    // Log diagnostic information
+    if (transactionsWithoutBatch > 0) {
+      console.log(`⚠️ [WARNING] Found ${transactionsWithoutBatch} transactions without batch IDs`);
+    }
     
     // Convert to array of batches with statistics
     const batches = Object.keys(batchMap).map(batchId => {
@@ -1341,7 +1381,10 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error('Error getting batches:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: `Error fetching batches: ${error.message}`,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
