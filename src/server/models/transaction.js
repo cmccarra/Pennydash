@@ -186,24 +186,23 @@ class Transaction {
     // Determine type if not already set
     let type = mapping.type;
     
+    // Special direct handling for credit cards
+    // This should be a flag passed from the upload endpoint if the file is from a credit card
+    const isCreditCard = accountType === 'credit_card' || 
+                        (descriptionLower.includes('credit card') && !type);
+                        
+    console.log(`Transaction handling: isCreditCard=${isCreditCard}, desc=${descriptionLower}, isPayment=${isPaymentToCard}`);
+                    
     if (type === undefined) {
-      // For credit card accounts, the logic is different from bank accounts
-      if (accountType === 'credit_card') {
-        if (isPaymentToCard) {
-          // Payments to credit card (negative amounts) are income (reduce expenses)
-          type = 'income';
-        } else if (isRefund) {
-          // Refunds and credits are income (reduce expenses)
-          type = 'income';
-        } else if (amount < 0) {
-          // Other negative amounts on credit cards are typically credits/refunds
+      if (isCreditCard) {
+        // Credit card logic: Purchases are expenses, payments are income
+        if (isPaymentToCard || isRefund) {
           type = 'income';
         } else {
-          // Positive amounts on credit cards are typically purchases
           type = 'expense';
         }
       } else {
-        // For non-credit-card accounts, use standard logic
+        // Regular bank account logic
         if (amount < 0) {
           type = 'expense';
         } else {
@@ -215,6 +214,12 @@ class Transaction {
     // Default handling if still not defined
     if (type === undefined) {
       type = amount < 0 ? 'expense' : 'income';
+    }
+    
+    // Force correct handling of credit card transactions
+    if (isCreditCard && !isPaymentToCard && !isRefund) {
+      // Override the type for regular credit card transactions - they're always expenses
+      type = 'expense';
     }
     
     // Always use positive amounts with type indicating direction

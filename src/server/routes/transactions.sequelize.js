@@ -252,6 +252,30 @@ const getModels = () => {
   return sequelize.models;
 };
 
+// Get transactions by upload ID
+router.get('/by-upload/:uploadId', async (req, res) => {
+  try {
+    const { uploadId } = req.params;
+    const limit = parseInt(req.query.limit || '10');
+    const { Transaction } = getModels();
+    
+    if (!uploadId) {
+      return res.status(400).json({ error: 'Upload ID is required' });
+    }
+    
+    const transactions = await Transaction.findAll({
+      where: { uploadId },
+      limit,
+      order: [['createdAt', 'DESC']]
+    });
+    
+    res.json(transactions);
+  } catch (error) {
+    console.error('Error getting transactions by upload ID:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get all transactions
 router.get('/', async (req, res) => {
   try {
@@ -524,7 +548,32 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         updatedTransaction.account = accountName;
       }
       
-      if (accountTypeEnum) {
+      // If we're explicitly setting a credit card account type, make sure transaction types are correct
+      if (accountTypeEnum === 'credit_card' || updatedTransaction.accountType === 'credit_card') {
+        updatedTransaction.accountType = 'credit_card';
+        
+        // For credit cards, determine if we need to adjust the transaction type
+        const description = (updatedTransaction.description || '').toLowerCase();
+        const isPayment = description.includes('payment') && 
+                         (description.includes('received') || 
+                          description.includes('thank you'));
+        const isRefund = description.includes('refund') || 
+                        description.includes('credit') || 
+                        description.includes('return');
+                        
+        // For credit cards:
+        // - Regular charges (positive amounts) should be expenses 
+        // - Payments to the card and refunds should be income
+        const originalType = updatedTransaction.type;
+        
+        if (isPayment || isRefund) {
+          updatedTransaction.type = 'income';
+        } else {
+          updatedTransaction.type = 'expense';
+        }
+        
+        console.log(`CREDIT CARD TRANSACTION: "${updatedTransaction.description}" | Original type: ${originalType} | New type: ${updatedTransaction.type} | Amount: ${updatedTransaction.amount} | Is Payment: ${isPayment} | Is Refund: ${isRefund}`);
+      } else if (accountTypeEnum) {
         updatedTransaction.accountType = accountTypeEnum;
       }
       
@@ -688,7 +737,32 @@ router.post('/import/csv', upload.single('file'), async (req, res) => {
         updatedTransaction.account = req.body.accountName;
       }
       
-      if (req.body.accountTypeEnum) {
+      // If we're explicitly setting a credit card account type, make sure transaction types are correct
+      if (req.body.accountTypeEnum === 'credit_card' || updatedTransaction.accountType === 'credit_card') {
+        updatedTransaction.accountType = 'credit_card';
+        
+        // For credit cards, determine if we need to adjust the transaction type
+        const description = (updatedTransaction.description || '').toLowerCase();
+        const isPayment = description.includes('payment') && 
+                         (description.includes('received') || 
+                          description.includes('thank you'));
+        const isRefund = description.includes('refund') || 
+                        description.includes('credit') || 
+                        description.includes('return');
+                        
+        // For credit cards:
+        // - Regular charges (positive amounts) should be expenses 
+        // - Payments to the card and refunds should be income
+        const originalType = updatedTransaction.type;
+        
+        if (isPayment || isRefund) {
+          updatedTransaction.type = 'income';
+        } else {
+          updatedTransaction.type = 'expense';
+        }
+        
+        console.log(`CREDIT CARD TRANSACTION: "${updatedTransaction.description}" | Original type: ${originalType} | New type: ${updatedTransaction.type} | Amount: ${updatedTransaction.amount} | Is Payment: ${isPayment} | Is Refund: ${isRefund}`);
+      } else if (req.body.accountTypeEnum) {
         updatedTransaction.accountType = req.body.accountTypeEnum;
       }
       
@@ -911,6 +985,34 @@ router.get('/filter/uncategorized', async (req, res) => {
   }
 });
 
+// Get transactions by upload ID
+router.get('/by-upload/:uploadId', async (req, res) => {
+  try {
+    const { uploadId } = req.params;
+    const limit = parseInt(req.query.limit || '10');
+    const { Transaction } = getModels();
+    
+    if (!uploadId) {
+      return res.status(400).json({ error: 'Upload ID is required' });
+    }
+    
+    console.log(`[GET /by-upload/${uploadId}] - Fetching transactions for upload with limit ${limit}`);
+    
+    const transactions = await Transaction.findAll({
+      where: { uploadId },
+      limit,
+      order: [['createdAt', 'DESC']]
+    });
+    
+    console.log(`[GET /by-upload/${uploadId}] - Found ${transactions.length} transactions`);
+    
+    res.json(transactions);
+  } catch (error) {
+    console.error('Error getting transactions by upload ID:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get all batches for a specific upload
 router.get('/uploads/:uploadId/batches', async (req, res) => {
   try {
@@ -943,13 +1045,19 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     
     console.log(`[GET /uploads/${uploadId}/batches] - Found ${transactions.length} transactions`);
     
+    // Check account type directly from request body
+    console.log(`[GET /uploads/${uploadId}/batches] - Account type in request: ${req.body?.accountTypeEnum}`);
+    
     // Special handling for credit card transactions - update transaction types if needed
     if (transactions.length > 0 && transactions[0].accountType === 'credit_card') {
       console.log(`[GET /uploads/${uploadId}/batches] - Processing credit card transactions...`);
+      console.log(`[GET /uploads/${uploadId}/batches] - Transaction account type: ${transactions[0].accountType}`);
       
       // Correct the transaction types for credit card transactions
       for (const transaction of transactions) {
         const description = transaction.description.toLowerCase();
+        const originalType = transaction.type;
+        
         // Payment detection
         const isPayment = description.includes('payment') && 
                          (description.includes('received') || 
@@ -971,19 +1079,39 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
         
         // Update transaction type if needed
         if (transaction.type !== correctType) {
+          console.log(`[GET /uploads/${uploadId}/batches] - Correcting transaction type: "${transaction.description}" | ${originalType} -> ${correctType}`);
           transaction.type = correctType;
           await transaction.save();
         }
       }
+    } else {
+      console.log(`[GET /uploads/${uploadId}/batches] - Not processing as credit card transactions. Account type: ${transactions.length > 0 ? transactions[0].accountType : 'unknown'}`);
     }
     
     // Log the unique batch IDs to see if transactions are properly batched
     const uniqueBatchIds = [...new Set(transactions.map(t => t.batchId).filter(Boolean))];
     console.log(`[GET /uploads/${uploadId}/batches] - Unique batch IDs: ${JSON.stringify(uniqueBatchIds)}`);
     
+    // Ensure that transactions have up-to-date data from database
+    const refreshedTransactions = await Promise.all(
+      transactions.map(async tx => {
+        // Get the latest version from the database
+        const latestTx = await Transaction.findByPk(tx.id);
+        return latestTx || tx; // Use the original if not found
+      })
+    );
+    
+    console.log(`[GET /uploads/${uploadId}/batches] - Refreshed ${refreshedTransactions.length} transactions from database`);
+    
+    // Log a few sample transactions to verify types
+    console.log(`[GET /uploads/${uploadId}/batches] - Sample transaction types after refresh:`);
+    refreshedTransactions.slice(0, 5).forEach(tx => {
+      console.log(`  "${tx.description}" | Type: ${tx.type} | AccountType: ${tx.accountType}`);
+    });
+    
     // Group transactions by batchId
     const batchMap = {};
-    transactions.forEach(transaction => {
+    refreshedTransactions.forEach(transaction => {
       const batchId = transaction.batchId;
       if (!batchId) {
         console.log(`Transaction without batchId: ${transaction.id} - ${transaction.description}`);
@@ -1246,6 +1374,72 @@ router.put('/uploads/:uploadId/account-info', async (req, res) => {
         
         const whereClause = { uploadId };
         
+        console.log(`[PUT /uploads/${uploadId}/account-info] - Direct credit card handling for all upload transactions`);
+        
+        // For credit cards, we need to handle transaction types directly
+        if (accountInfo.accountType === 'credit_card') {
+          console.log(`[PUT /uploads/${uploadId}/account-info] - Credit card account detected, processing all transactions...`);
+          
+          // Fetch all transactions for this upload
+          const transactions = await Transaction.findAll({ where: whereClause });
+          console.log(`[PUT /uploads/${uploadId}/account-info] - Found ${transactions.length} transactions to process`);
+          
+          let updatedCount = 0;
+          
+          // Process each transaction individually
+          for (const transaction of transactions) {
+            // Update account info
+            transaction.source = accountInfo.accountType || transaction.source;
+            transaction.accountType = accountInfo.accountType;
+            if (accountInfo.accountName) {
+              transaction.account = accountInfo.accountName;
+            }
+            
+            // For credit cards, determine correct transaction type
+            const description = transaction.description.toLowerCase();
+            const isPayment = description.includes('payment') && 
+                            (description.includes('received') || 
+                             description.includes('thank you'));
+            
+            const isRefund = description.includes('refund') || 
+                            description.includes('credit') || 
+                            description.includes('return');
+            
+            // Set the correct transaction type
+            const originalType = transaction.type;
+            
+            if (isPayment || isRefund) {
+              transaction.type = 'income';
+            } else {
+              transaction.type = 'expense';
+            }
+            
+            console.log(`[PUT /uploads/${uploadId}/account-info] - Transaction "${transaction.description}": ${originalType} → ${transaction.type}`);
+            
+            // Save the changes
+            await transaction.save();
+            updatedCount++;
+          }
+          
+          // Get sample transactions after update to verify changes
+          const sampleTransactions = await Transaction.findAll({ 
+            where: whereClause,
+            limit: 3
+          });
+          
+          console.log(`[PUT /uploads/${uploadId}/account-info] - Sample transactions after update:`);
+          sampleTransactions.forEach(tx => {
+            console.log(`  "${tx.description}" | Type: ${tx.type} | AccountType: ${tx.accountType}`);
+          });
+          
+          return { 
+            success: true, 
+            fileName: 'all-files',
+            updatedCount 
+          };
+        }
+        
+        // For non-credit card accounts, use simple update
         const [updatedCount] = await Transaction.update(
           { 
             source: accountInfo.accountType || null,
