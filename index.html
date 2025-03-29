@@ -3554,20 +3554,55 @@
               
               console.log('🔍 [CLIENT] Fetching enrichment batches for upload', state.enrichment.currentUploadId);
               
-              // Add a timeout promise to provide a fallback if the API call takes too long
-              const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Request timed out after 15 seconds')), 15000);
-              });
+              // Define a function to retry the batch fetching with exponential backoff
+              const fetchBatchesWithRetry = async (uploadId, maxRetries = 3, initialDelay = 1000) => {
+                let retryCount = 0;
+                let lastError = null;
+                
+                while (retryCount < maxRetries) {
+                  try {
+                    // Wait an increasing amount of time between retries
+                    const delay = initialDelay * Math.pow(2, retryCount);
+                    console.log(`🔄 [CLIENT] Fetching batches attempt ${retryCount + 1}/${maxRetries}, waiting ${delay}ms first`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    
+                    // Make the API call with a timeout
+                    const timeoutPromise = new Promise((_, reject) => {
+                      setTimeout(() => reject(new Error(`Attempt ${retryCount + 1} timed out after 15 seconds`)), 15000);
+                    });
+                    
+                    const result = await Promise.race([
+                      fetchEnrichmentBatches(uploadId),
+                      timeoutPromise
+                    ]);
+                    
+                    // Detect error in response
+                    if (result && result.error) {
+                      throw new Error(result.error);
+                    }
+                    
+                    // Check if we got valid data back
+                    if (result && result.batches && result.batches.length > 0) {
+                      console.log(`✅ [CLIENT] Successfully fetched ${result.batches.length} batches on attempt ${retryCount + 1}`);
+                      return result;
+                    } else {
+                      console.warn(`⚠️ [CLIENT] Got empty or invalid batch response on attempt ${retryCount + 1}`);
+                      lastError = new Error('No valid batches returned');
+                    }
+                  } catch (error) {
+                    console.error(`🔴 [CLIENT] Error fetching batches (attempt ${retryCount + 1}):`, error);
+                    lastError = error;
+                  }
+                  
+                  retryCount++;
+                }
+                
+                // If we get here, all retries failed
+                throw lastError || new Error('Failed to fetch batches after multiple attempts');
+              };
               
-              // Fetch the transaction batches with a timeout
-              const batchResult = await Promise.race([
-                fetchEnrichmentBatches(state.enrichment.currentUploadId),
-                timeoutPromise
-              ]);
-              
-              if (batchResult.error) {
-                throw new Error(batchResult.error);
-              }
+              // Fetch batches with retry logic
+              const batchResult = await fetchBatchesWithRetry(state.enrichment.currentUploadId);
               
               console.log('✅ [CLIENT] Enrichment batches processed', {
                 batches: batchResult?.batches?.length || 0,
@@ -3591,23 +3626,31 @@
                 state.enrichment.transactionBatches = batchResult.batches;
                 state.enrichment.statistics = batchResult.statistics;
                 
-                // Prepare pendingBatches array with all batch IDs - validate each batch has a batchId
-                const validBatchIds = batchResult.batches
-                  .filter(batch => batch && batch.batchId)
-                  .map(batch => batch.batchId);
+                // Fix any batches that don't have batch IDs
+                const fixedBatches = batchResult.batches.map((batch, index) => {
+                  if (!batch.batchId) {
+                    console.warn(`⚠️ [CLIENT] Batch at index ${index} is missing a batchId, generating a synthetic one`);
+                    return {
+                      ...batch,
+                      batchId: `synthetic_batch_${Date.now()}_${index}`
+                    };
+                  }
+                  return batch;
+                });
                 
-                console.log(`✅ [CLIENT] Found ${validBatchIds.length} valid batch IDs out of ${batchResult.batches.length} batches`);
+                // Store fixed batches
+                state.enrichment.transactionBatches = fixedBatches;
                 
-                if (validBatchIds.length === 0) {
-                  console.error('🔴 [CLIENT] No valid batch IDs found in the batches response');
-                  state.errors.enrichment = 'The batches data is invalid. Please refresh or try again.';
-                }
+                // Prepare pendingBatches array with all batch IDs (now all should be valid)
+                const validBatchIds = fixedBatches.map(batch => batch.batchId);
+                
+                console.log(`✅ [CLIENT] All ${validBatchIds.length} batches now have valid batch IDs`);
                 
                 state.enrichment.pendingBatches = validBatchIds;
                 
                 // Set first batch as current if available
-                if (batchResult.batches.length > 0) {
-                  state.enrichment.currentBatch = batchResult.batches[0];
+                if (fixedBatches.length > 0) {
+                  state.enrichment.currentBatch = fixedBatches[0];
                   state.enrichment.currentBatchIndex = 0;
                 }
                 
@@ -4223,6 +4266,7 @@
           debugBatchState();
           
           state.loading.enrichment = true;
+          state.errors.enrichment = null;
           
           try {
             // First validate we have an upload ID
@@ -4238,31 +4282,40 @@
               
               // Try to refresh batches once before showing error
               console.log('🔄 [CLIENT] Attempting to refresh batches before enrichment');
-              const refreshSuccess = await forceRefreshBatches();
-              
-              // If refresh succeeded and we have batches now, try again
-              if (refreshSuccess && state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
-                console.log('✅ [CLIENT] Successfully refreshed batches, retrying enrichment');
-                setTimeout(() => startEnrichAllBatches(), 500); // Try again after a short delay
+              try {
+                // Make a direct API call with extra debugging
+                console.log(`🔄 [CLIENT] Direct API call to get batches for upload ${state.enrichment.currentUploadId}`);
+                
+                // Add delay to ensure server has time to process any pending changes
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                const result = await api.transactions.getUploadedBatches(state.enrichment.currentUploadId);
+                console.log('🔄 [CLIENT] Raw API response:', JSON.stringify(result));
+                
+                if (result && result.batches && result.batches.length > 0) {
+                  console.log(`✅ [CLIENT] Successfully refreshed batches: found ${result.batches.length} batches`);
+                  state.enrichment.transactionBatches = result.batches;
+                  state.enrichment.statistics = result.statistics;
+                  
+                  // Wait a short time to ensure state updates
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  
+                  // Continue with enrichment
+                  console.log('✅ [CLIENT] Continuing enrichment process with refreshed batches');
+                } else {
+                  console.warn('⚠️ [CLIENT] Refresh returned no batches');
+                  state.errors.enrichment = 'No batches available for enrichment. Try refreshing the page or restarting the upload process.';
+                  state.loading.enrichment = false;
+                  return;
+                }
+              } catch (refreshError) {
+                console.error('🔴 [CLIENT] Error refreshing batches:', refreshError);
+                state.errors.enrichment = `Failed to refresh batches: ${refreshError.message}`;
+                state.loading.enrichment = false;
                 return;
               }
-              
-              state.errors.enrichment = 'No batches available for enrichment. Try refreshing the page or restarting the upload process.';
-              return;
             }
-          } catch (error) {
-            console.error('🔴 [CLIENT] Error in enrichment preparation:', error);
-            state.errors.enrichment = `Failed to prepare enrichment: ${error.message}`;
-            return;
-          } finally {
-            // We don't want to reset loading state here in all cases, as some paths continue the process
-            // Loading will be reset in those follow-up functions
-            if (state.errors.enrichment) {
-              state.loading.enrichment = false;
-            }
-          }
-          
-          try {
+            
             // Reset any previous enrichment errors
             state.errors.enrichment = null;
             
@@ -4270,7 +4323,20 @@
             const invalidBatches = state.enrichment.transactionBatches.filter(b => !b.batchId);
             if (invalidBatches.length > 0) {
               console.error(`🔴 [CLIENT] Found ${invalidBatches.length} batches without batch IDs`);
-              throw new Error('Some batches are missing batch IDs and cannot be processed.');
+              console.log('🔄 [CLIENT] Creating synthetic batch IDs for invalid batches');
+              
+              // Fix invalid batches with synthetic IDs
+              state.enrichment.transactionBatches = state.enrichment.transactionBatches.map(batch => {
+                if (!batch.batchId) {
+                  return {
+                    ...batch,
+                    batchId: `synthetic_batch_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+                  };
+                }
+                return batch;
+              });
+              
+              console.log('✅ [CLIENT] Fixed invalid batches with synthetic IDs');
             }
             
             // Prepare for batch enrichment
@@ -4297,6 +4363,9 @@
               // Generate category suggestions for first batch
               suggestCategoryForBatch(firstBatch);
               console.log(`✅ [CLIENT] Set current batch and generated category suggestions`);
+            } else {
+              console.error('🔴 [CLIENT] No valid pending batches available');
+              throw new Error('No valid batches found for processing');
             }
             
             // Update progress and move to enrichment step
@@ -4312,6 +4381,7 @@
             
             // Stay on batching step if there's an error
             state.enrichment.currentStep = 'batching';
+            state.loading.enrichment = false;
           }
         };
         

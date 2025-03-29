@@ -1325,8 +1325,22 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
                   batchMap[existingBatchId].push(transaction);
                   foundMatchingBatch = true;
                   
-                  // Also update the transaction's batchId in memory (we won't save it to DB here)
+                  // Also update the transaction's batchId in memory and in the database
                   transaction.batchId = existingBatchId;
+                  
+                  // Save the updated batchId to the database
+                  (async () => {
+                    try {
+                      await Transaction.update(
+                        { batchId: existingBatchId },
+                        { where: { id: transaction.id } }
+                      );
+                      console.log(`✅ [RECOVERY] Updated batchId in database for transaction ${transaction.id}`);
+                    } catch (err) {
+                      console.error(`❌ [ERROR] Failed to update batchId in database for transaction ${transaction.id}:`, err);
+                    }
+                  })();
+                  
                   return;
                 }
               }
@@ -1344,8 +1358,21 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
             }
             batchMap[recoveredBatchId].push(transaction);
             
-            // Update the transaction's batchId in memory
+            // Update the transaction's batchId in memory and in the database
             transaction.batchId = recoveredBatchId;
+            
+            // Save the updated batchId to the database
+            (async () => {
+              try {
+                await Transaction.update(
+                  { batchId: recoveredBatchId },
+                  { where: { id: transaction.id } }
+                );
+                console.log(`✅ [RECOVERY] Updated batchId in database for transaction ${transaction.id}`);
+              } catch (err) {
+                console.error(`❌ [ERROR] Failed to update batchId in database for transaction ${transaction.id}:`, err);
+              }
+            })();
           }
         } else {
           console.log(`❌ [ERROR] Cannot recover transaction ${transaction.id} - missing uploadId`);
