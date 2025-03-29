@@ -379,11 +379,7 @@ const upload = multer({
   }
 });
 
-// Get the Sequelize models
-const getModels = () => {
-  const sequelize = getDB();
-  return sequelize.models;
-};
+// Note: getModels is already imported at the top of the file
 
 // Get transactions by upload ID
 router.get('/by-upload/:uploadId', async (req, res) => {

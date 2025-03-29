@@ -91,12 +91,12 @@ class Transaction extends Model {
         type: DataTypes.ENUM('bank', 'credit_card', 'investment', 'cash', 'wallet', 'other'),
         allowNull: true,
         defaultValue: 'other',
-        comment: 'Type of account (bank, credit_card, investment, etc)'
+        comment: 'Type of account (bank, credit card, investment, etc.)'
       },
       source: {
         type: DataTypes.STRING,
         allowNull: true,
-        comment: 'Source of import (csv, pdf, manual, etc)'
+        comment: 'Source of import (csv, pdf, manual, etc.)'
       },
       notes: {
         type: DataTypes.TEXT,
