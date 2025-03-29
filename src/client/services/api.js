@@ -278,9 +278,46 @@ export const transactionsApi = {
   uploadFile: (formData) => uploadFile('/transactions/upload', formData),
   batchCategorize: (data) => postData('/transactions/batch-categorize', data),
   updateCategory: (transactionIds, categoryId) => postData('/transactions/batch-categorize', { transactionIds, categoryId }),
-  suggestCategory: (id) => fetchData(`/transactions/${id}/suggest-category`),
+  suggestCategory: (id, confidenceThreshold) => fetchData(`/transactions/${id}/suggest-category${confidenceThreshold ? `?threshold=${confidenceThreshold}` : ''}`),
   findSimilar: (id, threshold) => fetchData(`/transactions/${id}/similar?threshold=${threshold}`),
   getUncategorized: () => fetchData('/transactions/filter/uncategorized'),
+  getTransactionsNeedingReview: (confidenceThreshold, limit) => {
+    let url = '/transactions/filter/needs-review';
+    const params = [];
+    
+    if (confidenceThreshold) {
+      params.push(`threshold=${confidenceThreshold}`);
+    }
+    
+    if (limit) {
+      params.push(`limit=${limit}`);
+    }
+    
+    if (params.length > 0) {
+      url += `?${params.join('&')}`;
+    }
+    
+    return fetchData(url);
+  },
+  
+  getBatchesNeedingEnrichment: (options = {}) => {
+    let url = '/transactions/batches/needs-enrichment';
+    const params = [];
+    
+    if (options.includeReviewNeeded) {
+      params.push(`includeReviewNeeded=true`);
+    }
+    
+    if (options.confidenceThreshold) {
+      params.push(`confidenceThreshold=${options.confidenceThreshold}`);
+    }
+    
+    if (params.length > 0) {
+      url += `?${params.join('&')}`;
+    }
+    
+    return fetchData(url);
+  },
   
   // Enrichment flow APIs
   getUploadedBatches: (uploadId, options = {}) => {
@@ -292,12 +329,19 @@ export const transactionsApi = {
     });
   },
   
-  batchEnrich: async (batchId, enrichData, retryConfig = { maxRetries: 2, timeout: 15000 }) => {
+  batchEnrich: async (batchId, enrichData, retryConfig = { maxRetries: 2, timeout: 20000 }) => {
     console.log(`🔍 [API] Enriching batch ${batchId} with data:`, enrichData);
     
     const { maxRetries, timeout } = retryConfig;
     let retryCount = 0;
     let lastError = null;
+
+    // Check if AI suggestions are requested
+    if (enrichData.generateSuggestions) {
+      console.log(`🧠 [API] Requesting AI category suggestions for batch ${batchId}`);
+      // Use a longer timeout for AI processing
+      retryConfig.timeout = Math.max(timeout, 30000);
+    }
 
     while (retryCount <= maxRetries) {
       try {
@@ -310,7 +354,9 @@ export const transactionsApi = {
         
         // Create a controller for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        const timeoutId = setTimeout(() => controller.abort(), retryConfig.timeout);
+        
+        console.log(`⏱️ [API] Setting timeout for batch enrichment to ${retryConfig.timeout}ms`);
         
         const response = await fetch(`${API_URL}/transactions/batches/${batchId}/enrich`, {
           method: 'PUT',
@@ -340,7 +386,18 @@ export const transactionsApi = {
         }
         
         const result = await response.json();
-        console.log(`✅ [API] Successfully enriched batch ${batchId}:`, result);
+        
+        // Log AI suggestion results if available
+        if (result.aiSuggestions) {
+          if (result.autoApplied) {
+            console.log(`✅ [API] AI automatically categorized batch with confidence: ${result.confidence}`);
+          } else if (result.needsReview) {
+            console.log(`🔍 [API] AI suggestions need review, top categories:`, 
+              result.aiSuggestions.map(c => c.categoryId).join(', '));
+          }
+        }
+        
+        console.log(`✅ [API] Successfully enriched batch ${batchId}`);
         return result;
       } catch (error) {
         lastError = error;
@@ -348,7 +405,7 @@ export const transactionsApi = {
         
         // For timeout errors, we want to retry
         if (error.name === 'AbortError') {
-          console.warn(`⏱️ [API] Batch enrichment timed out after ${timeout}ms`);
+          console.warn(`⏱️ [API] Batch enrichment timed out after ${retryConfig.timeout}ms`);
           retryCount++;
           continue;
         }
@@ -380,7 +437,21 @@ export const transactionsApi = {
   
   // Account info APIs
   updateAccountInfo: (uploadId, accountInfo) => putData(`/transactions/uploads/${uploadId}/account-info`, accountInfo),
-  getUploadedFiles: (uploadId) => fetchData(`/transactions/uploads/${uploadId}/files`)
+  getUploadedFiles: (uploadId) => fetchData(`/transactions/uploads/${uploadId}/files`),
+  
+  // AI suggestion APIs
+  generateCategorySuggestions: (batchId, confidenceThreshold = 0.7) => {
+    return transactionsApi.batchEnrich(batchId, {
+      generateSuggestions: true,
+      confidenceThreshold
+    }, { maxRetries: 3, timeout: 30000 });
+  },
+  
+  // Review queue APIs
+  getReviewQueue: (options = {}) => {
+    const { page = 1, limit = 50, confidenceThreshold = 0.7 } = options;
+    return fetchData(`/transactions/review-queue?page=${page}&limit=${limit}&confidenceThreshold=${confidenceThreshold}`);
+  }
 };
 
 // Categories API

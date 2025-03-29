@@ -139,6 +139,18 @@ class Transaction extends Model {
         defaultValue: 'USD',
         allowNull: false
       },
+      // Fields for AI category suggestion
+      suggestedCategoryId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        comment: 'Category suggested by AI based on transaction description'
+      },
+      suggestionApplied: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: 'Whether the AI suggestion was automatically applied'
+      },
       originalText: {
         type: DataTypes.TEXT,
         allowNull: true,
@@ -164,6 +176,18 @@ class Transaction extends Model {
         allowNull: true,
         defaultValue: null,
         comment: 'Status of transaction enrichment process'
+      },
+      categoryConfidence: {
+        type: DataTypes.FLOAT,
+        allowNull: true,
+        defaultValue: null,
+        comment: 'Confidence score (0-1) for the assigned category'
+      },
+      needsReview: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+        comment: 'Flag indicating if transaction needs manual review'
       }
     }, {
       sequelize,

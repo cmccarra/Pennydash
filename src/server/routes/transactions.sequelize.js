@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { getDB } = require('../db/sequelize');
+const { getDB, getModels } = require('../db/sequelize');
 const FileParser = require('../services/fileParser');
 const categorySuggestionService = require('../services/categorySuggestion');
 const { Op } = require('sequelize');
@@ -1077,9 +1077,19 @@ router.get('/:id/suggest-category', async (req, res) => {
       return res.status(404).json({ error: 'Transaction not found' });
     }
     
+    // Get confidence threshold from query params (default to 0.7)
+    const confidenceThreshold = parseFloat(req.query.threshold) || 0.7;
+    
     const suggestion = await categorySuggestionService.suggestCategory(transaction.description);
     
-    res.json(suggestion);
+    // Add needsReview flag based on confidence threshold
+    const needsReview = suggestion.confidence < confidenceThreshold;
+    
+    res.json({
+      ...suggestion,
+      needsReview,
+      autoApply: !needsReview // If confidence is high enough, recommend auto-applying
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1132,6 +1142,71 @@ router.get('/filter/uncategorized', async (req, res) => {
     
     res.json(transactions);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get transactions that need review (based on confidence score)
+router.get('/filter/needs-review', async (req, res) => {
+  try {
+    const { Transaction, Category } = getModels();
+    
+    // Get confidence threshold from query params (default to 0.7)
+    const confidenceThreshold = parseFloat(req.query.threshold) || 0.7;
+    const limit = parseInt(req.query.limit) || 100;
+    
+    // Find transactions that need review
+    const transactions = await Transaction.findAll({
+      where: {
+        [Op.or]: [
+          // Either explicitly marked as needing review
+          { needsReview: true },
+          // Or has low confidence score
+          { 
+            categoryConfidence: {
+              [Op.lt]: confidenceThreshold
+            }
+          },
+          // Or has no confidence score but has a category (older transactions)
+          {
+            [Op.and]: [
+              { categoryConfidence: null },
+              { categoryId: { [Op.not]: null } }
+            ]
+          }
+        ]
+      },
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'color', 'icon', 'type'],
+          required: false
+        }
+      ],
+      order: [
+        // Sort by confidence (lowest first), then date
+        ['categoryConfidence', 'ASC'],
+        ['date', 'DESC']
+      ],
+      limit
+    });
+    
+    // Format the response with confidence information
+    const formattedTransactions = transactions.map(t => {
+      const tx = t.toJSON();
+      tx.reviewReason = t.needsReview ? 'needs_review' : 
+                        (!t.categoryConfidence ? 'no_confidence_score' : 'low_confidence');
+      return tx;
+    });
+    
+    res.json({
+      transactions: formattedTransactions,
+      count: formattedTransactions.length,
+      confidenceThreshold
+    });
+  } catch (error) {
+    console.error('Error getting transactions that need review:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1454,6 +1529,146 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
   }
 });
 
+// Get transaction batches that need enrichment (uncategorized or low confidence)
+router.get('/batches/needs-enrichment', async (req, res) => {
+  try {
+    const { Transaction, Category } = getModels();
+    
+    // Check if we should also return batches that just need review (low confidence)
+    const includeReviewNeeded = req.query.includeReviewNeeded === 'true';
+    const confidenceThreshold = parseFloat(req.query.confidenceThreshold) || 0.7;
+    
+    // Build query conditions
+    let whereCondition = {
+      enrichmentStatus: { [Op.ne]: 'completed' }
+    };
+    
+    // If we're not including review-needed batches, only get uncategorized
+    if (!includeReviewNeeded) {
+      whereCondition.categoryId = null;
+    } else {
+      // Include uncategorized OR review-needed
+      whereCondition = {
+        [Op.and]: [
+          { enrichmentStatus: { [Op.ne]: 'completed' } },
+          {
+            [Op.or]: [
+              { categoryId: null },
+              { needsReview: true },
+              { categoryConfidence: { [Op.lt]: confidenceThreshold } }
+            ]
+          }
+        ]
+      };
+    }
+    
+    console.log(`[GET /batches/needs-enrichment] - Getting batches that need enrichment. includeReviewNeeded: ${includeReviewNeeded}`);
+    
+    const transactions = await Transaction.findAll({
+      where: whereCondition,
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          required: false
+        }
+      ],
+      order: [['date', 'DESC']]
+    });
+    
+    console.log(`[GET /batches/needs-enrichment] - Found ${transactions.length} transactions that need enrichment`);
+    
+    // Group transactions by batchId
+    const batchMap = {};
+    
+    transactions.forEach(transaction => {
+      const batchId = transaction.batchId;
+      
+      if (!batchId) {
+        console.log(`[GET /batches/needs-enrichment] - Warning: Transaction ${transaction.id} has no batchId`);
+        return;
+      }
+      
+      if (!batchMap[batchId]) {
+        batchMap[batchId] = [];
+      }
+      
+      batchMap[batchId].push(transaction);
+    });
+    
+    // Convert to array of batches with statistics
+    const batches = Object.keys(batchMap).map(batchId => {
+      try {
+        const batchTransactions = batchMap[batchId];
+        const batchStats = calculateBatchStatistics(batchTransactions);
+        
+        // Determine the status based on the transactions
+        let batchStatus = 'needs_enrichment';
+        let needsReview = false;
+        let hasLowConfidence = false;
+        
+        // Check if this batch just needs review
+        if (batchTransactions.every(tx => tx.categoryId !== null)) {
+          if (batchTransactions.some(tx => tx.needsReview === true)) {
+            batchStatus = 'needs_review';
+            needsReview = true;
+          } else if (batchTransactions.some(tx => tx.categoryConfidence && tx.categoryConfidence < confidenceThreshold)) {
+            batchStatus = 'low_confidence';
+            hasLowConfidence = true;
+          }
+        }
+        
+        // Calculate average confidence score if applicable
+        let avgConfidence = null;
+        if (batchTransactions.some(tx => tx.categoryConfidence !== null && tx.categoryConfidence !== undefined)) {
+          const scores = batchTransactions
+            .filter(tx => tx.categoryConfidence !== null && tx.categoryConfidence !== undefined)
+            .map(tx => tx.categoryConfidence);
+          
+          if (scores.length > 0) {
+            avgConfidence = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+          }
+        }
+        
+        return {
+          batchId,
+          transactions: batchTransactions,
+          statistics: batchStats,
+          status: batchStatus,
+          needsReview,
+          hasLowConfidence,
+          confidenceThreshold,
+          avgConfidence
+        };
+      } catch (error) {
+        console.error(`[GET /batches/needs-enrichment] - Error calculating batch stats for ${batchId}:`, error);
+        return {
+          batchId,
+          transactions: batchMap[batchId],
+          statistics: { 
+            error: error.message,
+            totalTransactions: batchMap[batchId].length
+          },
+          status: 'error'
+        };
+      }
+    });
+    
+    console.log(`[GET /batches/needs-enrichment] - Returning ${batches.length} batches that need enrichment`);
+    
+    // Add confidence information to the response
+    res.json({
+      batches,
+      includeReviewNeeded,
+      confidenceThreshold,
+      count: batches.length
+    });
+  } catch (error) {
+    console.error('[GET /batches/needs-enrichment] - Error getting batches:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Batch enrichment endpoint - update multiple transactions in a batch
 router.put('/batches/:batchId/enrich', async (req, res) => {
   try {
@@ -1476,12 +1691,89 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
       return res.status(404).json({ error: 'Batch not found' });
     }
     
+    // Check if we should generate AI category suggestions for this batch
+    if (enrichData.generateSuggestions) {
+      console.log(`[PUT /batches/${batchId}/enrich] - Generating AI category suggestions for batch`);
+      
+      // Get confidence threshold from request or use default
+      const confidenceThreshold = parseFloat(enrichData.confidenceThreshold) || 0.7;
+      
+      try {
+        // Generate suggestions for the batch
+        const suggestionResult = await categorySuggestionService.suggestCategoriesForBatch(
+          batchTransactions, 
+          confidenceThreshold
+        );
+        
+        console.log(`[PUT /batches/${batchId}/enrich] - Generated suggestions with avg confidence: ${suggestionResult.averageConfidence}`);
+        
+        // If we have a suggested category with high confidence, auto-apply it
+        if (suggestionResult.batchCategoryId && !suggestionResult.needsReview) {
+          console.log(`[PUT /batches/${batchId}/enrich] - Auto-applying category ${suggestionResult.batchCategoryId} with high confidence`);
+          
+          // Add the suggested category to the enrichment data
+          enrichData.categoryId = suggestionResult.batchCategoryId;
+          enrichData.autoApplied = true;
+          enrichData.aiSuggested = true;
+          enrichData.confidence = suggestionResult.averageConfidence;
+          
+          // Also add detailed suggestions to response
+          enrichData.suggestions = suggestionResult;
+          
+          // We'll also update individual transaction suggestion data for better tracking
+          await Promise.all(suggestionResult.suggestions.map(async (suggestion) => {
+            if (suggestion.transactionId) {
+              await Transaction.update({
+                suggestedCategoryId: suggestion.categoryId,
+                categoryConfidence: suggestion.confidence,
+                suggestionApplied: suggestion.confidence >= confidenceThreshold,
+                needsReview: suggestion.confidence < confidenceThreshold
+              }, {
+                where: { id: suggestion.transactionId }
+              });
+            }
+          }));
+        } else {
+          console.log(`[PUT /batches/${batchId}/enrich] - Suggestions require manual review (confidence: ${suggestionResult.averageConfidence})`);
+          enrichData.aiSuggestions = suggestionResult.topCategories;
+          enrichData.needsReview = true;
+          
+          // Still update the individual transaction suggestion data for review
+          await Promise.all(suggestionResult.suggestions.map(async (suggestion) => {
+            if (suggestion.transactionId) {
+              await Transaction.update({
+                suggestedCategoryId: suggestion.categoryId,
+                categoryConfidence: suggestion.confidence,
+                suggestionApplied: false,
+                needsReview: true
+              }, {
+                where: { id: suggestion.transactionId }
+              });
+            }
+          }));
+        }
+      } catch (suggestionError) {
+        console.error(`[PUT /batches/${batchId}/enrich] - Error generating suggestions:`, suggestionError);
+        // Continue with the update anyway, just log the error
+      }
+    }
+    
     // Prepare update data
     const updateData = {};
     
     // Only update fields that are provided in the request
     if (enrichData.categoryId) {
       updateData.categoryId = enrichData.categoryId;
+      
+      // If we have confidence information, store it
+      if (typeof enrichData.confidence === 'number') {
+        updateData.categoryConfidence = enrichData.confidence;
+        updateData.needsReview = enrichData.confidence < 0.7; // Default threshold
+      } else {
+        // If manually selected, set high confidence
+        updateData.categoryConfidence = 1.0;
+        updateData.needsReview = false;
+      }
     }
     
     if (enrichData.subcategoryId) {
@@ -1559,13 +1851,26 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
     // Calculate statistics for the batch
     const statistics = calculateBatchStatistics(updatedTransactions);
     
-    res.json({
+    // Build the response with enrichment data
+    const response = {
       success: true,
       message: `Enriched ${updatedTransactions.length} transactions`,
       batchId,
       transactions: updatedTransactions,
       statistics: statistics
-    });
+    };
+    
+    // Include AI suggestion information if available
+    if (enrichData.suggestions) {
+      response.aiSuggestions = enrichData.suggestions;
+      response.autoApplied = enrichData.autoApplied;
+      response.confidence = enrichData.confidence;
+    } else if (enrichData.aiSuggestions) {
+      response.aiSuggestions = enrichData.aiSuggestions;
+      response.needsReview = enrichData.needsReview;
+    }
+    
+    res.json(response);
   } catch (error) {
     console.error(`[PUT /batches/${batchId}/enrich] - Error enriching batch:`, error);
     res.status(500).json({ 
@@ -2125,5 +2430,86 @@ router.put('/uploads/:fileId/account-info', async (req, res) => {
 
 // Complete an upload
 // PUT route for completing upload removed - using POST endpoint instead
+
+// Get transactions that need review based on AI confidence scores
+router.get('/review-queue', async (req, res) => {
+  try {
+    const { Transaction, Category } = getModels();
+    const { limit = 50, page = 1, confidenceThreshold = 0.7 } = req.query;
+    
+    // Parse limit and page as integers
+    const pageSize = parseInt(limit, 10);
+    const pageNumber = parseInt(page, 10);
+    const offset = (pageNumber - 1) * pageSize;
+    
+    // Convert confidence threshold to float
+    const threshold = parseFloat(confidenceThreshold);
+    
+    // Find transactions that need review based on confidence scores
+    const transactions = await Transaction.findAll({
+      where: {
+        [Op.or]: [
+          // Transactions explicitly flagged for review
+          { needsReview: true },
+          // Transactions with suggestion applied but low confidence
+          { suggestionApplied: true, categoryConfidence: { [Op.lt]: threshold } },
+          // Transactions with AI suggested category but not yet applied
+          { 
+            suggestedCategoryId: { [Op.ne]: null },
+            categoryId: null,
+            suggestionApplied: false
+          }
+        ]
+      },
+      include: [
+        { model: Category, as: 'category', required: false }
+      ],
+      limit: pageSize,
+      offset: offset,
+      order: [
+        // Sort by confidence (ascending, so lowest confidence first)
+        ['categoryConfidence', 'ASC'],
+        // Then by date (most recent first)
+        ['date', 'DESC']
+      ]
+    });
+    
+    // Count total matching transactions
+    const totalCount = await Transaction.count({
+      where: {
+        [Op.or]: [
+          { needsReview: true },
+          { suggestionApplied: true, categoryConfidence: { [Op.lt]: threshold } },
+          { 
+            suggestedCategoryId: { [Op.ne]: null },
+            categoryId: null,
+            suggestionApplied: false
+          }
+        ]
+      }
+    });
+    
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / pageSize);
+    
+    // Return the transactions with pagination metadata
+    res.json({
+      success: true,
+      transactions,
+      pagination: {
+        total: totalCount,
+        page: pageNumber,
+        pageSize,
+        totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching review queue:', error);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to fetch review queue: ${error.message}` 
+    });
+  }
+});
 
 module.exports = router;
