@@ -846,7 +846,7 @@ router.get('/filter/uncategorized', async (req, res) => {
 });
 
 // Get all batches for a specific upload
-router.get('/batches/:uploadId', async (req, res) => {
+router.get('/uploads/:uploadId/batches', async (req, res) => {
   try {
     const { Transaction, Category } = getModels();
     const { uploadId } = req.params;
@@ -1126,7 +1126,7 @@ router.put('/uploads/:uploadId/account-info', async (req, res) => {
 });
 
 // Complete an entire upload (mark all batches as processed)
-router.post('/upload/:uploadId/complete', async (req, res) => {
+router.post('/uploads/:uploadId/complete', async (req, res) => {
   try {
     const { Transaction } = getModels();
     const { uploadId } = req.params;
@@ -1342,40 +1342,6 @@ router.put('/uploads/:fileId/account-info', async (req, res) => {
 });
 
 // Complete an upload
-router.put('/uploads/:uploadId/complete', async (req, res) => {
-  try {
-    const { Transaction } = getModels();
-    const { uploadId } = req.params;
-    
-    // Find all transactions with this uploadId
-    const transactions = await Transaction.findAll({
-      where: { 
-        uploadId: uploadId 
-      }
-    });
-    
-    if (!transactions || transactions.length === 0) {
-      return res.status(404).json({ error: 'No transactions found for this upload ID' });
-    }
-    
-    // Mark all transactions as completed
-    await Transaction.update(
-      { enrichmentStatus: 'completed' },
-      { where: { uploadId: uploadId } }
-    );
-    
-    // Calculate overall statistics
-    const totalStats = calculateBatchStatistics(transactions);
-    
-    res.json({
-      message: `Completed enrichment for ${transactions.length} transactions`,
-      uploadId,
-      statistics: totalStats
-    });
-  } catch (error) {
-    console.error('Error completing upload:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+// PUT route for completing upload removed - using POST endpoint instead
 
 module.exports = router;

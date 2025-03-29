@@ -150,10 +150,10 @@ export const transactionsApi = {
   findSimilar: (id, threshold) => fetchData(`/transactions/${id}/similar?threshold=${threshold}`),
   getUncategorized: () => fetchData('/transactions/filter/uncategorized'),
   // Enrichment flow APIs
-  getUploadedBatches: (uploadId) => fetchData(`/transactions/batches/${uploadId}`),
+  getUploadedBatches: (uploadId) => fetchData(`/transactions/uploads/${uploadId}/batches`),
   batchEnrich: (batchId, enrichData) => putData(`/transactions/batches/${batchId}/enrich`, enrichData),
   completeBatch: (batchId) => postData(`/transactions/batches/${batchId}/complete`, {}),
-  completeUpload: (uploadId) => putData(`/transactions/uploads/${uploadId}/complete`, {}),
+  completeUpload: (uploadId) => postData(`/transactions/uploads/${uploadId}/complete`, {}),
   // Account info APIs
   updateAccountInfo: (uploadId, accountInfo) => putData(`/transactions/uploads/${uploadId}/account-info`, accountInfo),
   getUploadedFiles: (uploadId) => fetchData(`/transactions/uploads/${uploadId}/files`)
