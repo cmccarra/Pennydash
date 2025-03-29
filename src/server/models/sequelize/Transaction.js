@@ -341,9 +341,33 @@ class Transaction extends Model {
       }
     }
     
+    // Format date properly
+    let formattedDate = normalizedRow.date || new Date().toISOString().split('T')[0];
+    
+    // Handle date format like "DD MMM YYYY" (e.g., "02 Sep 2024")
+    if (typeof formattedDate === 'string' && /^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(formattedDate)) {
+      try {
+        const parts = formattedDate.split(' ');
+        const day = parts[0].padStart(2, '0');
+        const monthMap = {
+          'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+          'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+        };
+        const month = monthMap[parts[1]];
+        const year = parts[2];
+        
+        if (month) {
+          formattedDate = `${year}-${month}-${day}`;
+        }
+      } catch (error) {
+        console.error('Date parsing error:', error);
+        // Keep original date if parsing fails
+      }
+    }
+    
     // Create transaction object
     const txObject = {
-      date: normalizedRow.date || new Date().toISOString().split('T')[0],
+      date: formattedDate,
       description: normalizedRow.description || 'Unknown transaction',
       amount: amount,
       type: type,
@@ -443,8 +467,32 @@ class Transaction extends Model {
       }
     }
     
+    // Get date and format it properly
+    let dateValue = xmlItem.date?.[0] || xmlItem.transactionDate?.[0] || new Date().toISOString().split('T')[0];
+    
+    // Handle date format like "DD MMM YYYY" (e.g., "02 Sep 2024")
+    if (typeof dateValue === 'string' && /^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(dateValue)) {
+      try {
+        const parts = dateValue.split(' ');
+        const day = parts[0].padStart(2, '0');
+        const monthMap = {
+          'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+          'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+        };
+        const month = monthMap[parts[1]];
+        const year = parts[2];
+        
+        if (month) {
+          dateValue = `${year}-${month}-${day}`;
+        }
+      } catch (error) {
+        console.error('XML date parsing error:', error);
+        // Keep original date if parsing fails
+      }
+    }
+    
     return {
-      date: xmlItem.date?.[0] || xmlItem.transactionDate?.[0] || new Date().toISOString().split('T')[0],
+      date: dateValue,
       description: xmlItem.description?.[0] || 'Unknown transaction',
       amount: amount,
       type: type,
