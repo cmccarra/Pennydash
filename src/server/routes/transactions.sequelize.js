@@ -1101,7 +1101,7 @@ router.post('/batch-categorize', async (req, res) => {
 // Get category suggestions for a transaction
 router.get('/:id/suggest-category', async (req, res) => {
   try {
-    const { Transaction } = getModels();
+    const { Transaction, Category } = getModels();
     const transaction = await Transaction.findByPk(req.params.id);
     
     if (!transaction) {
@@ -1111,17 +1111,50 @@ router.get('/:id/suggest-category', async (req, res) => {
     // Get confidence threshold from query params (default to 0.7)
     const confidenceThreshold = parseFloat(req.query.threshold) || 0.7;
     
-    const suggestion = await categorySuggestionService.suggestCategory(transaction.description);
+    // Force using OpenAI if requested (useful for testing or manual categorization)
+    const forceOpenAI = req.query.useOpenAI === 'true' || req.query.forceOpenAI === 'true';
+    
+    console.log(`[Suggest Category] Transaction: ${transaction.id}, Description: "${transaction.description}", Amount: ${transaction.amount}`);
+    console.log(`[Suggest Category] Using threshold: ${confidenceThreshold}, Force OpenAI: ${forceOpenAI}`);
+    
+    if (forceOpenAI) {
+      categorySuggestionService.useOpenAI = true; // Temporarily force OpenAI
+    }
+    
+    // Pass more transaction data to the suggestion service
+    const suggestion = await categorySuggestionService.suggestCategory(
+      transaction.description,
+      transaction.amount,
+      transaction.type || 'expense'
+    );
+    
+    // Reset the flag if we temporarily forced it
+    if (forceOpenAI && !process.env.OPENAI_API_KEY) {
+      categorySuggestionService.useOpenAI = false;
+    }
     
     // Add needsReview flag based on confidence threshold
     const needsReview = suggestion.confidence < confidenceThreshold;
     
+    // If we have a categoryId, include the full category details
+    let category = null;
+    if (suggestion.categoryId) {
+      category = await Category.findByPk(suggestion.categoryId);
+    }
+    
+    // Log the suggestion result
+    console.log(`[Suggest Category] Result: Source=${suggestion.suggestionSource}, Confidence=${suggestion.confidence}, CategoryId=${suggestion.categoryId}, NeedsReview=${needsReview}`);
+    
     res.json({
       ...suggestion,
+      category,
       needsReview,
-      autoApply: !needsReview // If confidence is high enough, recommend auto-applying
+      autoApply: !needsReview, // If confidence is high enough, recommend auto-applying
+      suggestionConfidence: suggestion.confidence, // Include both forms for backward compatibility
+      categoryConfidence: suggestion.confidence
     });
   } catch (error) {
+    console.error('[Suggest Category] Error:', error);
     res.status(500).json({ error: error.message });
   }
 });

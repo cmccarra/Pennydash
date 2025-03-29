@@ -14,6 +14,7 @@ const categoryRoutes = require('./routes/categories.sequelize');
 const reportRoutes = require('./routes/reports.sequelize');
 const settingsRoutes = require('./routes/settings.sequelize');
 const reviewQueueRoutes = require('./routes/review-queue');
+const suggestionRoutes = require('./routes/suggestions');
 
 // Initialize express app
 const app = express();
@@ -46,6 +47,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/review-queue', reviewQueueRoutes);
+app.use('/api/suggestions', suggestionRoutes);
 
 // Debug endpoint for development only
 app.get('/api/debug/transaction-tags', async (req, res) => {
