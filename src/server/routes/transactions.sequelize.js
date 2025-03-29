@@ -15,48 +15,84 @@ const { v4: uuidv4 } = require('uuid');
  * @returns {Array} Array of transaction batches
  */
 function organizeIntoBatches(transactions) {
-  // First try to group by source and transactionType
-  const sourceGroups = {};
-  
-  // Group transactions by source
-  transactions.forEach(transaction => {
-    const source = transaction.source || 'Unknown';
-    if (!sourceGroups[source]) {
-      sourceGroups[source] = [];
-    }
-    sourceGroups[source].push(transaction);
-  });
-  
-  // Split large groups into smaller batches
+  const natural = require('natural');
   const maxBatchSize = 50; // Max transactions per batch
   const batches = [];
+  const processedTransactions = new Set();
   
-  Object.keys(sourceGroups).forEach(source => {
-    const sourceTransactions = sourceGroups[source];
+  // Helper function to normalize description for pattern matching
+  const normalizeText = (text) => {
+    if (!text) return '';
+    return text.toLowerCase()
+      .replace(/[^\w\s]/g, '') // Remove special characters
+      .replace(/\s+/g, ' ')    // Replace multiple spaces with single space
+      .trim();
+  };
+  
+  // Extract merchant name from description where possible
+  const extractMerchant = (description) => {
+    if (!description) return null;
     
-    // Further split by type if the source group is large
-    if (sourceTransactions.length > maxBatchSize) {
-      const typeGroups = {};
+    // Common patterns for merchant names in transaction descriptions
+    const merchantPatterns = [
+      // Credit card format with location: "MERCHANT NAME      CITY"
+      /^([A-Z0-9\s]{3,}?)\s{2,}[A-Z\s]+$/,
+      // Format with numbers and dates at end: "MERCHANT NAME 123456 03/15"
+      /^([A-Z0-9\s]{3,}?)\s+\d+\s+\d+\/\d+$/,
+      // Generic merchant at start of description
+      /^([A-Z0-9\s&]{3,}?)(?:\s+-|\s{2,}|\d{4,}|$)/
+    ];
+    
+    for (const pattern of merchantPatterns) {
+      const match = description.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+    
+    // Fallback to first 3 words
+    return description.split(/\s+/).slice(0, 3).join(' ');
+  };
+  
+  // STEP 1: Group by exact merchant matches where available
+  const merchantGroups = {};
+  
+  transactions.forEach(transaction => {
+    // Skip transactions with missing description
+    if (!transaction.description) return;
+    
+    // Use merchant if available, otherwise try to extract from description
+    const merchant = transaction.merchant || extractMerchant(transaction.description);
+    
+    if (merchant) {
+      if (!merchantGroups[merchant]) {
+        merchantGroups[merchant] = [];
+      }
+      merchantGroups[merchant].push(transaction);
+      processedTransactions.add(transaction.id);
+    }
+  });
+  
+  // Add merchant groups as batches
+  Object.keys(merchantGroups).forEach(merchant => {
+    const merchantTransactions = merchantGroups[merchant];
+    
+    // If merchant group is too large, split by type and date
+    if (merchantTransactions.length > maxBatchSize) {
+      // Split by transaction type
+      const typeGroups = {
+        income: merchantTransactions.filter(t => t.type === 'income'),
+        expense: merchantTransactions.filter(t => t.type === 'expense')
+      };
       
-      // Group by transaction type
-      sourceTransactions.forEach(transaction => {
-        const type = transaction.type || 'unknown';
-        if (!typeGroups[type]) {
-          typeGroups[type] = [];
-        }
-        typeGroups[type].push(transaction);
-      });
-      
-      // Add each type group as a batch or split further if needed
       Object.keys(typeGroups).forEach(type => {
         const typeTransactions = typeGroups[type];
+        if (typeTransactions.length === 0) return;
         
-        // If still too large, split by date ranges
+        // If still too large, split by date
         if (typeTransactions.length > maxBatchSize) {
-          // Sort by date for chronological batches
-          typeTransactions.sort((a, b) => {
-            return new Date(a.date) - new Date(b.date);
-          });
+          // Sort by date
+          typeTransactions.sort((a, b) => new Date(a.date) - new Date(b.date));
           
           // Split into batches of maxBatchSize
           for (let i = 0; i < typeTransactions.length; i += maxBatchSize) {
@@ -67,10 +103,107 @@ function organizeIntoBatches(transactions) {
         }
       });
     } else {
-      // Small enough to be a single batch
-      batches.push(sourceTransactions);
+      batches.push(merchantTransactions);
     }
   });
+  
+  // STEP 2: Group remaining transactions by description pattern similarity
+  const remainingTransactions = transactions.filter(t => !processedTransactions.has(t.id));
+  
+  if (remainingTransactions.length > 0) {
+    // Create groups of similar descriptions
+    const descriptionGroups = [];
+    
+    remainingTransactions.forEach(transaction => {
+      if (!transaction.description) return;
+      
+      const normalizedDesc = normalizeText(transaction.description);
+      
+      // Try to find a matching group
+      let foundGroup = false;
+      
+      for (const group of descriptionGroups) {
+        const sampleDesc = normalizeText(group[0].description);
+        
+        // Use Jaro-Winkler string similarity (good for common prefixes)
+        const similarity = natural.JaroWinklerDistance(normalizedDesc, sampleDesc);
+        
+        if (similarity > 0.85) { // High similarity threshold
+          group.push(transaction);
+          processedTransactions.add(transaction.id);
+          foundGroup = true;
+          break;
+        }
+      }
+      
+      // If no similar group found, create a new one
+      if (!foundGroup) {
+        descriptionGroups.push([transaction]);
+        processedTransactions.add(transaction.id);
+      }
+    });
+    
+    // Add description similarity groups as batches
+    descriptionGroups.forEach(group => {
+      if (group.length > maxBatchSize) {
+        // Split by date if too large
+        group.sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        for (let i = 0; i < group.length; i += maxBatchSize) {
+          batches.push(group.slice(i, i + maxBatchSize));
+        }
+      } else {
+        batches.push(group);
+      }
+    });
+  }
+  
+  // STEP 3: Group any remaining transactions by source and type
+  const finalRemainingTransactions = transactions.filter(t => !processedTransactions.has(t.id));
+  
+  if (finalRemainingTransactions.length > 0) {
+    const sourceGroups = {};
+    
+    // Group by source
+    finalRemainingTransactions.forEach(transaction => {
+      const source = transaction.source || 'Unknown';
+      if (!sourceGroups[source]) {
+        sourceGroups[source] = [];
+      }
+      sourceGroups[source].push(transaction);
+    });
+    
+    // Process source groups
+    Object.keys(sourceGroups).forEach(source => {
+      const sourceTransactions = sourceGroups[source];
+      
+      if (sourceTransactions.length > maxBatchSize) {
+        // Split by type
+        const typeGroups = {
+          income: sourceTransactions.filter(t => t.type === 'income'),
+          expense: sourceTransactions.filter(t => t.type === 'expense')
+        };
+        
+        Object.keys(typeGroups).forEach(type => {
+          const typeTransactions = typeGroups[type];
+          if (typeTransactions.length === 0) return;
+          
+          if (typeTransactions.length > maxBatchSize) {
+            // Sort by date and split into batches
+            typeTransactions.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            for (let i = 0; i < typeTransactions.length; i += maxBatchSize) {
+              batches.push(typeTransactions.slice(i, i + maxBatchSize));
+            }
+          } else {
+            batches.push(typeTransactions);
+          }
+        });
+      } else {
+        batches.push(sourceTransactions);
+      }
+    });
+  }
   
   return batches;
 }

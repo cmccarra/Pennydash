@@ -570,6 +570,32 @@
       margin-bottom: 0.5rem;
     }
     
+    .category-pill {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    
+    .category-pill:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+    }
+    
+    .review-modal {
+      max-width: 90%;
+      width: 1100px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    
+    .transaction-row {
+      transition: background-color 0.2s ease;
+    }
+    
+    .transaction-row:hover {
+      background-color: rgba(124, 58, 237, 0.05);
+    }
+    }
+    
     .confetti-animation {
       position: absolute;
       width: 100%;
@@ -2032,10 +2058,10 @@
             <h4 class="font-semibold text-md mb-2">Transaction Batches</h4>
             <p class="text-sm mb-4">We've organized your transactions into groups to make them easier to categorize and enrich.</p>
             
-            <!-- New Card-based batch display with sample transactions -->
+            <!-- Card-based batch display with sample transactions and category recommendations -->
             <div class="grid grid-cols-1 gap-4">
               <div v-for="(batch, index) in state.enrichment.transactionBatches" :key="batch.batchId" 
-                   class="card bg-base-200">
+                   class="card bg-base-200 hover:shadow-md transition-shadow duration-300">
                 <div class="card-body">
                   <div class="flex justify-between items-center">
                     <h5 class="card-title text-lg">
@@ -2055,6 +2081,31 @@
                       </span>
                       <span v-else>No date range</span>
                     </div>
+                    <!-- Show type as badge -->
+                    <div v-if="batch.transactions && batch.transactions.length > 0" 
+                         class="badge" 
+                         :class="batch.transactions[0].type === 'expense' ? 'badge-error' : 'badge-success'">
+                      {{ batch.transactions[0].type === 'expense' ? 'Expense' : 'Income' }}
+                    </div>
+                  </div>
+                  
+                  <!-- Category recommendations based on batch content -->
+                  <div class="mt-1 mb-3">
+                    <p class="text-xs text-base-content text-opacity-60 mb-1">Suggested categories:</p>
+                    <div class="flex flex-wrap gap-1">
+                      <!-- Generate category pills dynamically based on batch content -->
+                      <div v-for="(categoryId, i) in getSuggestedCategoriesForBatch(batch)" :key="i" 
+                           class="badge badge-sm badge-primary cursor-pointer hover:opacity-80"
+                           @click="quickCategorize(batch.batchId, categoryId)">
+                        {{ getCategoryName(state.categories, categoryId) }}
+                      </div>
+                      
+                      <!-- If no suggested categories, show placeholder -->
+                      <div v-if="!getSuggestedCategoriesForBatch(batch).length" 
+                           class="text-xs text-base-content text-opacity-40">
+                        No suggestions available
+                      </div>
+                    </div>
                   </div>
                   
                   <!-- Sample transactions -->
@@ -2070,7 +2121,7 @@
                       <tbody>
                         <tr v-for="transaction in getSampleTransactions(batch)" :key="transaction.id">
                           <td>{{ formatDate(transaction.date) }}</td>
-                          <td>{{ transaction.description }}</td>
+                          <td class="max-w-xs truncate">{{ transaction.description }}</td>
                           <td :class="transaction.type === 'expense' ? 'text-error' : 'text-success'">
                             {{ transaction.type === 'expense' ? '- ' : '+ ' }}{{ formatCurrency(transaction.amount) }}
                           </td>
@@ -2079,7 +2130,20 @@
                     </table>
                   </div>
                   
+                  <!-- Show count of remaining transactions if more than shown -->
+                  <div v-if="batch.transactions?.length > 3" class="text-xs text-center text-base-content text-opacity-60 mt-1">
+                    + {{ batch.transactions.length - 3 }} more transactions
+                  </div>
+                  
                   <div class="card-actions justify-end mt-4">
+                    <!-- View all transactions button -->
+                    <button 
+                      class="btn btn-outline btn-sm"
+                      @click="viewAllTransactions(batch.batchId)"
+                    >
+                      View All
+                    </button>
+                    <!-- Review transactions button -->
                     <button 
                       class="btn btn-primary"
                       @click="reviewBatch(batch.batchId)"
@@ -2114,8 +2178,12 @@
             <div class="flex justify-end mt-6">
               <button 
                 class="btn btn-primary" 
-                @click="state.enrichment.currentStep = 'enrichment'; state.enrichment.pendingBatches = state.enrichment.transactionBatches.map(b => b.batchId)"
+                @click="startEnrichAllBatches()"
+                :disabled="state.enrichment.transactionBatches.length === 0"
               >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
                 Enrich All Batches
               </button>
             </div>
@@ -2363,6 +2431,156 @@
       </div>
     </div>
   </div>
+
+  <!-- Transaction Review Modal -->
+  <div class="modal" :class="{'modal-open': state.reviewModal.isOpen}">
+    <div class="modal-box review-modal">
+      <h3 class="font-bold text-xl mb-2">
+        {{ state.reviewModal.title || 'Transaction Review' }}
+      </h3>
+      <p class="text-sm text-base-content/70 mb-4">
+        Review and categorize transactions in this batch. Select multiple to apply the same category.
+      </p>
+      
+      <div v-if="state.reviewModal.isLoading" class="py-10 text-center">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+        <p class="mt-4">Loading transactions...</p>
+      </div>
+      
+      <div v-else-if="state.reviewModal.error" class="alert alert-error mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <span>{{ state.reviewModal.error }}</span>
+      </div>
+      
+      <div v-else>
+        <!-- Actions toolbar -->
+        <div class="flex flex-wrap justify-between items-center mb-4 bg-base-200 p-2 rounded-lg">
+          <div class="flex items-center space-x-2">
+            <div class="form-control">
+              <label class="cursor-pointer label">
+                <input type="checkbox" v-model="state.reviewModal.selectAll" class="checkbox checkbox-sm checkbox-primary" @change="toggleSelectAllTransactions" />
+                <span class="label-text ml-2">Select All</span>
+              </label>
+            </div>
+            
+            <span v-if="state.reviewModal.selectedIds.length > 0" class="text-sm font-medium">
+              {{ state.reviewModal.selectedIds.length }} selected
+            </span>
+          </div>
+          
+          <div class="flex items-center space-x-2">
+            <div v-if="state.reviewModal.selectedIds.length > 0" class="flex items-center">
+              <select class="select select-bordered select-sm" v-model="state.reviewModal.batchCategoryId">
+                <option value="" disabled>Select category</option>
+                <optgroup label="Income Categories">
+                  <option v-for="category in getIncomeCategories(state.categories)" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </optgroup>
+                <optgroup label="Expense Categories">
+                  <option v-for="category in getExpenseCategories(state.categories)" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </optgroup>
+              </select>
+              
+              <button 
+                class="btn btn-primary btn-sm ml-2" 
+                :disabled="!state.reviewModal.batchCategoryId" 
+                @click="applyBatchCategory"
+              >
+                Apply to Selected
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Suggested categories for this batch -->
+        <div class="mb-4">
+          <p class="text-xs text-base-content/70 mb-1">Suggested categories:</p>
+          <div class="flex flex-wrap gap-2">
+            <div 
+              v-for="category in state.reviewModal.suggestedCategories" 
+              :key="category.id"
+              class="badge badge-primary badge-lg cursor-pointer"
+              @click="quickApplyCategory(category.id)"
+            >
+              {{ category.name }}
+            </div>
+            <div v-if="!state.reviewModal.suggestedCategories.length" class="text-sm text-base-content/50">
+              No suggestions available
+            </div>
+          </div>
+        </div>
+        
+        <!-- Transaction table -->
+        <div class="overflow-x-auto">
+          <table class="table table-compact w-full">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Amount</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="transaction in state.reviewModal.transactions" :key="transaction.id" class="transaction-row">
+                <td>
+                  <input 
+                    type="checkbox" 
+                    :checked="state.reviewModal.selectedIds.includes(transaction.id)"
+                    @change="toggleSelection(transaction.id)"
+                    class="checkbox checkbox-sm checkbox-primary"
+                  />
+                </td>
+                <td>{{ formatDate(transaction.date) }}</td>
+                <td class="max-w-xs truncate" :title="transaction.description">{{ transaction.description }}</td>
+                <td>
+                  <div v-if="transaction.categoryId" class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: getCategoryColor(state.categories, transaction.categoryId) }"></div>
+                    <span>{{ getCategoryName(state.categories, transaction.categoryId) }}</span>
+                  </div>
+                  <span v-else class="text-base-content/50">Uncategorized</span>
+                </td>
+                <td :class="transaction.type === 'expense' ? 'text-error' : 'text-success'">
+                  {{ transaction.type === 'expense' ? '- ' : '+ ' }}{{ formatCurrency(transaction.amount) }}
+                </td>
+                <td>
+                  <div class="flex items-center gap-1">
+                    <select 
+                      class="select select-bordered select-xs"
+                      v-model="transaction.categoryId"
+                      @change="updateTransactionCategory(transaction.id, transaction.categoryId)"
+                    >
+                      <option value="" disabled>Select</option>
+                      <optgroup label="Income">
+                        <option v-for="category in getIncomeCategories(state.categories)" :key="category.id" :value="category.id">
+                          {{ category.name }}
+                        </option>
+                      </optgroup>
+                      <optgroup label="Expense">
+                        <option v-for="category in getExpenseCategories(state.categories)" :key="category.id" :value="category.id">
+                          {{ category.name }}
+                        </option>
+                      </optgroup>
+                    </select>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="modal-action">
+        <button class="btn btn-outline" @click="closeReviewModal">Cancel</button>
+        <button class="btn btn-primary" @click="finishReview">Done</button>
+      </div>
+    </div>
+  </div>
   
   <script>
     // API Service Functions
@@ -2603,7 +2821,25 @@
               netAmount: 0,
               sources: []
             },
-            uploadedFiles: [] // Files with account info (source and type)
+            uploadedFiles: [], // Files with account info (source and type)
+            currentBatch: null,
+            currentBatchIndex: 0,
+            showCategorySelector: false,
+            suggestedCategory: null
+          },
+          
+          // Transaction Review Modal state
+          reviewModal: {
+            isOpen: false,
+            title: '',
+            batchId: null,
+            transactions: [],
+            selectedIds: [],
+            batchCategoryId: '',
+            isLoading: false,
+            error: null,
+            selectAll: false,
+            suggestedCategories: []
           }
         });
         
@@ -3336,14 +3572,43 @@
             return '';
           }
           
-          // Try to get a common merchant/description pattern
-          const descriptions = batch.transactions.map(t => t.description);
-          const merchants = batch.transactions.map(t => t.merchant).filter(Boolean);
+          // Helper function to extract merchant name from description
+          const extractMerchant = (description) => {
+            if (!description) return null;
+            
+            // Common patterns for merchant names in transaction descriptions
+            const merchantPatterns = [
+              // Credit card format with location: "MERCHANT NAME      CITY"
+              /^([A-Z0-9\s]{3,}?)\s{2,}[A-Z\s]+$/,
+              // Format with numbers and dates at end: "MERCHANT NAME 123456 03/15"
+              /^([A-Z0-9\s]{3,}?)\s+\d+\s+\d+\/\d+$/,
+              // Generic merchant at start of description
+              /^([A-Z0-9\s&]{3,}?)(?:\s+-|\s{2,}|\d{4,}|$)/
+            ];
+            
+            for (const pattern of merchantPatterns) {
+              const match = description?.match?.(pattern);
+              if (match && match[1]) {
+                return match[1].trim();
+              }
+            }
+            
+            // Fallback to first 3 words if no pattern matches
+            return description?.split?.(/ +/)?.slice?.(0, 3)?.join(' ') || '';
+          };
           
-          if (merchants.length > 0) {
+          // Try to get common patterns from descriptions if merchants aren't available
+          const descriptions = batch.transactions.map(t => t.description).filter(Boolean);
+          const providedMerchants = batch.transactions.map(t => t.merchant).filter(Boolean);
+          
+          // Extract merchants from descriptions when not provided
+          const extractedMerchants = descriptions.map(extractMerchant).filter(Boolean);
+          const allMerchants = [...providedMerchants, ...extractedMerchants];
+          
+          if (allMerchants.length > 0) {
             // Count occurrences of each merchant
             const merchantCounts = {};
-            merchants.forEach(m => {
+            allMerchants.forEach(m => {
               merchantCounts[m] = (merchantCounts[m] || 0) + 1;
             });
             
@@ -3352,15 +3617,54 @@
               merchantCounts[a] > merchantCounts[b] ? a : b
             );
             
-            return `${mostCommonMerchant} – ${batch.transactions.length} transactions`;
+            // Calculate percentage of transactions with this merchant
+            const merchantPercentage = Math.round((merchantCounts[mostCommonMerchant] / allMerchants.length) * 100);
+            
+            // If most merchants are the same (>70%), use the merchant name as the batch title
+            if (merchantPercentage > 70) {
+              return `${mostCommonMerchant} – ${batch.transactions.length} transactions`;
+            }
           }
           
-          // If no merchants, try to extract a common pattern from descriptions
-          // This is a simple approach - just use the first few words
-          const firstDescription = descriptions[0] || '';
-          const words = firstDescription.split(' ').slice(0, 2).join(' ');
+          // If no clear merchant pattern, check for transaction type pattern
+          const incomeCount = batch.transactions.filter(t => t.type === 'income').length;
+          const expenseCount = batch.transactions.filter(t => t.type === 'expense').length;
           
-          return `${words}... – ${batch.transactions.length} transactions`;
+          // If mostly one type, use that in the description
+          if (incomeCount > expenseCount && incomeCount > (batch.transactions.length * 0.7)) {
+            return `Income Transactions – ${batch.transactions.length} items`;
+          } else if (expenseCount > incomeCount && expenseCount > (batch.transactions.length * 0.7)) {
+            return `Expense Transactions – ${batch.transactions.length} items`;
+          }
+          
+          // If no clear patterns, try to find common words in descriptions
+          if (descriptions.length > 0) {
+            // Get first word of each description
+            const firstWords = descriptions.map(d => d.split(' ')[0]).filter(Boolean);
+            
+            // Find most common first word
+            const wordCounts = {};
+            firstWords.forEach(word => {
+              wordCounts[word] = (wordCounts[word] || 0) + 1;
+            });
+            
+            const mostCommonWord = Object.keys(wordCounts).reduce((a, b) => 
+              wordCounts[a] > wordCounts[b] ? a : b, ''
+            );
+            
+            if (mostCommonWord && wordCounts[mostCommonWord] > (descriptions.length * 0.4)) {
+              return `${mostCommonWord}... – ${batch.transactions.length} transactions`;
+            }
+            
+            // Last resort: use the first few words of the first description
+            const firstDescription = descriptions[0] || '';
+            const words = firstDescription.split(' ').slice(0, 2).join(' ');
+            
+            return `${words}... – ${batch.transactions.length} transactions`;
+          }
+          
+          // Fallback for truly unclassifiable batches
+          return `Batch – ${batch.transactions.length} transactions`;
         };
         
         // Get sample transactions for display
@@ -3651,6 +3955,359 @@
             } else if (error.message.includes('network')) {
               state.errors.enrichment += ' This might be due to a network issue. Please check your connection and try again.';
             }
+          } finally {
+            state.loading.enrichment = false;
+          }
+        };
+        
+        // Start process to enrich all batches
+        const startEnrichAllBatches = () => {
+          if (state.enrichment.transactionBatches.length === 0) {
+            return;
+          }
+          
+          // Prepare for batch enrichment
+          state.enrichment.currentStep = 'enrichment';
+          state.enrichment.pendingBatches = state.enrichment.transactionBatches.map(b => b.batchId);
+          state.enrichment.currentBatchIndex = 0;
+          
+          // Set the first batch as current
+          if (state.enrichment.pendingBatches.length > 0) {
+            const firstBatchId = state.enrichment.pendingBatches[0];
+            state.enrichment.currentBatch = state.enrichment.transactionBatches.find(b => b.batchId === firstBatchId);
+            
+            // Generate category suggestions for first batch
+            suggestCategoryForBatch(state.enrichment.currentBatch);
+          }
+          
+          // Update progress
+          state.enrichment.progress = 75;
+        };
+        
+        // Get suggested categories for a specific batch based on content
+        const getSuggestedCategoriesForBatch = (batch) => {
+          if (!batch || !batch.transactions || batch.transactions.length === 0 || !state.categories) {
+            return [];
+          }
+          
+          // Helper function to determine if a keyword is present
+          const containsKeyword = (text, keyword) => {
+            if (!text) return false;
+            return text.toUpperCase().includes(keyword);
+          };
+          
+          const transactions = batch.transactions;
+          const descriptions = transactions.map(t => t.description).filter(Boolean);
+          const merchants = transactions.map(t => t.merchant).filter(Boolean);
+          const isExpenseBatch = transactions.some(t => t.type === 'expense');
+          
+          // Initialize category suggestion map
+          const categorySuggestionScores = {};
+          
+          // Define keyword to category mappings
+          const expenseKeywords = {
+            "UBER": "Transportation", 
+            "LYFT": "Transportation",
+            "TAXI": "Transportation",
+            "METRO": "Transportation",
+            "SUBWAY": "Transportation",
+            "BUS": "Transportation",
+            "TRAIN": "Transportation",
+            "AMAZON": "Shopping",
+            "WALMART": "Shopping", 
+            "TARGET": "Shopping",
+            "EBAY": "Shopping",
+            "NETFLIX": "Entertainment",
+            "SPOTIFY": "Entertainment",
+            "DISNEY": "Entertainment",
+            "HULU": "Entertainment",
+            "HBO": "Entertainment",
+            "CINEMA": "Entertainment",
+            "MOVIE": "Entertainment", 
+            "TICKET": "Entertainment",
+            "THEATER": "Entertainment",
+            "GROCERY": "Groceries",
+            "FOOD": "Groceries",
+            "SUPERMARKET": "Groceries",
+            "MARKET": "Groceries",
+            "RESTAURANT": "Dining Out",
+            "CAFE": "Dining Out",
+            "COFFEE": "Dining Out",
+            "BAR": "Dining Out",
+            "FAST FOOD": "Dining Out",
+            "GYM": "Health & Fitness",
+            "FITNESS": "Health & Fitness",
+            "DOCTOR": "Health & Fitness",
+            "MEDICAL": "Health & Fitness",
+            "PHARMACY": "Health & Fitness",
+            "HOSPITAL": "Health & Fitness",
+            "RENT": "Housing",
+            "MORTGAGE": "Housing",
+            "APARTMENT": "Housing",
+            "PROPERTY": "Housing",
+            "INSURANCE": "Insurance",
+            "POLICY": "Insurance",
+            "UTILITY": "Utilities",
+            "ELECTRIC": "Utilities",
+            "WATER": "Utilities",
+            "GAS": "Utilities",
+            "PHONE": "Utilities",
+            "INTERNET": "Utilities",
+            "CABLE": "Utilities",
+            "TRAVEL": "Travel",
+            "HOTEL": "Travel",
+            "FLIGHT": "Travel",
+            "AIRBNB": "Travel",
+            "AIRLINE": "Travel",
+            "VACATION": "Travel",
+            "EDUCATION": "Education",
+            "TUITION": "Education",
+            "SCHOOL": "Education",
+            "UNIVERSITY": "Education",
+            "COLLEGE": "Education",
+            "COURSE": "Education",
+            "BOOK": "Education",
+            "GAS STATION": "Transportation",
+            "PARKING": "Transportation",
+            "CAR": "Transportation",
+            "AUTO": "Transportation",
+            "AUTOMOBILE": "Transportation",
+            "MEMBERSHIP": "Entertainment",
+            "SUBSCRIPTION": "Entertainment",
+            "DONATION": "Donations",
+            "CHARITY": "Donations",
+            "TAX": "Taxes",
+            "IRS": "Taxes",
+            "BILL": "Bills",
+            "PAYMENT": "Bills"
+          };
+          
+          const incomeKeywords = {
+            "SALARY": "Salary & Wages",
+            "WAGE": "Salary & Wages",
+            "PAYROLL": "Salary & Wages",
+            "INCOME": "Salary & Wages",
+            "DIRECT DEPOSIT": "Salary & Wages",
+            "COMMISSION": "Salary & Wages",
+            "BONUS": "Salary & Wages",
+            "INTEREST": "Investment Income",
+            "DIVIDEND": "Investment Income",
+            "INVESTMENT": "Investment Income",
+            "STOCK": "Investment Income",
+            "REFUND": "Refunds",
+            "REIMBURSEMENT": "Refunds",
+            "RETURN": "Refunds",
+            "GIFT": "Gifts",
+            "TRANSFER": "Transfers",
+            "RENT": "Rental Income",
+            "PAYMENT RECEIVED": "Other Income"
+          };
+          
+          // Choose keyword set based on batch type
+          const keywordMap = isExpenseBatch ? expenseKeywords : incomeKeywords;
+          
+          // Check for keyword matches in descriptions and merchants
+          [...descriptions, ...merchants].forEach(text => {
+            if (!text) return;
+            
+            Object.keys(keywordMap).forEach(keyword => {
+              if (containsKeyword(text, keyword)) {
+                const categoryName = keywordMap[keyword];
+                categorySuggestionScores[categoryName] = (categorySuggestionScores[categoryName] || 0) + 1;
+              }
+            });
+          });
+          
+          // Find matching categories from our actual category list
+          const categoryMatches = [];
+          Object.keys(categorySuggestionScores).forEach(categoryName => {
+            // Find category by name in our actual categories list
+            const matchingCategories = state.categories.filter(c => 
+              c.name.toLowerCase().includes(categoryName.toLowerCase()) || 
+              categoryName.toLowerCase().includes(c.name.toLowerCase())
+            );
+            
+            matchingCategories.forEach(category => {
+              // Only add categories with the right type (income/expense)
+              if ((isExpenseBatch && category.type === 'expense') ||
+                  (!isExpenseBatch && category.type === 'income')) {
+                categoryMatches.push({
+                  category,
+                  score: categorySuggestionScores[categoryName]
+                });
+              }
+            });
+          });
+          
+          // Sort by score (highest first) and take top 3
+          const sortedMatches = categoryMatches.sort((a, b) => b.score - a.score);
+          return sortedMatches.slice(0, 3).map(match => match.category);
+        };
+        
+        // Open the transaction view modal for a batch
+        const viewAllTransactions = (batchId) => {
+          const batch = state.enrichment.transactionBatches.find(b => b.batchId === batchId);
+          if (!batch) return;
+          
+          // Set up the review modal
+          state.reviewModal.isOpen = true;
+          state.reviewModal.title = getBatchDescription(batch) || 'Transaction Review';
+          state.reviewModal.batchId = batchId;
+          state.reviewModal.isLoading = true;
+          state.reviewModal.error = null;
+          state.reviewModal.selectedIds = [];
+          state.reviewModal.batchCategoryId = '';
+          state.reviewModal.selectAll = false;
+          
+          // Load transactions from the batch
+          if (batch.transactions) {
+            state.reviewModal.transactions = [...batch.transactions];
+            state.reviewModal.isLoading = false;
+            
+            // Generate suggested categories
+            state.reviewModal.suggestedCategories = getSuggestedCategoriesForBatch(batch);
+          } else {
+            // If transactions aren't already loaded, set error
+            state.reviewModal.error = 'Could not load transactions for this batch';
+            state.reviewModal.isLoading = false;
+          }
+        };
+        
+        // Toggle selection of a transaction in review modal
+        const toggleSelection = (transactionId) => {
+          const index = state.reviewModal.selectedIds.indexOf(transactionId);
+          if (index === -1) {
+            state.reviewModal.selectedIds.push(transactionId);
+          } else {
+            state.reviewModal.selectedIds.splice(index, 1);
+          }
+          
+          // Update selectAll status
+          state.reviewModal.selectAll = 
+            state.reviewModal.selectedIds.length === state.reviewModal.transactions.length;
+        };
+        
+        // Toggle select all transactions in review modal
+        const toggleSelectAllTransactions = () => {
+          if (state.reviewModal.selectAll) {
+            // Select all transactions
+            state.reviewModal.selectedIds = state.reviewModal.transactions.map(t => t.id);
+          } else {
+            // Deselect all
+            state.reviewModal.selectedIds = [];
+          }
+        };
+        
+        // Apply a category to selected transactions in batch
+        const applyBatchCategory = async () => {
+          if (!state.reviewModal.batchCategoryId || state.reviewModal.selectedIds.length === 0) {
+            return;
+          }
+          
+          try {
+            state.reviewModal.isLoading = true;
+            
+            // Call API to update categories
+            await api.transactions.batchUpdateCategory(
+              state.reviewModal.selectedIds,
+              state.reviewModal.batchCategoryId
+            );
+            
+            // Update UI
+            state.reviewModal.transactions.forEach(transaction => {
+              if (state.reviewModal.selectedIds.includes(transaction.id)) {
+                transaction.categoryId = state.reviewModal.batchCategoryId;
+              }
+            });
+            
+            // Reset selection
+            state.reviewModal.selectedIds = [];
+            state.reviewModal.batchCategoryId = '';
+            state.reviewModal.selectAll = false;
+          } catch (error) {
+            state.reviewModal.error = `Failed to update categories: ${error.message}`;
+            console.error('Error applying batch category:', error);
+          } finally {
+            state.reviewModal.isLoading = false;
+          }
+        };
+        
+        // Quickly apply a category to selected transactions
+        const quickApplyCategory = async (categoryId) => {
+          if (!categoryId) return;
+          
+          try {
+            // If there are already selected transactions, apply to those
+            if (state.reviewModal.selectedIds.length > 0) {
+              state.reviewModal.batchCategoryId = categoryId;
+              await applyBatchCategory();
+            } else {
+              // Otherwise select all and apply
+              state.reviewModal.selectAll = true;
+              state.reviewModal.selectedIds = state.reviewModal.transactions.map(t => t.id);
+              state.reviewModal.batchCategoryId = categoryId;
+              await applyBatchCategory();
+            }
+          } catch (error) {
+            console.error('Quick apply category failed:', error);
+          }
+        };
+        
+        // Update a single transaction's category
+        const updateTransactionCategory = async (transactionId, categoryId) => {
+          if (!transactionId || !categoryId) return;
+          
+          try {
+            await api.transactions.batchUpdateCategory([transactionId], categoryId);
+          } catch (error) {
+            console.error('Error updating transaction category:', error);
+            state.reviewModal.error = `Failed to update category: ${error.message}`;
+          }
+        };
+        
+        // Close the review modal
+        const closeReviewModal = () => {
+          state.reviewModal.isOpen = false;
+          state.reviewModal.transactions = [];
+          state.reviewModal.selectedIds = [];
+        };
+        
+        // Finish review and return to batches
+        const finishReview = () => {
+          closeReviewModal();
+          
+          // If this was done during enrichment flow, potentially update UI
+          if (state.enrichment.showModal && state.enrichment.currentStep === 'enrichment') {
+            // Could update progress or batch status if needed
+          }
+        };
+        
+        // Quick categorize directly from batch list
+        const quickCategorize = async (batchId, categoryId) => {
+          const batch = state.enrichment.transactionBatches.find(b => b.batchId === batchId);
+          if (!batch || !categoryId) return;
+          
+          try {
+            state.loading.enrichment = true;
+            
+            // Get all transaction IDs from the batch
+            const transactionIds = batch.transactions.map(t => t.id);
+            
+            // Apply category to all transactions in the batch
+            await api.transactions.batchUpdateCategory(transactionIds, categoryId);
+            
+            // Update local transactions 
+            batch.transactions.forEach(t => {
+              t.categoryId = categoryId;
+            });
+            
+            // Refresh the batches
+            await fetchEnrichmentBatches(state.enrichment.currentUploadId);
+            
+            // Show success notification (could be added elsewhere in UI)
+            console.log(`Applied category to all transactions in batch ${batch.batchId}`);
+          } catch (error) {
+            console.error(`Failed to quick categorize batch ${batchId}:`, error);
           } finally {
             state.loading.enrichment = false;
           }
