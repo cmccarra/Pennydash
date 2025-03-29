@@ -148,13 +148,20 @@ export default {
       error.value = null;
       
       try {
+        console.log('Fetching review queue with params:', { 
+          page: reviewQueue.page, 
+          pageSize: reviewQueue.pageSize 
+        });
+        
         const response = await transactionsApi.getReviewQueue({ 
           page: reviewQueue.page, 
           pageSize: reviewQueue.pageSize 
         });
         
-        reviewQueue.items = response.transactions;
-        reviewQueue.totalItems = response.totalCount;
+        console.log('Review queue response:', response);
+        
+        reviewQueue.items = response.transactions || [];
+        reviewQueue.totalItems = response.pagination?.total || 0;
       } catch (err) {
         console.error('Failed to fetch review queue:', err);
         error.value = 'Failed to load transactions for review. Please try again later.';
