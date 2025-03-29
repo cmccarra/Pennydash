@@ -1300,16 +1300,55 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
         transactionsWithoutBatch++;
         console.log(`⚠️ [WARNING] Transaction without batchId: ${transaction.id} - ${transaction.description}`);
         
-        // Try to recover by using the uploadId to create a batch ID
-        // This is a fallback in case batch IDs weren't properly assigned during upload
+        // Try to recover using various strategies
         if (transaction.uploadId) {
-          const recoveredBatchId = `${transaction.uploadId}_batch_recovered`;
-          console.log(`🔄 [RECOVERY] Creating recovered batch ID: ${recoveredBatchId} for transaction ${transaction.id}`);
+          // Determine if this transaction fits with a merchant-based batch
+          let foundMatchingBatch = false;
           
-          if (!batchMap[recoveredBatchId]) {
-            batchMap[recoveredBatchId] = [];
+          // Extract merchant if available
+          const merchant = transaction.merchant || 
+                          (transaction.description ? transaction.description.split(' ')[0] : null);
+          
+          // Try to find existing batches for this merchant
+          if (merchant) {
+            // Look through existing batches to see if there's a merchant match
+            Object.entries(batchMap).forEach(([existingBatchId, batchTransactions]) => {
+              if (batchTransactions.length > 0) {
+                const batchMerchant = batchTransactions[0].merchant || 
+                                     (batchTransactions[0].description ? batchTransactions[0].description.split(' ')[0] : null);
+                
+                // If merchants match and transaction types match, use this batch
+                if (batchMerchant && 
+                    batchMerchant.toLowerCase() === merchant.toLowerCase() && 
+                    batchTransactions[0].type === transaction.type) {
+                  console.log(`🔄 [RECOVERY] Adding transaction to existing merchant batch: ${existingBatchId} for transaction ${transaction.id}`);
+                  batchMap[existingBatchId].push(transaction);
+                  foundMatchingBatch = true;
+                  
+                  // Also update the transaction's batchId in memory (we won't save it to DB here)
+                  transaction.batchId = existingBatchId;
+                  return;
+                }
+              }
+            });
           }
-          batchMap[recoveredBatchId].push(transaction);
+          
+          // If we couldn't find a matching batch, create a new one based on type
+          if (!foundMatchingBatch) {
+            const transactionType = transaction.type || 'unknown';
+            const recoveredBatchId = `${transaction.uploadId}_batch_recovered_${transactionType}_${Date.now().toString().slice(-4)}`;
+            console.log(`🔄 [RECOVERY] Creating new recovered batch ID: ${recoveredBatchId} for transaction ${transaction.id}`);
+            
+            if (!batchMap[recoveredBatchId]) {
+              batchMap[recoveredBatchId] = [];
+            }
+            batchMap[recoveredBatchId].push(transaction);
+            
+            // Update the transaction's batchId in memory
+            transaction.batchId = recoveredBatchId;
+          }
+        } else {
+          console.log(`❌ [ERROR] Cannot recover transaction ${transaction.id} - missing uploadId`);
         }
         return;
       }

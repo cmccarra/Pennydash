@@ -2084,9 +2084,26 @@
             <!-- Empty state if no batches found -->
             <div v-if="!state.enrichment.transactionBatches || state.enrichment.transactionBatches.length === 0" class="alert alert-warning mb-4">
               <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-              <div>
-                <span>No batches found. This might be due to a data processing issue.</span>
-                <button class="btn btn-xs btn-warning ml-2" @click="forceRefreshBatches">Refresh Batches</button>
+              <div class="flex flex-col space-y-2">
+                <span class="font-medium">No transaction batches found</span>
+                <span class="text-sm">This might be due to a data processing issue or the server hasn't finished organizing your transactions yet.</span>
+                <div class="flex items-center space-x-2 mt-2">
+                  <button 
+                    class="btn btn-sm btn-warning" 
+                    @click="forceRefreshBatches" 
+                    :disabled="state.loading.enrichment"
+                  >
+                    <svg v-if="state.loading.enrichment" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh Batches
+                  </button>
+                  <span v-if="state.enrichment.currentUploadId" class="text-xs opacity-70">Upload ID: {{ state.enrichment.currentUploadId }}</span>
+                </div>
               </div>
             </div>
             
@@ -3574,8 +3591,19 @@
                 state.enrichment.transactionBatches = batchResult.batches;
                 state.enrichment.statistics = batchResult.statistics;
                 
-                // Prepare pendingBatches array with all batch IDs
-                state.enrichment.pendingBatches = batchResult.batches.map(batch => batch.batchId);
+                // Prepare pendingBatches array with all batch IDs - validate each batch has a batchId
+                const validBatchIds = batchResult.batches
+                  .filter(batch => batch && batch.batchId)
+                  .map(batch => batch.batchId);
+                
+                console.log(`✅ [CLIENT] Found ${validBatchIds.length} valid batch IDs out of ${batchResult.batches.length} batches`);
+                
+                if (validBatchIds.length === 0) {
+                  console.error('🔴 [CLIENT] No valid batch IDs found in the batches response');
+                  state.errors.enrichment = 'The batches data is invalid. Please refresh or try again.';
+                }
+                
+                state.enrichment.pendingBatches = validBatchIds;
                 
                 // Set first batch as current if available
                 if (batchResult.batches.length > 0) {
@@ -4096,15 +4124,61 @@
             currentBatchId: state.enrichment.currentBatch?.batchId || 'none',
             uploadId: state.enrichment.currentUploadId,
             hasCurrentBatch: !!state.enrichment.currentBatch,
-            progress: state.enrichment.progress
+            progress: state.enrichment.progress,
+            hasErrors: !!state.errors.enrichment,
+            errorMsg: state.errors.enrichment || 'none'
           });
           
           // Check if batches contain transactions
           if (state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
-            const txCounts = state.enrichment.transactionBatches.map(b => 
-              b.transactions?.length || 0
-            );
-            console.log('🔍 [CLIENT] Transaction counts per batch:', txCounts);
+            const batchDetails = state.enrichment.transactionBatches.map(b => ({
+              batchId: b.batchId || 'missing-id',
+              txCount: b.transactions?.length || 0,
+              description: getBatchDescription(b) || 'No description'
+            }));
+            console.log('🔍 [CLIENT] Batch details:', batchDetails);
+            
+            // Check for consistency between currentUploadId and batch IDs
+            if (state.enrichment.currentUploadId && state.enrichment.transactionBatches.length > 0) {
+              // Extract upload ID part from batch IDs (if using format uploadId_batch_index)
+              const batchUploadIds = state.enrichment.transactionBatches
+                .map(b => b.batchId?.split('_batch_')[0] || 'unknown')
+                .filter((value, index, self) => self.indexOf(value) === index); // get unique values
+                
+              if (batchUploadIds.length > 1) {
+                console.warn('⚠️ [CLIENT] Multiple upload IDs found in batches:', batchUploadIds);
+              }
+              
+              if (!batchUploadIds.includes(state.enrichment.currentUploadId)) {
+                console.error('🔴 [CLIENT] Current upload ID does not match any batch upload ID!', {
+                  currentUploadId: state.enrichment.currentUploadId,
+                  batchUploadIds
+                });
+                
+                // Try to fix by extracting uploadId from first batch
+                if (batchUploadIds[0] && batchUploadIds[0] !== 'unknown') {
+                  console.log('🔄 [CLIENT] Automatically fixing uploadId mismatch by updating currentUploadId');
+                  state.enrichment.currentUploadId = batchUploadIds[0];
+                }
+              }
+            }
+          }
+          
+          // Check if pendingBatches are valid
+          if (state.enrichment.pendingBatches && state.enrichment.pendingBatches.length > 0) {
+            const validPendingBatches = state.enrichment.pendingBatches.filter(batchId => {
+              const batchExists = state.enrichment.transactionBatches.some(b => b.batchId === batchId);
+              if (!batchExists) {
+                console.error(`🔴 [CLIENT] Pending batch ID ${batchId} does not exist in transactionBatches`);
+              }
+              return batchExists;
+            });
+            
+            // Fix pendingBatches if needed
+            if (validPendingBatches.length !== state.enrichment.pendingBatches.length) {
+              console.log('🔄 [CLIENT] Fixing pendingBatches array by removing invalid batch IDs');
+              state.enrichment.pendingBatches = validPendingBatches;
+            }
           }
         };
         
@@ -4148,22 +4222,44 @@
           console.log('🔍 [CLIENT] Starting enrichment for all batches');
           debugBatchState();
           
-          // Validate that we have batches to process
-          if (!state.enrichment.transactionBatches || state.enrichment.transactionBatches.length === 0) {
-            console.warn('⚠️ [CLIENT] Cannot start enrichment: No batches available');
+          state.loading.enrichment = true;
+          
+          try {
+            // First validate we have an upload ID
+            if (!state.enrichment.currentUploadId) {
+              console.error('🔴 [CLIENT] Cannot start enrichment: No upload ID');
+              state.errors.enrichment = 'Upload ID is missing. Please try uploading the file again.';
+              return;
+            }
             
-            // Try to refresh batches once before showing error
-            if (await forceRefreshBatches()) {
+            // Validate that we have batches to process
+            if (!state.enrichment.transactionBatches || state.enrichment.transactionBatches.length === 0) {
+              console.warn('⚠️ [CLIENT] Cannot start enrichment: No batches available');
+              
+              // Try to refresh batches once before showing error
+              console.log('🔄 [CLIENT] Attempting to refresh batches before enrichment');
+              const refreshSuccess = await forceRefreshBatches();
+              
               // If refresh succeeded and we have batches now, try again
-              if (state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
+              if (refreshSuccess && state.enrichment.transactionBatches && state.enrichment.transactionBatches.length > 0) {
                 console.log('✅ [CLIENT] Successfully refreshed batches, retrying enrichment');
                 setTimeout(() => startEnrichAllBatches(), 500); // Try again after a short delay
                 return;
               }
+              
+              state.errors.enrichment = 'No batches available for enrichment. Try refreshing the page or restarting the upload process.';
+              return;
             }
-            
-            state.errors.enrichment = 'No batches available for enrichment. Try refreshing the page.';
+          } catch (error) {
+            console.error('🔴 [CLIENT] Error in enrichment preparation:', error);
+            state.errors.enrichment = `Failed to prepare enrichment: ${error.message}`;
             return;
+          } finally {
+            // We don't want to reset loading state here in all cases, as some paths continue the process
+            // Loading will be reset in those follow-up functions
+            if (state.errors.enrichment) {
+              state.loading.enrichment = false;
+            }
           }
           
           try {
