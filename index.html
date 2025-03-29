@@ -2487,7 +2487,7 @@
               <button 
                 class="btn btn-primary btn-sm ml-2" 
                 :disabled="!state.reviewModal.batchCategoryId" 
-                @click="applyBatchCategory"
+                @click="reviewApplyCategory"
               >
                 Apply to Selected
               </button>
@@ -3960,7 +3960,7 @@
           }
         };
         
-        // Start process to enrich all batches
+        // Start process to enrich all batches at once
         const startEnrichAllBatches = () => {
           if (state.enrichment.transactionBatches.length === 0) {
             return;
@@ -4189,7 +4189,10 @@
         
         // Toggle select all transactions in review modal
         const toggleSelectAllTransactions = () => {
-          if (state.reviewModal.selectAll) {
+          const selectAll = !state.reviewModal.selectAll;
+          state.reviewModal.selectAll = selectAll;
+          
+          if (selectAll) {
             // Select all transactions
             state.reviewModal.selectedIds = state.reviewModal.transactions.map(t => t.id);
           } else {
@@ -4198,8 +4201,8 @@
           }
         };
         
-        // Apply a category to selected transactions in batch
-        const applyBatchCategory = async () => {
+        // Apply category to selected transactions in review modal
+        const reviewApplyCategory = async () => {
           if (!state.reviewModal.batchCategoryId || state.reviewModal.selectedIds.length === 0) {
             return;
           }
@@ -4232,7 +4235,7 @@
           }
         };
         
-        // Quickly apply a category to selected transactions
+        // Quickly apply a category to all transactions in review modal
         const quickApplyCategory = async (categoryId) => {
           if (!categoryId) return;
           
@@ -4240,28 +4243,16 @@
             // If there are already selected transactions, apply to those
             if (state.reviewModal.selectedIds.length > 0) {
               state.reviewModal.batchCategoryId = categoryId;
-              await applyBatchCategory();
+              await reviewApplyCategory();
             } else {
               // Otherwise select all and apply
               state.reviewModal.selectAll = true;
               state.reviewModal.selectedIds = state.reviewModal.transactions.map(t => t.id);
               state.reviewModal.batchCategoryId = categoryId;
-              await applyBatchCategory();
+              await reviewApplyCategory();
             }
           } catch (error) {
             console.error('Quick apply category failed:', error);
-          }
-        };
-        
-        // Update a single transaction's category
-        const updateTransactionCategory = async (transactionId, categoryId) => {
-          if (!transactionId || !categoryId) return;
-          
-          try {
-            await api.transactions.batchUpdateCategory([transactionId], categoryId);
-          } catch (error) {
-            console.error('Error updating transaction category:', error);
-            state.reviewModal.error = `Failed to update category: ${error.message}`;
           }
         };
         
