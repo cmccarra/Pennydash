@@ -105,13 +105,17 @@ function calculateBatchStatistics(transactions) {
   const categorizedCount = transactions.filter(t => t.categoryId).length;
   const uncategorizedCount = transactions.filter(t => !t.categoryId).length;
   
+  // Calculate net amount (positive value for income dominance, for consistency in UI display)
+  const netDifference = totalIncome - totalExpense;
+  
   return {
     totalTransactions: transactions.length,
     incomeTransactions: incomeTransactions.length,
     expenseTransactions: expenseTransactions.length,
     totalIncome: totalIncome,
     totalExpense: totalExpense,
-    netAmount: totalIncome - totalExpense,
+    netAmount: Math.abs(netDifference),
+    netDirection: netDifference >= 0 ? 'positive' : 'negative',
     dateRange: {
       from: minDate,
       to: maxDate

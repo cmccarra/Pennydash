@@ -1978,7 +1978,11 @@
                   <tr v-for="(batch, index) in state.enrichment.transactionBatches" :key="batch.batchId">
                     <td>Batch {{ index + 1 }}</td>
                     <td>{{ batch.transactions?.length || batch.transactionCount || 0 }} transactions</td>
-                    <td>{{ formatCurrency(batch.statistics?.netAmount || 0) }}</td>
+                    <td>
+                      <span :class="batch.statistics?.netDirection === 'negative' ? 'text-error' : 'text-success'">
+                        {{ batch.statistics?.netDirection === 'negative' ? '- ' : '+ ' }}{{ formatCurrency(batch.statistics?.netAmount || 0) }}
+                      </span>
+                    </td>
                     <td>
                       <span v-if="batch.statistics?.dateRange?.from && batch.statistics?.dateRange?.to">
                         {{ formatDate(batch.statistics.dateRange.from) }} to {{ formatDate(batch.statistics.dateRange.to) }}
@@ -2006,7 +2010,9 @@
                 </div>
                 <div class="stat">
                   <div class="stat-title">Total Amount</div>
-                  <div class="stat-value text-primary">{{ formatCurrency(state.enrichment.statistics?.netAmount || 0) }}</div>
+                  <div class="stat-value" :class="state.enrichment.statistics?.netDirection === 'negative' ? 'text-error' : 'text-success'">
+                    {{ state.enrichment.statistics?.netDirection === 'negative' ? '- ' : '+ ' }}{{ formatCurrency(state.enrichment.statistics?.netAmount || 0) }}
+                  </div>
                 </div>
                 <div class="stat">
                   <div class="stat-title">Sources</div>
@@ -2120,7 +2126,9 @@
               </div>
               <div class="stat">
                 <div class="stat-title">Total Amount</div>
-                <div class="stat-value text-primary">{{ formatCurrency(state.enrichment.statistics?.netAmount || 0) }}</div>
+                <div class="stat-value" :class="state.enrichment.statistics?.netDirection === 'negative' ? 'text-error' : 'text-success'">
+                  {{ state.enrichment.statistics?.netDirection === 'negative' ? '- ' : '+ ' }}{{ formatCurrency(state.enrichment.statistics?.netAmount || 0) }}
+                </div>
               </div>
             </div>
           </div>
