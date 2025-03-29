@@ -153,7 +153,10 @@ export const transactionsApi = {
   getUploadedBatches: (uploadId) => fetchData(`/transactions/batches/${uploadId}`),
   batchEnrich: (batchId, enrichData) => putData(`/transactions/batches/${batchId}/enrich`, enrichData),
   completeBatch: (batchId) => postData(`/transactions/batches/${batchId}/complete`, {}),
-  completeUpload: (uploadId) => postData(`/transactions/upload/${uploadId}/complete`, {})
+  completeUpload: (uploadId) => postData(`/transactions/upload/${uploadId}/complete`, {}),
+  // Account info APIs
+  updateAccountInfo: (uploadId, accountInfo) => putData(`/transactions/uploads/${uploadId}/account-info`, accountInfo),
+  getUploadedFiles: (uploadId) => fetchData(`/transactions/uploads/${uploadId}/files`)
 };
 
 // Categories API

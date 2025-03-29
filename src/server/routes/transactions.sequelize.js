@@ -1031,6 +1031,100 @@ router.post('/batches/:batchId/complete', async (req, res) => {
   }
 });
 
+// Get files associated with an upload
+router.get('/uploads/:uploadId/files', async (req, res) => {
+  try {
+    const { uploadId } = req.params;
+    const { Transaction } = getModels();
+    
+    // Find unique files associated with this upload
+    const transactions = await Transaction.findAll({
+      where: {
+        uploadId: uploadId
+      },
+      attributes: ['importSource'],
+      group: ['importSource']
+    });
+    
+    if (!transactions || transactions.length === 0) {
+      return res.status(404).json({ error: 'No files found for this upload' });
+    }
+    
+    // Extract file names and generate file IDs
+    const files = transactions.map(transaction => {
+      const fileName = transaction.importSource;
+      return {
+        fileId: uuidv4(), // Generate a unique ID for each file
+        fileName: fileName,
+        accountSource: '',
+        accountType: ''
+      };
+    });
+    
+    res.status(200).json(files);
+  } catch (error) {
+    console.error('Error getting upload files:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update account info for a file in an upload
+router.put('/uploads/:uploadId/account-info', async (req, res) => {
+  try {
+    const { uploadId } = req.params;
+    const accountInfo = req.body;
+    const { Transaction } = getModels();
+    
+    if (!accountInfo || !Array.isArray(accountInfo)) {
+      return res.status(400).json({ error: 'Invalid account information format' });
+    }
+    
+    // Process each file's account info
+    const updateResults = await Promise.all(accountInfo.map(async (fileInfo) => {
+      const { fileName, fileId, accountSource, accountType } = fileInfo;
+      
+      if (!fileName) {
+        return { success: false, error: 'File name is required', fileName };
+      }
+      
+      // Use file-specific ID if provided, otherwise use the upload ID
+      const whereClause = {
+        uploadId: fileId || uploadId
+      };
+      
+      // If we have a filename but no fileId, filter by importSource too
+      if (!fileId && fileName) {
+        whereClause.importSource = fileName;
+      }
+      
+      // Update all transactions from this file in this upload
+      const [updatedCount] = await Transaction.update(
+        { 
+          source: accountSource || null,
+          accountType: accountType || null 
+        },
+        { 
+          where: whereClause 
+        }
+      );
+      
+      return { 
+        success: true, 
+        fileName,
+        updatedCount 
+      };
+    }));
+    
+    res.status(200).json({ 
+      message: 'Account information updated',
+      results: updateResults
+    });
+  } catch (error) {
+    console.error('Error updating account info:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Complete an entire upload (mark all batches as processed)
 router.post('/upload/:uploadId/complete', async (req, res) => {
   try {
@@ -1202,6 +1296,84 @@ router.get('/upload-stats', async (req, res) => {
       accounts: accountStats
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update file transactions with account info
+router.put('/uploads/:fileId/account-info', async (req, res) => {
+  try {
+    const { Transaction } = getModels();
+    const { fileId } = req.params;
+    const { account, accountType } = req.body;
+    
+    if (!account && !accountType) {
+      return res.status(400).json({ error: 'Account information is required' });
+    }
+    
+    // Find all transactions with this uploadId
+    const transactions = await Transaction.findAll({
+      where: { 
+        uploadId: fileId 
+      }
+    });
+    
+    if (!transactions || transactions.length === 0) {
+      return res.status(404).json({ error: 'No transactions found for this file ID' });
+    }
+    
+    // Update all transactions
+    const updateData = {};
+    if (account) updateData.account = account;
+    if (accountType) updateData.accountType = accountType;
+    
+    await Transaction.update(updateData, {
+      where: { uploadId: fileId }
+    });
+    
+    res.json({
+      message: `Updated account information for ${transactions.length} transactions`,
+      updatedFields: updateData
+    });
+  } catch (error) {
+    console.error('Error updating account info:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Complete an upload
+router.put('/uploads/:uploadId/complete', async (req, res) => {
+  try {
+    const { Transaction } = getModels();
+    const { uploadId } = req.params;
+    
+    // Find all transactions with this uploadId
+    const transactions = await Transaction.findAll({
+      where: { 
+        uploadId: uploadId 
+      }
+    });
+    
+    if (!transactions || transactions.length === 0) {
+      return res.status(404).json({ error: 'No transactions found for this upload ID' });
+    }
+    
+    // Mark all transactions as completed
+    await Transaction.update(
+      { enrichmentStatus: 'completed' },
+      { where: { uploadId: uploadId } }
+    );
+    
+    // Calculate overall statistics
+    const totalStats = calculateBatchStatistics(transactions);
+    
+    res.json({
+      message: `Completed enrichment for ${transactions.length} transactions`,
+      uploadId,
+      statistics: totalStats
+    });
+  } catch (error) {
+    console.error('Error completing upload:', error);
     res.status(500).json({ error: error.message });
   }
 });
