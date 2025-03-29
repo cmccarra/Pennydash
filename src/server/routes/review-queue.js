@@ -77,12 +77,17 @@ router.get('/', async (req, res) => {
       // If the tx is a Sequelize model instance, convert to plain object
       const plainTx = tx instanceof Object && typeof tx.get === 'function' ? tx.get({ plain: true }) : tx;
       
+      // Set suggestion confidence based on categoryConfidence
+      const suggestionConfidence = plainTx.categoryConfidence || 0;
+      
       return {
         ...plainTx,
         // If there's no categoryId but there is a suggestedCategoryId, use that as initial value
         categoryId: plainTx.categoryId || plainTx.suggestedCategoryId,
-        // Ensure confidence is available 
-        confidence: plainTx.categoryConfidence || 0
+        // Ensure both confidence values are available
+        confidence: plainTx.categoryConfidence || 0,
+        categoryConfidence: plainTx.categoryConfidence || 0,
+        suggestionConfidence: suggestionConfidence
       };
     });
     

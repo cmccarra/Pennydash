@@ -425,7 +425,27 @@ router.get('/', async (req, res) => {
       ],
       order: [['date', 'DESC']]
     });
-    res.json(transactions);
+    
+    // Enhance transactions with suggestionConfidence (copy from categoryConfidence)
+    const enhancedTransactions = transactions.map(tx => {
+      const txJson = tx.toJSON();
+      // Use categoryConfidence as suggestionConfidence if available, otherwise generate a random value for testing
+      if (txJson.categoryConfidence !== undefined && txJson.categoryConfidence !== null) {
+        txJson.suggestionConfidence = txJson.categoryConfidence;
+      } else if (txJson.needsReview === false) {
+        // If needsReview is false but no confidence score, assume high confidence
+        txJson.suggestionConfidence = 0.9;
+      } else if (txJson.needsReview === true) {
+        // If needsReview is true but no confidence score, assume low confidence
+        txJson.suggestionConfidence = 0.4;
+      } else {
+        // Default value when nothing is available
+        txJson.suggestionConfidence = 0.5;
+      }
+      return txJson;
+    });
+    
+    res.json(enhancedTransactions);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -455,7 +475,22 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Transaction not found' });
     }
     
-    res.json(transaction);
+    // Add suggestionConfidence field
+    const txJson = transaction.toJSON();
+    if (txJson.categoryConfidence !== undefined && txJson.categoryConfidence !== null) {
+      txJson.suggestionConfidence = txJson.categoryConfidence;
+    } else if (txJson.needsReview === false) {
+      // If needsReview is false but no confidence score, assume high confidence
+      txJson.suggestionConfidence = 0.9;
+    } else if (txJson.needsReview === true) {
+      // If needsReview is true but no confidence score, assume low confidence
+      txJson.suggestionConfidence = 0.4;
+    } else {
+      // Default value when nothing is available
+      txJson.suggestionConfidence = 0.5;
+    }
+    
+    res.json(txJson);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
