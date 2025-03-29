@@ -6,7 +6,52 @@ const crypto = require('crypto');
 class Transaction {
   constructor(data) {
     this.id = data.id || crypto.randomUUID();
-    this.date = data.date || new Date().toISOString().split('T')[0];
+    
+    // Handle date formats
+    let parsedDate;
+    if (data.date) {
+      try {
+        // Handle "DD MMM YYYY" format (e.g., "02 Oct 2024")
+        if (/^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(data.date)) {
+          const parts = data.date.split(' ');
+          const day = parts[0].padStart(2, '0');
+          const month = {
+            Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+            Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+          }[parts[1]];
+          const year = parts[2];
+          parsedDate = `${year}-${month}-${day}`;
+        } 
+        // Handle "MM/DD/YYYY" format
+        else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(data.date)) {
+          const parts = data.date.split('/');
+          parsedDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+        }
+        // Handle "DD/MM/YYYY" format
+        else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(data.date)) {
+          const parts = data.date.split('/');
+          parsedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+        // Try to use direct ISO conversion for YYYY-MM-DD and similar formats
+        else {
+          const dateObj = new Date(data.date);
+          if (!isNaN(dateObj.getTime())) {
+            parsedDate = dateObj.toISOString().split('T')[0];
+          } else {
+            // If all parsing fails, use today's date
+            parsedDate = new Date().toISOString().split('T')[0];
+            console.warn(`Could not parse date '${data.date}', using current date`);
+          }
+        }
+      } catch (e) {
+        console.error(`Error parsing date ${data.date}:`, e);
+        parsedDate = new Date().toISOString().split('T')[0];
+      }
+    } else {
+      parsedDate = new Date().toISOString().split('T')[0];
+    }
+    
+    this.date = parsedDate;
     this.description = data.description || '';
     this.amount = parseFloat(data.amount) || 0;
     this.type = data.type || 'expense'; // 'expense' or 'income'
@@ -20,6 +65,10 @@ class Transaction {
     this.currency = data.currency || 'USD'; // Default to USD
     this.source = data.source || 'manual'; // 'manual', 'csv', 'xml', 'pdf', 'xlsx', etc.
     this.sourceFileName = data.sourceFileName || null;
+    this.importSource = data.importSource || data.sourceFileName || null;
+    this.batchId = data.batchId || null;
+    this.uploadId = data.uploadId || null;
+    this.enrichmentStatus = data.enrichmentStatus || 'pending';
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
   }
@@ -53,18 +102,30 @@ class Transaction {
 
   // Create a normalized Transaction object from CSV row data
   static fromCSV(csvRow) {
+    console.log('Processing CSV row:', JSON.stringify(csvRow));
+    
     // Default mapping assuming standard columns
     const mapping = {
-      date: csvRow.Date || csvRow.date || csvRow.DATE || csvRow.TransactionDate || csvRow.TRANSACTION_DATE || '',
-      description: csvRow.Description || csvRow.description || csvRow.DESC || csvRow.Memo || csvRow.MEMO || csvRow.DESCRIPTION || '',
-      amount: csvRow.Amount || csvRow.amount || csvRow.AMOUNT || csvRow.Value || csvRow.VALUE || csvRow.TRANSACTION_AMOUNT || 0,
-      type: (parseFloat(csvRow.Amount || csvRow.amount || csvRow.TRANSACTION_AMOUNT || 0) >= 0) ? 'income' : 'expense',
-      account: csvRow.Account || csvRow.account || csvRow.ACCOUNT || csvRow.AccountName || csvRow.ACCOUNT_NAME || '',
-      accountType: csvRow.AccountType || csvRow.accountType || csvRow.ACCOUNT_TYPE || '',
-      merchant: csvRow.Merchant || csvRow.merchant || csvRow.MERCHANT || csvRow.Payee || csvRow.PAYEE || '',
-      balance: csvRow.Balance || csvRow.balance || csvRow.BALANCE || csvRow.RUNNING_BALANCE || null,
-      reference: csvRow.Reference || csvRow.reference || csvRow.REF || csvRow.REFERENCE || csvRow.TransactionId || csvRow.TRANSACTION_ID || null,
-      currency: csvRow.Currency || csvRow.currency || csvRow.CURRENCY || 'USD'
+      date: csvRow['Date'] || csvRow['date'] || csvRow['DATE'] || csvRow['Transaction Date'] || 
+            csvRow['TransactionDate'] || csvRow['TRANSACTION_DATE'] || csvRow['Date Processed'] || 
+            csvRow['DateProcessed'] || csvRow['Date Posted'] || csvRow['PostingDate'] || '',
+      description: csvRow['Description'] || csvRow['description'] || csvRow['DESC'] || csvRow['Memo'] || 
+                  csvRow['MEMO'] || csvRow['DESCRIPTION'] || csvRow['Transaction Description'] || 
+                  csvRow['Details'] || '',
+      amount: csvRow['Amount'] || csvRow['amount'] || csvRow['AMOUNT'] || csvRow['Value'] || 
+              csvRow['VALUE'] || csvRow['TRANSACTION_AMOUNT'] || csvRow['Debit'] || csvRow['Credit'] || 0,
+      type: undefined, // Will be determined based on amount value after preprocessing
+      account: csvRow['Account'] || csvRow['account'] || csvRow['ACCOUNT'] || csvRow['AccountName'] || 
+               csvRow['ACCOUNT_NAME'] || csvRow['Bank'] || csvRow['BankName'] || '',
+      accountType: csvRow['AccountType'] || csvRow['accountType'] || csvRow['ACCOUNT_TYPE'] || 
+                  csvRow['Account Type'] || '',
+      merchant: csvRow['Merchant'] || csvRow['merchant'] || csvRow['MERCHANT'] || csvRow['Payee'] || 
+               csvRow['PAYEE'] || csvRow['Vendor'] || '',
+      balance: csvRow['Balance'] || csvRow['balance'] || csvRow['BALANCE'] || csvRow['RUNNING_BALANCE'] || 
+               csvRow['Available Balance'] || null,
+      reference: csvRow['Reference'] || csvRow['reference'] || csvRow['REF'] || csvRow['REFERENCE'] || 
+                csvRow['TransactionId'] || csvRow['TRANSACTION_ID'] || null,
+      currency: csvRow['Currency'] || csvRow['currency'] || csvRow['CURRENCY'] || 'USD'
     };
 
     // Process the amount to ensure it's a proper number
@@ -108,11 +169,62 @@ class Transaction {
       }
     }
 
+    // For credit card transactions, we need special handling
+    // In credit card statements:
+    // - Positive amounts are typically purchases/expenses (money you spent)
+    // - Negative amounts are typically credits/refunds (money back to you)
+    // - Payments to credit card typically include "PAYMENT" in description
+    const descriptionLower = (mapping.description || '').toLowerCase();
+    const isPaymentToCard = descriptionLower.includes('payment') && 
+                          (descriptionLower.includes('received') || 
+                           descriptionLower.includes('thank you'));
+    
+    const isRefund = descriptionLower.includes('refund') || 
+                    descriptionLower.includes('credit') || 
+                    descriptionLower.includes('return');
+    
+    // Determine type if not already set
+    let type = mapping.type;
+    
+    if (type === undefined) {
+      // For credit card accounts, the logic is different from bank accounts
+      if (accountType === 'credit_card') {
+        if (isPaymentToCard) {
+          // Payments to credit card (negative amounts) are income (reduce expenses)
+          type = 'income';
+        } else if (isRefund) {
+          // Refunds and credits are income (reduce expenses)
+          type = 'income';
+        } else if (amount < 0) {
+          // Other negative amounts on credit cards are typically credits/refunds
+          type = 'income';
+        } else {
+          // Positive amounts on credit cards are typically purchases
+          type = 'expense';
+        }
+      } else {
+        // For non-credit-card accounts, use standard logic
+        if (amount < 0) {
+          type = 'expense';
+        } else {
+          type = 'income';
+        }
+      }
+    }
+    
+    // Default handling if still not defined
+    if (type === undefined) {
+      type = amount < 0 ? 'expense' : 'income';
+    }
+    
+    // Always use positive amounts with type indicating direction
+    amount = Math.abs(amount);
+    
     return new Transaction({
       date: mapping.date,
       description: mapping.description,
       amount: amount,
-      type: mapping.type,
+      type: type,
       account: mapping.account,
       accountType: accountType,
       merchant: merchant,

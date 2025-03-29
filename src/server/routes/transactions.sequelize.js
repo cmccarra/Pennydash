@@ -81,21 +81,78 @@ function organizeIntoBatches(transactions) {
  * @returns {Object} Statistics object
  */
 function calculateBatchStatistics(transactions) {
+  console.log(`Calculating batch statistics for ${transactions.length} transactions`);
+  
+  // Handle edge case of empty array
+  if (!transactions || transactions.length === 0) {
+    return {
+      totalTransactions: 0,
+      incomeTransactions: 0,
+      expenseTransactions: 0,
+      totalIncome: 0,
+      totalExpense: 0,
+      netAmount: 0,
+      netDirection: 'neutral',
+      dateRange: { from: null, to: null },
+      sources: [],
+      categorization: {
+        categorized: 0,
+        uncategorized: 0,
+        percentage: 0
+      }
+    };
+  }
+  
+  // Make sure transaction types are properly defined
   const incomeTransactions = transactions.filter(t => t.type === 'income');
   const expenseTransactions = transactions.filter(t => t.type === 'expense');
-  const totalIncome = incomeTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const totalExpense = expenseTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0);
   
-  // Find date range
+  console.log(`Found ${incomeTransactions.length} income and ${expenseTransactions.length} expense transactions`);
+  
+  // Safely calculate totals with error handling
+  let totalIncome = 0;
+  try {
+    totalIncome = incomeTransactions.reduce((sum, t) => {
+      const amount = Number(t.amount || 0);
+      return isNaN(amount) ? sum : sum + amount;
+    }, 0);
+  } catch (err) {
+    console.error('Error calculating total income:', err);
+  }
+  
+  let totalExpense = 0;
+  try {
+    totalExpense = expenseTransactions.reduce((sum, t) => {
+      const amount = Number(t.amount || 0);
+      return isNaN(amount) ? sum : sum + amount;
+    }, 0);
+  } catch (err) {
+    console.error('Error calculating total expense:', err);
+  }
+  
+  // Find date range with careful error handling
   let minDate = null;
   let maxDate = null;
   
-  if (transactions.length > 0) {
-    const dates = transactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
-    if (dates.length > 0) {
-      minDate = new Date(Math.min(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
-      maxDate = new Date(Math.max(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+  try {
+    const validDates = transactions
+      .map(t => {
+        try {
+          const d = new Date(t.date);
+          return isNaN(d.getTime()) ? null : d;
+        } catch (e) {
+          console.log(`Invalid date format in transaction: ${t.id} - ${t.date}`);
+          return null;
+        }
+      })
+      .filter(Boolean);
+    
+    if (validDates.length > 0) {
+      minDate = new Date(Math.min(...validDates.map(d => d.getTime()))).toISOString().split('T')[0];
+      maxDate = new Date(Math.max(...validDates.map(d => d.getTime()))).toISOString().split('T')[0];
     }
+  } catch (err) {
+    console.error('Error processing date range:', err);
   }
   
   // Find unique sources
@@ -105,7 +162,7 @@ function calculateBatchStatistics(transactions) {
   const categorizedCount = transactions.filter(t => t.categoryId).length;
   const uncategorizedCount = transactions.filter(t => !t.categoryId).length;
   
-  // Calculate net amount (positive value for income dominance, for consistency in UI display)
+  // Calculate net amount
   const netDifference = totalIncome - totalExpense;
   
   return {
@@ -390,6 +447,15 @@ router.get('/debug/tags-test', async (req, res) => {
 // Upload transactions from file
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
+    console.log(`Upload request received: ${JSON.stringify({
+      body: req.body,
+      file: req.file ? { 
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        size: req.file.size
+      } : null
+    })}`);
+    
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -848,12 +914,16 @@ router.get('/filter/uncategorized', async (req, res) => {
 // Get all batches for a specific upload
 router.get('/uploads/:uploadId/batches', async (req, res) => {
   try {
+    console.log(`[GET /uploads/${req.params.uploadId}/batches] - Fetching batches for upload`);
     const { Transaction, Category } = getModels();
     const { uploadId } = req.params;
     
     if (!uploadId) {
+      console.log('Upload ID is missing in request');
       return res.status(400).json({ error: 'Upload ID is required' });
     }
+    
+    console.log(`[GET /uploads/${uploadId}/batches] - Finding transactions with this uploadId`);
     
     // Get all transactions for this upload, grouped by batch
     const transactions = await Transaction.findAll({
@@ -871,11 +941,54 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
       order: [['date', 'DESC']]
     });
     
+    console.log(`[GET /uploads/${uploadId}/batches] - Found ${transactions.length} transactions`);
+    
+    // Special handling for credit card transactions - update transaction types if needed
+    if (transactions.length > 0 && transactions[0].accountType === 'credit_card') {
+      console.log(`[GET /uploads/${uploadId}/batches] - Processing credit card transactions...`);
+      
+      // Correct the transaction types for credit card transactions
+      for (const transaction of transactions) {
+        const description = transaction.description.toLowerCase();
+        // Payment detection
+        const isPayment = description.includes('payment') && 
+                         (description.includes('received') || 
+                          description.includes('thank you'));
+                          
+        // Refund detection
+        const isRefund = description.includes('refund') || 
+                        description.includes('credit') || 
+                        description.includes('return');
+        
+        // For credit cards, regular purchases should be expenses, not income
+        // But keep payments to the card as income
+        let correctType;
+        if (isPayment || isRefund) {
+          correctType = 'income';
+        } else {
+          correctType = 'expense';
+        }
+        
+        // Update transaction type if needed
+        if (transaction.type !== correctType) {
+          transaction.type = correctType;
+          await transaction.save();
+        }
+      }
+    }
+    
+    // Log the unique batch IDs to see if transactions are properly batched
+    const uniqueBatchIds = [...new Set(transactions.map(t => t.batchId).filter(Boolean))];
+    console.log(`[GET /uploads/${uploadId}/batches] - Unique batch IDs: ${JSON.stringify(uniqueBatchIds)}`);
+    
     // Group transactions by batchId
     const batchMap = {};
     transactions.forEach(transaction => {
       const batchId = transaction.batchId;
-      if (!batchId) return;
+      if (!batchId) {
+        console.log(`Transaction without batchId: ${transaction.id} - ${transaction.description}`);
+        return;
+      }
       
       if (!batchMap[batchId]) {
         batchMap[batchId] = [];
@@ -886,19 +999,57 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     // Convert to array of batches with statistics
     const batches = Object.keys(batchMap).map(batchId => {
       const batchTransactions = batchMap[batchId];
-      return {
-        batchId,
-        transactions: batchTransactions,
-        statistics: calculateBatchStatistics(batchTransactions),
-        status: batchTransactions[0]?.enrichmentStatus || 'pending'
-      };
+      console.log(`[GET /uploads/${uploadId}/batches] - Processing batch ${batchId} with ${batchTransactions.length} transactions`);
+      
+      // Take a sample transaction for debugging
+      const sampleTx = batchTransactions[0];
+      console.log(`[GET /uploads/${uploadId}/batches] - Sample transaction: ${sampleTx.id} - ${sampleTx.description}`);
+      
+      try {
+        const batchStats = calculateBatchStatistics(batchTransactions);
+        return {
+          batchId,
+          transactions: batchTransactions,
+          statistics: batchStats,
+          status: batchTransactions[0]?.enrichmentStatus || 'pending'
+        };
+      } catch (statError) {
+        console.error(`Error calculating statistics for batch ${batchId}:`, statError);
+        return {
+          batchId,
+          transactions: batchTransactions,
+          statistics: {
+            totalTransactions: batchTransactions.length,
+            error: statError.message
+          },
+          status: 'error'
+        };
+      }
     });
     
-    res.json({
+    console.log(`[GET /uploads/${uploadId}/batches] - Created ${batches.length} batches`);
+    
+    // Calculate overall statistics
+    let totalStats;
+    try {
+      totalStats = calculateTotalStatistics(batches.map(b => ({ transactions: b.transactions })));
+      console.log(`[GET /uploads/${uploadId}/batches] - Calculated total statistics`);
+    } catch (statError) {
+      console.error(`Error calculating total statistics:`, statError);
+      totalStats = { 
+        error: statError.message,
+        totalTransactions: transactions.length
+      };
+    }
+    
+    const response = {
       uploadId,
       batches,
-      statistics: calculateTotalStatistics(batches.map(b => ({ transactions: b.transactions })))
-    });
+      statistics: totalStats
+    };
+    
+    console.log(`[GET /uploads/${uploadId}/batches] - Sending response with ${batches.length} batches`);
+    res.json(response);
   } catch (error) {
     console.error('Error getting batches:', error);
     res.status(500).json({ error: error.message });
@@ -1075,17 +1226,49 @@ router.put('/uploads/:uploadId/account-info', async (req, res) => {
     const accountInfo = req.body;
     const { Transaction } = getModels();
     
-    if (!accountInfo || !Array.isArray(accountInfo)) {
+    console.log(`[PUT /uploads/${uploadId}/account-info] - Received account info:`, JSON.stringify(accountInfo));
+    
+    // Handle both array format and single object format for backward compatibility
+    const accountInfoArray = Array.isArray(accountInfo) ? accountInfo : [accountInfo];
+    
+    if (accountInfoArray.length === 0) {
       return res.status(400).json({ error: 'Invalid account information format' });
     }
     
     // Process each file's account info
-    const updateResults = await Promise.all(accountInfo.map(async (fileInfo) => {
-      const { fileName, fileId, accountSource, accountType } = fileInfo;
+    const updateResults = await Promise.all(accountInfoArray.map(async (fileInfo) => {
+      const { fileName, fileId, accountSource, accountType, accountName } = fileInfo;
       
-      if (!fileName) {
-        return { success: false, error: 'File name is required', fileName };
+      // For single object format compatibility
+      if (!Array.isArray(accountInfo) && !fileName) {
+        // This is likely the older format with direct accountName/accountType fields
+        console.log(`[PUT /uploads/${uploadId}/account-info] - Using legacy format for account info`);
+        
+        const whereClause = { uploadId };
+        
+        const [updatedCount] = await Transaction.update(
+          { 
+            source: accountInfo.accountType || null,
+            accountType: accountInfo.accountType || null,
+            account: accountInfo.accountName || null
+          },
+          { where: whereClause }
+        );
+        
+        return { 
+          success: true, 
+          fileName: 'all-files',
+          updatedCount 
+        };
       }
+      
+      // New format with fileName required
+      if (!fileName) {
+        console.log(`[PUT /uploads/${uploadId}/account-info] - Missing fileName in request`);
+        return { success: false, error: 'File name is required', fileName: 'unknown' };
+      }
+      
+      console.log(`[PUT /uploads/${uploadId}/account-info] - Processing file: ${fileName}`);
       
       // Use file-specific ID if provided, otherwise use the upload ID
       const whereClause = {
@@ -1097,23 +1280,88 @@ router.put('/uploads/:uploadId/account-info', async (req, res) => {
         whereClause.importSource = fileName;
       }
       
-      // Update all transactions from this file in this upload
-      const [updatedCount] = await Transaction.update(
-        { 
-          source: accountSource || null,
-          accountType: accountType || null 
-        },
-        { 
-          where: whereClause 
-        }
-      );
+      console.log(`[PUT /uploads/${uploadId}/account-info] - Where clause:`, JSON.stringify(whereClause));
       
-      return { 
-        success: true, 
-        fileName,
-        updatedCount 
+      // Update all transactions from this file in this upload
+      const updateData = { 
+        source: accountSource || null,
+        accountType: accountType || null 
       };
+      
+      // If accountName is provided, update that as well
+      if (accountName) {
+        updateData.account = accountName;
+      }
+      
+      console.log(`[PUT /uploads/${uploadId}/account-info] - Update data:`, JSON.stringify(updateData));
+      
+      // Special handling for credit card accounts
+      if (accountType === 'credit_card') {
+        console.log(`[PUT /uploads/${uploadId}/account-info] - Special handling for credit card account`);
+        
+        // First retrieve all transactions
+        const transactions = await Transaction.findAll({ where: whereClause });
+        console.log(`[PUT /uploads/${uploadId}/account-info] - Found ${transactions.length} credit card transactions`);
+        
+        let updatedCount = 0;
+        
+        // Update each transaction individually to set the correct type
+        await Promise.all(transactions.map(async (transaction) => {
+          // First update the account information
+          transaction.source = accountSource || transaction.source;
+          transaction.accountType = accountType;
+          if (accountName) {
+            transaction.account = accountName;
+          }
+          
+          // For credit cards, we need to invert the transaction type logic:
+          // - Positive amounts are expenses (charges)
+          // - Negative amounts or payments are income (payments to card)
+          const descriptionLower = transaction.description.toLowerCase();
+          const isPayment = descriptionLower.includes('payment') && 
+                          (descriptionLower.includes('received') || 
+                           descriptionLower.includes('thank you'));
+          
+          const isRefund = descriptionLower.includes('refund') || 
+                          descriptionLower.includes('credit') || 
+                          descriptionLower.includes('return');
+          
+          // Set the correct transaction type
+          if (isPayment) {
+            transaction.type = 'income';
+          } else if (isRefund) {
+            transaction.type = 'income';
+          } else {
+            // Regular credit card transactions are expenses
+            transaction.type = 'expense';
+          }
+          
+          await transaction.save();
+          updatedCount++;
+        }));
+        
+        console.log(`[PUT /uploads/${uploadId}/account-info] - Updated ${updatedCount} credit card transactions with correct types`);
+        
+        return { 
+          success: true, 
+          fileName,
+          updatedCount 
+        };
+      } else {
+        // For non-credit card accounts, proceed with standard update
+        const [updatedCount] = await Transaction.update(updateData, { where: whereClause });
+        
+        console.log(`[PUT /uploads/${uploadId}/account-info] - Updated ${updatedCount} transactions`);
+        
+        return { 
+          success: true, 
+          fileName,
+          updatedCount 
+        };
+      }
     }));
+    
+    console.log(`[PUT /uploads/${uploadId}/account-info] - Update results:`, JSON.stringify(updateResults));
     
     res.status(200).json({ 
       message: 'Account information updated',

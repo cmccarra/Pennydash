@@ -35,17 +35,43 @@ class FileParser {
     return new Promise((resolve, reject) => {
       const transactions = [];
       
+      // Read file content and log sample for debugging
+      try {
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const sampleLines = fileContent.split('\n').slice(0, 5);
+        console.log(`CSV file sample (first 5 lines):\n${sampleLines.join('\n')}`);
+      } catch (error) {
+        console.error(`Error reading sample from CSV file: ${error.message}`);
+      }
+      
       fs.createReadStream(filePath)
         .pipe(csvParse({
           columns: true, // Treat the first line as header
           trim: true,    // Trim whitespace
           skip_empty_lines: true,
-          cast: true     // Attempt to convert values to native types
+          cast: true,    // Attempt to convert values to native types
+          relax_column_count: true, // More forgiving of CSV format variations
+          skip_records_with_error: true // Skip records that cause errors instead of failing
         }))
         .on('data', (row) => {
           try {
             console.log('Raw CSV row:', JSON.stringify(row));
             const transaction = Transaction.fromCSV(row);
+            
+            // Generate a batchId for the transaction for better grouping
+            let month = 'unknown';
+            try {
+              const txDate = new Date(transaction.date);
+              if (!isNaN(txDate.getTime())) {
+                month = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
+              }
+            } catch (e) {
+              console.log(`Could not parse date for batching: ${transaction.date}`);
+            }
+            
+            // Create batch ID based on type and month
+            transaction.batchId = `batch_${transaction.type || 'unknown'}_${month}`;
+            
             transactions.push(transaction);
           } catch (error) {
             console.error('Error processing CSV row:', error);
@@ -53,14 +79,197 @@ class FileParser {
           }
         })
         .on('error', (error) => {
-          reject(new Error(`CSV parsing error: ${error.message}`));
+          console.error(`CSV parsing error: ${error.message}`);
+          
+          // Instead of rejecting, try an alternate parsing method
+          console.log('Attempting alternate CSV parsing method...');
+          this.parseCSVFallback(filePath)
+            .then(fallbackTransactions => {
+              if (fallbackTransactions.length > 0) {
+                console.log(`Fallback parsing successful, found ${fallbackTransactions.length} transactions`);
+                resolve(fallbackTransactions);
+              } else {
+                reject(new Error(`CSV parsing error: ${error.message}`));
+              }
+            })
+            .catch(fallbackError => {
+              console.error('Fallback parsing also failed:', fallbackError);
+              reject(new Error(`CSV parsing error: ${error.message}. Fallback also failed: ${fallbackError.message}`));
+            });
         })
         .on('end', () => {
-          resolve(transactions);
+          if (transactions.length > 0) {
+            // Group transactions by batch for debugging
+            const batchMap = {};
+            transactions.forEach(t => {
+              if (!batchMap[t.batchId]) {
+                batchMap[t.batchId] = [];
+              }
+              batchMap[t.batchId].push(t);
+            });
+            
+            console.log(`Grouped ${transactions.length} transactions into ${Object.keys(batchMap).length} batches:`);
+            Object.keys(batchMap).forEach(batchId => {
+              console.log(`  ${batchId}: ${batchMap[batchId].length} transactions`);
+            });
+            
+            resolve(transactions);
+          } else {
+            // If no transactions were found, try the fallback method
+            console.log('No transactions found with primary parser, trying fallback method');
+            this.parseCSVFallback(filePath)
+              .then(fallbackTransactions => {
+                if (fallbackTransactions.length > 0) {
+                  console.log(`Fallback parsing successful, found ${fallbackTransactions.length} transactions`);
+                  resolve(fallbackTransactions);
+                } else {
+                  resolve([]); // Return empty array if both methods fail to find transactions
+                }
+              })
+              .catch(fallbackError => {
+                console.error('Fallback parsing failed:', fallbackError);
+                resolve([]); // Return empty array if both methods fail
+              });
+          }
         });
     });
   }
 
+  /**
+   * Fallback method for parsing CSV files when the main parser fails
+   * @param {string} filePath - Path to the CSV file
+   * @returns {Promise<Transaction[]>} Array of transaction objects
+   */
+  static parseCSVFallback(filePath) {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('Using fallback CSV parser for:', filePath);
+        const content = fs.readFileSync(filePath, 'utf8');
+        const lines = content.split('\n').filter(line => line.trim());
+        const transactions = [];
+        
+        if (lines.length < 2) { // Need at least header + one row
+          console.log('Not enough lines in CSV for fallback parser');
+          return resolve([]);
+        }
+        
+        // Get headers - first line
+        const headers = lines[0].split(',').map(h => h.trim());
+        console.log('CSV fallback headers:', headers);
+        
+        // Map common header variations
+        const headerMap = {
+          // Date variations
+          'date': ['date', 'transaction date', 'trans date', 'date posted', 'date processed', 'posting date', 'trans_date'],
+          // Description/Merchant variations
+          'description': ['description', 'merchant', 'details', 'transaction', 'name', 'memo', 'payee', 'description/memo', 'trans_desc'],
+          // Amount variations
+          'amount': ['amount', 'transaction amount', 'debit', 'credit', 'value', 'trans_amount'],
+          // Type variations (if explicit)
+          'type': ['type', 'transaction type', 'trans_type']
+        };
+        
+        // Find which columns contain our needed data
+        const columnMap = {};
+        headers.forEach((header, index) => {
+          const lowerHeader = header.toLowerCase();
+          
+          // Check each of our required fields
+          Object.keys(headerMap).forEach(fieldName => {
+            if (headerMap[fieldName].some(variant => lowerHeader.includes(variant))) {
+              columnMap[fieldName] = index;
+            }
+          });
+        });
+        
+        console.log('CSV fallback column mapping:', columnMap);
+        
+        // Process each data row
+        for (let i = 1; i < lines.length; i++) {
+          try {
+            const values = lines[i].split(',').map(v => v.trim());
+            
+            // Skip if not enough values
+            if (values.length < Math.max(...Object.values(columnMap)) + 1) {
+              continue;
+            }
+            
+            // Extract values
+            const date = columnMap.date !== undefined ? values[columnMap.date] : '';
+            const description = columnMap.description !== undefined ? values[columnMap.description] : '';
+            let amount = columnMap.amount !== undefined ? values[columnMap.amount] : '0';
+            
+            // Remove currency symbols from amount
+            amount = amount.replace(/[$€£\s]/g, '');
+            
+            // Determine transaction type
+            let type;
+            if (columnMap.type !== undefined) {
+              const typeValue = values[columnMap.type].toLowerCase();
+              type = typeValue.includes('debit') || typeValue.includes('expense') || typeValue.includes('payment') ? 
+                'expense' : 'income';
+            } else {
+              // Infer from amount format if type column doesn't exist
+              type = amount.startsWith('-') ? 'expense' : 'income';
+            }
+            
+            // Create transaction object
+            if (date && description) {
+              const transaction = new Transaction({
+                date,
+                description,
+                amount: Math.abs(parseFloat(amount.replace(',', '.'))),
+                type,
+                source: 'csv-fallback',
+                importSource: path.basename(filePath)
+              });
+              
+              // Generate batchId
+              let month = 'unknown';
+              try {
+                const txDate = new Date(transaction.date);
+                if (!isNaN(txDate.getTime())) {
+                  month = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
+                }
+              } catch (e) {
+                console.log(`Could not parse date for batching: ${transaction.date}`);
+              }
+              
+              transaction.batchId = `batch_${transaction.type || 'unknown'}_${month}`;
+              transactions.push(transaction);
+            }
+          } catch (error) {
+            console.error(`Error in fallback parser, row ${i}:`, error);
+            // Continue with other rows
+          }
+        }
+        
+        console.log(`CSV fallback parser found ${transactions.length} transactions`);
+        
+        // Group by batch for logging
+        if (transactions.length > 0) {
+          const batchMap = {};
+          transactions.forEach(t => {
+            if (!batchMap[t.batchId]) {
+              batchMap[t.batchId] = [];
+            }
+            batchMap[t.batchId].push(t);
+          });
+          
+          console.log(`Fallback parser grouped into ${Object.keys(batchMap).length} batches:`);
+          Object.keys(batchMap).forEach(batchId => {
+            console.log(`  ${batchId}: ${batchMap[batchId].length} transactions`);
+          });
+        }
+        
+        resolve(transactions);
+      } catch (error) {
+        console.error('CSV fallback parsing error:', error);
+        reject(error);
+      }
+    });
+  }
+  
   /**
    * Parse an XML file into an array of transaction objects
    * @param {string} filePath - Path to the XML file

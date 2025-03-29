@@ -28,10 +28,7 @@ const initDB = async () => {
       dialect: 'postgres',
       logging: process.env.NODE_ENV === 'development' ? console.log : false,
       dialectOptions: {
-        ssl: {
-          require: false,
-          rejectUnauthorized: false // For development purposes
-        }
+        // We're not using SSL in the Replit environment
       },
       pool: {
         max: 5, // Maximum number of connection in pool

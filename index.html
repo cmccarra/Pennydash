@@ -3058,25 +3058,54 @@
 
         // Process account setup and move to next step
         const processAccountSetup = async () => {
+          console.log('Processing account setup', { 
+            uploadedFiles: state.enrichment.uploadedFiles,
+            uploadId: state.enrichment.currentUploadId
+          });
+          
           if (!areAccountDetailsComplete()) {
+            console.warn('Account details are not complete, skipping process');
             return;
           }
           
           state.loading.enrichment = true;
           
           try {
+            console.log('Updating account information in the backend', {
+              uploadId: state.enrichment.currentUploadId,
+              files: state.enrichment.uploadedFiles.map(f => ({ 
+                fileName: f.fileName,
+                accountSource: f.accountSource, 
+                accountType: f.accountType 
+              }))
+            });
+            
             // Update account information in the backend
             await api.transactions.updateAccountInfo(
               state.enrichment.currentUploadId, 
               state.enrichment.uploadedFiles
             );
             
+            console.log('Account information updated successfully');
+            
             // Update the enrichment step and progress
             state.enrichment.currentStep = 'batching';
             state.enrichment.progress = 40;
             
+            console.log('Fetching enrichment batches');
+            
             // Fetch the transaction batches
-            await fetchEnrichmentBatches(state.enrichment.currentUploadId);
+            const batchResult = await fetchEnrichmentBatches(state.enrichment.currentUploadId);
+            
+            console.log('Enrichment batches fetched', {
+              batches: batchResult?.batches?.length || 0,
+              statistics: batchResult?.statistics
+            });
+            
+            // If no batches were returned, display an error
+            if (!batchResult || !batchResult.batches || batchResult.batches.length === 0) {
+              state.errors.enrichment = 'No transaction batches were found for this upload. Please try again or contact support.';
+            }
           } catch (error) {
             console.error('Error updating account info:', error);
             state.errors.enrichment = 'Failed to update account information: ' + error.message;
