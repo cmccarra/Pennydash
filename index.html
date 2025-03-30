@@ -2281,6 +2281,24 @@
             <h4 class="font-semibold text-md mb-2">Batch Review</h4>
             <p class="text-sm mb-4">Swipe through each batch to quickly review and categorize similar transactions.</p>
             
+            <!-- Display count of pending vs. processed batches -->
+            <div class="flex justify-between items-center mb-4">
+              <div class="stats shadow w-full">
+                <div class="stat">
+                  <div class="stat-title">Batches Waiting</div>
+                  <div class="stat-value text-warning">{{ state.enrichment.pendingBatches.length }}</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-title">Batches Processed</div>
+                  <div class="stat-value text-success">{{ state.enrichment.processedBatches.length }}</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-title">Total Batches</div>
+                  <div class="stat-value">{{ state.enrichment.transactionBatches.length }}</div>
+                </div>
+              </div>
+            </div>
+            
             <div v-if="state.enrichment.pendingBatches && state.enrichment.pendingBatches.length > 0 && state.enrichment.currentBatch">
               <!-- Progress indicator -->
               <div class="flex justify-between items-center mb-4">
@@ -2481,7 +2499,7 @@
                   Cancel Review
                 </button>
                 
-                <button class="btn btn-primary" @click="nextBatch()" v-if="!isLastBatch()">
+                <button class="btn btn-warning" @click="nextBatch()" v-if="!isLastBatch()">
                   Skip This Batch
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -2505,11 +2523,20 @@
                 </div>
               </div>
               
+              <!-- Check for any skipped batches -->
+              <div v-if="getSkippedBatchCount() > 0" class="alert alert-warning mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <div>
+                  <span class="font-bold">Warning:</span> You have {{ getSkippedBatchCount() }} batch(es) that were skipped during review. 
+                  It's recommended to review all batches before completing the import.
+                </div>
+              </div>
+              
               <div class="flex justify-end mt-6">
                 <button class="btn" @click="state.enrichment.currentStep = 'batching'">
                   Back to Batches
                 </button>
-                <button class="btn btn-primary ml-2" @click="completeUpload(state.enrichment.currentUploadId)">
+                <button class="btn btn-primary ml-2" @click="confirmCompleteUpload()">
                   Complete Import
                 </button>
               </div>
@@ -3436,6 +3463,29 @@
         };
         
         // Complete the entire upload
+        // Count the number of skipped batches that need attention
+        const getSkippedBatchCount = () => {
+          if (!state.enrichment.transactionBatches) return 0;
+          
+          return state.enrichment.transactionBatches.filter(batch => 
+            batch.status === 'skipped').length;
+        };
+        
+        // Confirm before completing upload if there are skipped batches
+        const confirmCompleteUpload = () => {
+          const skippedCount = getSkippedBatchCount();
+          
+          if (skippedCount > 0) {
+            // Show confirmation dialog
+            if (confirm(`Warning: You have ${skippedCount} batch(es) that were skipped during review. These transactions will be imported as uncategorized.\n\nAre you sure you want to continue?`)) {
+              completeUpload(state.enrichment.currentUploadId);
+            }
+          } else {
+            // No skipped batches, proceed directly
+            completeUpload(state.enrichment.currentUploadId);
+          }
+        };
+        
         const completeUpload = async (uploadId) => {
           console.log('🔍 [CLIENT] Starting completeUpload for uploadId:', uploadId);
           state.loading.enrichment = true;
@@ -3447,6 +3497,28 @@
             state.errors.enrichment = errorMsg;
             state.loading.enrichment = false;
             return;
+          }
+          
+          // Validate that all batches have been properly reviewed before completing
+          const pendingBatches = state.enrichment.pendingBatches || [];
+          const processedBatches = state.enrichment.processedBatches || [];
+          const allBatches = state.enrichment.transactionBatches || [];
+          
+          // Check if there are any batches that haven't been processed yet
+          const unprocessedBatches = pendingBatches.filter(batchId => !processedBatches.includes(batchId));
+          
+          if (unprocessedBatches.length > 0) {
+            const warningMsg = `There are ${unprocessedBatches.length} unreviewed batch(es). Are you sure you want to skip reviewing these batches?`;
+            console.warn('⚠️ [CLIENT] ' + warningMsg);
+            
+            // Ask user for confirmation before proceeding
+            if (!confirm(warningMsg + '\n\nClick OK to complete anyway or Cancel to continue reviewing.')) {
+              console.log('🔍 [CLIENT] User canceled complete upload to continue reviewing batches');
+              state.loading.enrichment = false;
+              return;
+            }
+            
+            console.log('🔍 [CLIENT] User confirmed to complete upload despite unreviewed batches');
           }
           
           try {
@@ -4226,6 +4298,25 @@
         
         // Move to next batch
         const nextBatch = () => {
+          // Ensure we track the current batch as explicitly skipped
+          // This helps properly track user progress and prevents misleading UX
+          if (state.enrichment.currentBatch) {
+            console.log(`🔍 [CLIENT] Skipping batch: ${state.enrichment.currentBatch.batchId}`);
+            
+            // Add the current batch to processedBatches to track it was seen
+            if (!state.enrichment.processedBatches.includes(state.enrichment.currentBatch.batchId)) {
+              state.enrichment.processedBatches.push(state.enrichment.currentBatch.batchId);
+              
+              // Record that it was skipped in the UI by marking it with status 'skipped'
+              const batchIndex = state.enrichment.transactionBatches.findIndex(b => 
+                b.batchId === state.enrichment.currentBatch.batchId);
+                
+              if (batchIndex !== -1) {
+                state.enrichment.transactionBatches[batchIndex].status = 'skipped';
+              }
+            }
+          }
+          
           if (state.enrichment.currentBatchIndex >= state.enrichment.transactionBatches.length - 1) {
             // This was the last batch, finish review
             finishBatchReview();
