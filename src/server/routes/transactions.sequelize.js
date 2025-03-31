@@ -920,16 +920,27 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       const batchResults = [];
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
+        // Handle both legacy format (array of transactions) and new format (object with transactions and metadata)
+        const batchTransactions = Array.isArray(batch) ? batch : batch.transactions;
+        const batchMetadata = Array.isArray(batch) ? {} : batch.metadata || {};
         
         // Save batch metadata with detailed logging
         const batchId = `${uploadId}_batch_${i}`;
-        console.log(`Creating batch ${batchId} with ${batch.length} transactions`);
+        console.log(`Creating batch ${batchId} with ${batchTransactions.length} transactions`);
         
-        batch.forEach(transaction => {
+        batchTransactions.forEach(transaction => {
           // Make sure we're explicitly setting these values to avoid null/undefined
           transaction.batchId = batchId;
           transaction.uploadId = uploadId;
           transaction.enrichmentStatus = 'pending';
+          
+          // Add batch metadata if available
+          if (batchMetadata.summary) {
+            transaction.batchSummary = batchMetadata.summary;
+          }
+          if (batchMetadata.source) {
+            transaction.batchSource = batchMetadata.source;
+          }
           
           // Validate required fields
           if (!transaction.description) {
@@ -948,7 +959,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         });
         
         // Save this batch of transactions
-        const savedBatch = await Transaction.bulkCreate(batch, {
+        const savedBatch = await Transaction.bulkCreate(batchTransactions, {
           returning: true
         });
         
