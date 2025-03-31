@@ -14,6 +14,11 @@ const { v4: uuidv4 } = require('uuid');
  * @param {Array} transactions - Array of transactions to organize
  * @returns {Array} Array of transaction batches
  */
+/**
+ * Organize transactions into logical batches based on various criteria
+ * @param {Array} transactions - Array of transactions to organize
+ * @returns {Array} Array of transaction batches with metadata
+ */
 function organizeIntoBatches(transactions) {
   const natural = require('natural');
   const maxBatchSize = 50; // Max transactions per batch
@@ -96,14 +101,40 @@ function organizeIntoBatches(transactions) {
           
           // Split into batches of maxBatchSize
           for (let i = 0; i < typeTransactions.length; i += maxBatchSize) {
-            batches.push(typeTransactions.slice(i, i + maxBatchSize));
+            const batch = typeTransactions.slice(i, i + maxBatchSize);
+            const dateRange = getDateRange(batch);
+            batches.push({
+              transactions: batch,
+              metadata: {
+                source: 'merchant_type_date',
+                merchant,
+                type,
+                dateRange,
+                summary: `${merchant} ${type} transactions (${dateRange.from} to ${dateRange.to})`
+              }
+            });
           }
         } else {
-          batches.push(typeTransactions);
+          batches.push({
+            transactions: typeTransactions,
+            metadata: {
+              source: 'merchant_type',
+              merchant,
+              type,
+              summary: `${merchant} ${type} transactions`
+            }
+          });
         }
       });
     } else {
-      batches.push(merchantTransactions);
+      batches.push({
+        transactions: merchantTransactions,
+        metadata: {
+          source: 'merchant',
+          merchant,
+          summary: `Transactions from ${merchant}`
+        }
+      });
     }
   });
   
@@ -145,15 +176,39 @@ function organizeIntoBatches(transactions) {
     
     // Add description similarity groups as batches
     descriptionGroups.forEach(group => {
+      // Find common words in descriptions for the summary
+      const descriptions = group.map(t => t.description || '');
+      const commonWords = findCommonWords(descriptions);
+      const summaryText = commonWords.length > 0 
+        ? `Transactions related to ${commonWords.join(' ')}`
+        : `Similar transactions (${group.length})`;
+      
       if (group.length > maxBatchSize) {
         // Split by date if too large
         group.sort((a, b) => new Date(a.date) - new Date(b.date));
         
         for (let i = 0; i < group.length; i += maxBatchSize) {
-          batches.push(group.slice(i, i + maxBatchSize));
+          const batch = group.slice(i, i + maxBatchSize);
+          const dateRange = getDateRange(batch);
+          batches.push({
+            transactions: batch,
+            metadata: {
+              source: 'similar_description_date',
+              commonWords,
+              dateRange,
+              summary: `${summaryText} (${dateRange.from} to ${dateRange.to})`
+            }
+          });
         }
       } else {
-        batches.push(group);
+        batches.push({
+          transactions: group,
+          metadata: {
+            source: 'similar_description',
+            commonWords,
+            summary: summaryText
+          }
+        });
       }
     });
   }
@@ -193,19 +248,105 @@ function organizeIntoBatches(transactions) {
             typeTransactions.sort((a, b) => new Date(a.date) - new Date(b.date));
             
             for (let i = 0; i < typeTransactions.length; i += maxBatchSize) {
-              batches.push(typeTransactions.slice(i, i + maxBatchSize));
+              const batch = typeTransactions.slice(i, i + maxBatchSize);
+              const dateRange = getDateRange(batch);
+              batches.push({
+                transactions: batch,
+                metadata: {
+                  source: 'source_type_date',
+                  sourceType: source,
+                  type,
+                  dateRange,
+                  summary: `${source} ${type} transactions (${dateRange.from} to ${dateRange.to})`
+                }
+              });
             }
           } else {
-            batches.push(typeTransactions);
+            batches.push({
+              transactions: typeTransactions,
+              metadata: {
+                source: 'source_type',
+                sourceType: source,
+                type,
+                summary: `${source} ${type} transactions`
+              }
+            });
           }
         });
       } else {
-        batches.push(sourceTransactions);
+        batches.push({
+          transactions: sourceTransactions,
+          metadata: {
+            source: 'source',
+            sourceType: source,
+            summary: `Transactions from ${source}`
+          }
+        });
       }
     });
   }
   
   return batches;
+}
+
+/**
+ * Helper function to get date range from a batch of transactions
+ * @param {Array} transactions - Array of transactions
+ * @returns {Object} Object with from and to dates in YYYY-MM-DD format
+ */
+function getDateRange(transactions) {
+  try {
+    const dates = transactions
+      .map(t => t.date ? new Date(t.date) : null)
+      .filter(d => d && !isNaN(d.getTime()));
+    
+    if (dates.length === 0) {
+      return { from: 'unknown', to: 'unknown' };
+    }
+    
+    const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+    
+    return {
+      from: minDate.toISOString().split('T')[0],
+      to: maxDate.toISOString().split('T')[0]
+    };
+  } catch (error) {
+    console.error('Error calculating date range:', error);
+    return { from: 'unknown', to: 'unknown' };
+  }
+}
+
+/**
+ * Helper function to find common words across descriptions
+ * @param {Array} descriptions - Array of transaction descriptions
+ * @returns {Array} Array of common words
+ */
+function findCommonWords(descriptions) {
+  try {
+    // Join all descriptions and split into words
+    const words = descriptions.join(' ').split(/\s+/);
+    const wordCounts = {};
+    
+    // Count occurrences of each word
+    words.forEach(word => {
+      if (word.length > 3) { // Skip short words
+        const normalized = word.toLowerCase().replace(/[^\w]/g, '');
+        if (normalized) {
+          wordCounts[normalized] = (wordCounts[normalized] || 0) + 1;
+        }
+      }
+    });
+    
+    // Find most common words
+    return Object.entries(wordCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(entry => entry[0]);
+  } catch (error) {
+    console.error('Error finding common words:', error);
+    return [];
+  }
 }
 
 /**
@@ -1602,6 +1743,59 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
       console.log(`⚠️ [WARNING] Found ${transactionsWithoutBatch} transactions without batch IDs`);
     }
     
+    // Process any unbatched transactions (those with transactionsWithoutBatch > 0)
+    if (transactionsWithoutBatch > 0) {
+      console.log(`[GET /uploads/${uploadId}/batches] - Organizing ${transactionsWithoutBatch} unbatched transactions into logical batches`);
+      
+      // Get all transactions that still don't have a batch ID
+      const unbatchedTransactions = refreshedTransactions.filter(tx => !tx.batchId);
+      
+      if (unbatchedTransactions.length > 0) {
+        console.log(`[GET /uploads/${uploadId}/batches] - Found ${unbatchedTransactions.length} transactions without batch IDs after recovery attempt`);
+        
+        // Use our sophisticated organizeIntoBatches function to create logical groupings
+        const newBatches = organizeIntoBatches(unbatchedTransactions);
+        console.log(`[GET /uploads/${uploadId}/batches] - Created ${newBatches.length} new batches from unbatched transactions`);
+        
+        // Process each batch - add to batchMap and update transaction batchId
+        for (let i = 0; i < newBatches.length; i++) {
+          const newBatch = newBatches[i];
+          const batchId = `${uploadId}_auto_batch_${Date.now()}_${i}`;
+          const batchTransactions = newBatch.transactions;
+          const batchMetadata = newBatch.metadata;
+          
+          console.log(`[GET /uploads/${uploadId}/batches] - Processing new batch: ${batchId} with ${batchTransactions.length} transactions`);
+          console.log(`[GET /uploads/${uploadId}/batches] - Batch summary: ${batchMetadata.summary}`);
+          
+          // Add to batch map
+          batchMap[batchId] = batchTransactions;
+          
+          // Update transaction batchIds in memory and database
+          for (const tx of batchTransactions) {
+            tx.batchId = batchId;
+            tx.metadata = batchMetadata; // Store batch metadata on transaction
+            
+            // Update database (don't wait for completion)
+            (async () => {
+              try {
+                await Transaction.update(
+                  { 
+                    batchId: batchId,
+                    // Store key batch metadata fields as separate columns
+                    batchSummary: batchMetadata.summary,
+                    batchSource: batchMetadata.source
+                  },
+                  { where: { id: tx.id } }
+                );
+              } catch (err) {
+                console.error(`❌ [ERROR] Failed to update batchId in database for transaction ${tx.id}:`, err);
+              }
+            })();
+          }
+        }
+      }
+    }
+    
     // Convert to array of batches with statistics
     const batches = Object.keys(batchMap).map(batchId => {
       const batchTransactions = batchMap[batchId];
@@ -1613,16 +1807,76 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
       
       try {
         const batchStats = calculateBatchStatistics(batchTransactions);
+        
+        // Generate batch title/summary if not already present
+        let batchTitle = '';
+        
+        // Try to get the title from transaction metadata or generate from batch characteristics
+        if (sampleTx.metadata && sampleTx.metadata.summary) {
+          // Use metadata from our organizeIntoBatches function
+          batchTitle = sampleTx.metadata.summary;
+        } else if (sampleTx.batchSummary) {
+          // Use stored batch summary from database
+          batchTitle = sampleTx.batchSummary;
+        } else {
+          // Generate a basic summary based on the transactions
+          const descriptions = batchTransactions.map(t => t.description || '');
+          const commonWords = findCommonWords(descriptions);
+          const dateRange = getDateRange(batchTransactions);
+          
+          if (commonWords.length > 0) {
+            batchTitle = `Transactions related to ${commonWords.join(' ')}`;
+            if (dateRange.from !== 'unknown') {
+              batchTitle += ` (${dateRange.from} to ${dateRange.to})`;
+            }
+          } else if (batchTransactions.length === 1) {
+            // Single transaction batch
+            batchTitle = `${sampleTx.description} (${sampleTx.date || 'unknown date'})`;
+          } else {
+            // Multiple transactions without common words
+            const type = sampleTx.type || 'unknown';
+            if (dateRange.from !== 'unknown') {
+              batchTitle = `${type.charAt(0).toUpperCase() + type.slice(1)} transactions (${dateRange.from} to ${dateRange.to})`;
+            } else {
+              batchTitle = `${type.charAt(0).toUpperCase() + type.slice(1)} transactions (${batchTransactions.length})`;
+            }
+          }
+        }
+        
         return {
           batchId,
+          title: batchTitle,
           transactions: batchTransactions,
           statistics: batchStats,
           status: batchTransactions[0]?.enrichmentStatus || 'pending'
         };
       } catch (statError) {
         console.error(`Error calculating statistics for batch ${batchId}:`, statError);
+        // In case of error, still try to provide a helpful title
+        let errorTitle = `Batch ${batchId.split('_').pop()}`;
+        
+        try {
+          // Basic title based on first transaction if available
+          if (batchTransactions && batchTransactions.length > 0) {
+            const sampleTx = batchTransactions[0];
+            
+            if (sampleTx.description) {
+              errorTitle = `${sampleTx.description.substring(0, 20)}${sampleTx.description.length > 20 ? '...' : ''}`;
+              if (sampleTx.date) {
+                const txDate = new Date(sampleTx.date);
+                if (!isNaN(txDate.getTime())) {
+                  errorTitle += ` (${txDate.toISOString().split('T')[0]})`;
+                }
+              }
+            }
+          }
+        } catch (titleError) {
+          console.error(`Error generating fallback title:`, titleError);
+        }
+        
         return {
           batchId,
+          title: errorTitle,
           transactions: batchTransactions,
           statistics: {
             totalTransactions: batchTransactions.length,
@@ -1817,8 +2071,45 @@ router.get('/batches/needs-enrichment', async (req, res) => {
           }
         }
         
+        // Generate batch title/summary if not already present
+        let batchTitle = '';
+        const sampleTx = batchTransactions[0];
+        
+        // Try to get the title from transaction metadata or generate from batch characteristics
+        if (sampleTx.metadata && sampleTx.metadata.summary) {
+          // Use metadata from our organizeIntoBatches function
+          batchTitle = sampleTx.metadata.summary;
+        } else if (sampleTx.batchSummary) {
+          // Use stored batch summary from database
+          batchTitle = sampleTx.batchSummary;
+        } else {
+          // Generate a basic summary based on the transactions
+          const descriptions = batchTransactions.map(t => t.description || '');
+          const commonWords = findCommonWords(descriptions);
+          const dateRange = getDateRange(batchTransactions);
+          
+          if (commonWords.length > 0) {
+            batchTitle = `Transactions related to ${commonWords.join(' ')}`;
+            if (dateRange.from !== 'unknown') {
+              batchTitle += ` (${dateRange.from} to ${dateRange.to})`;
+            }
+          } else if (batchTransactions.length === 1) {
+            // Single transaction batch
+            batchTitle = `${sampleTx.description || 'Unknown'} (${sampleTx.date || 'unknown date'})`;
+          } else {
+            // Multiple transactions without common words
+            const type = sampleTx.type || 'unknown';
+            if (dateRange.from !== 'unknown') {
+              batchTitle = `${type.charAt(0).toUpperCase() + type.slice(1)} transactions (${dateRange.from} to ${dateRange.to})`;
+            } else {
+              batchTitle = `${type.charAt(0).toUpperCase() + type.slice(1)} transactions (${batchTransactions.length})`;
+            }
+          }
+        }
+        
         return {
           batchId,
+          title: batchTitle,
           transactions: batchTransactions,
           statistics: batchStats,
           status: batchStatus,
@@ -1829,8 +2120,32 @@ router.get('/batches/needs-enrichment', async (req, res) => {
         };
       } catch (error) {
         console.error(`[GET /batches/needs-enrichment] - Error calculating batch stats for ${batchId}:`, error);
+        // In case of error, still try to provide a helpful title
+        let errorTitle = `Batch ${batchId.split('_').pop()}`;
+        
+        try {
+          // Basic title based on first transaction if available
+          const transactions = batchMap[batchId];
+          if (transactions && transactions.length > 0) {
+            const sampleTx = transactions[0];
+            
+            if (sampleTx.description) {
+              errorTitle = `${sampleTx.description.substring(0, 20)}${sampleTx.description.length > 20 ? '...' : ''}`;
+              if (sampleTx.date) {
+                const txDate = new Date(sampleTx.date);
+                if (!isNaN(txDate.getTime())) {
+                  errorTitle += ` (${txDate.toISOString().split('T')[0]})`;
+                }
+              }
+            }
+          }
+        } catch (titleError) {
+          console.error(`Error generating fallback title:`, titleError);
+        }
+        
         return {
           batchId,
+          title: errorTitle,
           transactions: batchMap[batchId],
           statistics: { 
             error: error.message,

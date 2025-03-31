@@ -1,0 +1,51 @@
+Date,Description,Amount,Account,AccountType,Merchant,Tags,Currency,Balance
+2025-03-29,Gas Fill-up,-35.64,Amex Platinum,credit_card,Exxon,transportation;travel,USD,3006.25
+2025-03-14,Large Purchase,-462.72,Amex Platinum,credit_card,Best Buy,large purchase;shopping,USD,1570.63
+2025-03-22,Online Purchase,-114.49,Bank Debit,bank,Best Buy,shopping;household,USD,3393.05
+2025-03-19,Online Purchase,-137.1,Bank Debit,bank,Walmart,shopping;household,USD,3496.94
+2025-03-29,Dinner at Local Restaurant,-104.05,Capital One,credit_card,Local Restaurant,dining;food,USD,4621.42
+2025-02-19,Utility Payment,-73.99,Bank Debit,bank,Gas Company,utilities;housing,USD,5100.90
+2025-03-07,Gas Fill-up,-64.64,Amex Platinum,credit_card,Chevron,transportation;travel,USD,2338.39
+2025-03-13,Freelance Work Income,2403.92,Chase Checking,bank,Freelance Work,income;salary,USD,4126.59
+2025-02-23,Large Purchase,-796.24,Amex Platinum,credit_card,Best Buy,large purchase;shopping,USD,3068.35
+2025-03-25,Large Purchase,-506.13,Amex Platinum,credit_card,Furniture Store,large purchase;shopping,USD,3618.26
+2025-03-04,Contract Income,544.63,Chase Checking,bank,Contract,income;salary,USD,2875.84
+2025-03-27,Large Purchase,-597.42,Amex Platinum,credit_card,Samsung,large purchase;shopping,USD,4093.15
+2025-03-02,Hulu Subscription,-14.42,Chase Checking,bank,Hulu,entertainment;subscription,USD,5364.17
+2025-03-26,Gas Fill-up,-40.53,Amex Platinum,credit_card,Exxon,transportation;travel,USD,3904.54
+2025-02-15,Grocery Shopping,-148.3,Chase Sapphire,credit_card,Publix,groceries;food,USD,2640.70
+2025-03-28,Large Purchase,-545.94,Amex Platinum,credit_card,Furniture Store,large purchase;shopping,USD,3079.31
+2025-03-06,Large Purchase,-991.82,Amex Platinum,credit_card,Furniture Store,large purchase;shopping,USD,5098.40
+2025-02-24,Large Purchase,-391.15,Amex Platinum,credit_card,Best Buy,large purchase;shopping,USD,5021.96
+2025-03-30,Grocery Shopping,-146.92,Chase Sapphire,credit_card,Safeway,groceries;food,USD,4729.76
+2025-03-26,Utility Payment,-139.26,Bank Debit,bank,Internet Provider,utilities;housing,USD,4448.17
+2025-03-06,Client Payment Income,1626.38,Chase Checking,bank,Client Payment,income;salary,USD,5153.09
+2025-02-28,Side Gig Deposit,1426.46,Chase Checking,bank,Side Gig,income;salary,USD,2120.85
+2025-02-23,Online Purchase,-137.67,Bank Debit,bank,Home Depot,shopping;household,USD,2309.06
+2025-02-26,Utility Payment,-147.47,Bank Debit,bank,Water & Electric,utilities;housing,USD,2638.18
+2025-03-14,Gas Fill-up,-56.55,Amex Platinum,credit_card,BP,transportation;travel,USD,5921.62
+2025-03-27,Grocery Shopping,-24.64,Chase Sapphire,credit_card,Whole Foods,groceries;food,USD,2635.71
+2025-02-21,Grocery Shopping,-146.99,Chase Sapphire,credit_card,Trader Joe's,groceries;food,USD,1461.94
+2025-02-23,Utility Payment,-95.68,Bank Debit,bank,Gas Company,utilities;housing,USD,5506.89
+2025-03-06,Amazon Prime Subscription,-12.49,Chase Checking,bank,Amazon Prime,entertainment;subscription,USD,5962.83
+2025-03-21,Utility Payment,-69.36,Bank Debit,bank,Gas Company,utilities;housing,USD,1758.03
+2025-02-21,Online Purchase,-76.18,Bank Debit,bank,Home Depot,shopping;household,USD,2507.41
+2025-03-10,Online Purchase,-109.22,Bank Debit,bank,Home Depot,shopping;household,USD,4078.16
+2025-03-17,Utility Payment,-172.75,Bank Debit,bank,City Utilities,utilities;housing,USD,1334.05
+2025-03-20,Amazon Prime Subscription,-12.37,Chase Checking,bank,Amazon Prime,entertainment;subscription,USD,2817.61
+2025-03-28,Gas Fill-up,-59.63,Amex Platinum,credit_card,Chevron,transportation;travel,USD,3563.59
+2025-03-17,Grocery Shopping,-107.86,Chase Sapphire,credit_card,Whole Foods,groceries;food,USD,2750.25
+2025-02-21,Large Purchase,-707.29,Amex Platinum,credit_card,Samsung,large purchase;shopping,USD,4083.16
+2025-02-26,Large Purchase,-785.05,Amex Platinum,credit_card,Department Store,large purchase;shopping,USD,1211.71
+2025-03-23,Utility Payment,-54.74,Bank Debit,bank,Gas Company,utilities;housing,USD,5983.66
+2025-02-18,Gas Fill-up,-30.95,Amex Platinum,credit_card,7-Eleven,transportation;travel,USD,4982.37
+2025-03-28,Side Gig Income,575.59,Chase Checking,bank,Side Gig,income;salary,USD,3171.55
+2025-03-08,Online Purchase,-195.94,Bank Debit,bank,Amazon,shopping;household,USD,4923.24
+2025-03-17,Lunch at Cheesecake Factory,-112.49,Capital One,credit_card,Cheesecake Factory,dining;food,USD,4965.19
+2025-03-24,Utility Payment,-105.23,Bank Debit,bank,Internet Provider,utilities;housing,USD,1884.53
+2025-02-26,Disney+ Subscription,-9.45,Chase Checking,bank,Disney+,entertainment;subscription,USD,5524.21
+2025-03-28,Online Purchase,-61.85,Bank Debit,bank,Home Depot,shopping;household,USD,4617.50
+2025-02-15,Disney+ Subscription,-13.17,Chase Checking,bank,Disney+,entertainment;subscription,USD,4330.15
+2025-03-05,Utility Payment,-60.23,Bank Debit,bank,Internet Provider,utilities;housing,USD,3705.51
+2025-03-16,Gas Fill-up,-54.83,Amex Platinum,credit_card,BP,transportation;travel,USD,4133.78
+2025-03-23,Large Purchase,-833.43,Amex Platinum,credit_card,Best Buy,large purchase;shopping,USD,4511.36
