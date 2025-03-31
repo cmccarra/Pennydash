@@ -1,0 +1,87 @@
+router.get('/uploads/:uploadId/batches', async (req, res) => {
+  try {
+    // Existing code...
+    
+    // Convert to array of batches with summaries and statistics
+    const batches = await Promise.all(Object.keys(batchMap).map(async (batchId) => {
+      const batchTransactions = batchMap[batchId];
+      
+      // Generate batch summary
+      const batchInfo = await generateBatchSummary(batchTransactions);
+      
+      return {
+        batchId,
+        transactions: batchTransactions,
+        summary: batchInfo.summary,
+        statistics: calculateBatchStatistics(batchTransactions),
+        status: batchTransactions[0]?.enrichmentStatus || 'pending'
+      };
+    }));
+    
+    // Rest of the function remains the same...
+  } catch (error) {
+    // Error handling...
+  }
+});
+
+// Helper function to generate batch summary
+async function generateBatchSummary(transactions) {
+  if (!transactions || transactions.length === 0) {
+    return { summary: "Empty batch" };
+  }
+  
+  try {
+    // Check for common merchant
+    const merchants = [...new Set(transactions.map(t => t.merchant).filter(Boolean))];
+    if (merchants.length === 1) {
+      return { summary: `Transactions from ${merchants[0]}` };
+    }
+    
+    // Additional logic similar to what's in organizeIntoBatches...
+    
+    // If available, use OpenAI to generate a better summary
+    if (process.env.OPENAI_API_KEY) {
+      const openaiService = require('../services/openai');
+      
+      if (!openaiService.isRateLimited()) {
+        try {
+          const descriptions = transactions.slice(0, 5).map(t => t.description).join(", ");
+          
+          const prompt = `Summarize these financial transactions in 5 words or less: ${descriptions}`;
+          
+          const completion = await openaiService.callWithRetry(
+            async () => await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: "Summarize financial transactions in 5 words or less." },
+                { role: "user", content: prompt }
+              ],
+              temperature: 0.3,
+              max_tokens: 20
+            })
+          );
+          
+          const summary = completion.choices[0].message.content.trim();
+          if (summary) {
+            return { summary };
+          }
+        } catch (error) {
+          console.error('Error generating batch summary with OpenAI:', error);
+          // Fall through to default summary
+        }
+      }
+    }
+    
+    // Default summary based on date range
+    const dates = transactions.map(t => new Date(t.date));
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    
+    return { 
+      summary: `Transactions from ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`
+    };
+  } catch (error) {
+    console.error('Error generating batch summary:', error);
+    return { summary: `Batch of ${transactions.length} transactions` };
+  }
+}

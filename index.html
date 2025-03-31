@@ -4605,6 +4605,7 @@
         const forceRefreshBatches = async (retryCount = 0, maxRetries = 3) => {
           if (!state.enrichment.currentUploadId) {
             console.error('🔴 [CLIENT] Cannot refresh batches: No upload ID');
+            state.errors.enrichment = 'Cannot refresh batches: No upload ID';
             return false;
           }
           
@@ -4613,6 +4614,7 @@
           
           // Set the loading state and ensure errors are cleared
           state.loading.enrichment = true;
+          state.errors.enrichment = null;
           
           // Create an independent controller for this request that we can abort
           const controller = new AbortController();
@@ -4622,25 +4624,48 @@
           const timeoutId = setTimeout(() => {
             controller.abort();
             console.warn('⚠️ [CLIENT] Batch refresh request aborted due to timeout');
-          }, 12000); // 12 second timeout
+          }, 15000); // Increased timeout to 15 seconds
           
           try {
             console.log(`🔍 [CLIENT] Starting batch refresh request with timeout protection`);
             
             // Make the API request with abort signal
-            const result = await api.transactions.getUploadedBatches(
-              state.enrichment.currentUploadId, 
-              { signal }
-            );
+            const response = await fetch(`/api/transactions/uploads/${state.enrichment.currentUploadId}/batches`, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              },
+              signal
+            });
             
-            // Clear the timeout since request completed normally
+            // Clear the timeout since request completed
             clearTimeout(timeoutId);
             
+            // Check if response is OK
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
+              
+              // Check for specific timeout error from server
+              if (response.status === 408 || errorData.isTimeout) {
+                console.error(`🔴 [CLIENT] Server reported timeout: ${errorData.error || 'Unknown error'}`);
+                throw new Error(`Server timeout: ${errorData.error || 'Database operation timed out'}`);
+              }
+              
+              // Handle other HTTP errors
+              console.error(`🔴 [CLIENT] HTTP error ${response.status}: ${errorData.error || response.statusText}`);
+              throw new Error(errorData.error || `Server error: ${response.status} ${response.statusText}`);
+            }
+            
+            // Parse the response
+            const result = await response.json();
+            
+            // Handle successful response with data
             if (result && result.batches && result.batches.length > 0) {
               console.log(`✅ [CLIENT] Successfully refreshed batches: found ${result.batches.length} batches`);
               state.enrichment.transactionBatches = result.batches;
               state.enrichment.statistics = result.statistics;
-              state.errors.enrichment = "";
+              state.errors.enrichment = null;
               
               // Set success message
               state.successMessages.enrichment = `Refreshed ${result.batches.length} batches successfully.`;
@@ -4655,6 +4680,7 @@
               
               return true;
             } else {
+              // Handle empty response
               console.warn('⚠️ [CLIENT] Refresh returned no batches');
               
               // Add retry logic
@@ -4678,6 +4704,7 @@
             // Clear the timeout to prevent double handling
             clearTimeout(timeoutId);
             
+            // Handle abort/timeout errors
             if (error.name === 'AbortError' || error.message.includes('abort')) {
               console.error('🔴 [CLIENT] Batch refresh request aborted:', error);
               state.errors.enrichment = 'Batch refresh timed out. Please try again.';
@@ -4696,6 +4723,25 @@
               return false;
             }
             
+            // Handle server-reported timeout errors
+            if (error.message.includes('timeout') || error.message.includes('timed out')) {
+              console.error('🔴 [CLIENT] Server operation timed out:', error);
+              state.errors.enrichment = `Database operation timed out. This could indicate a large number of transactions. Please try again.`;
+              
+              if (retryCount < maxRetries) {
+                console.log(`🔄 [CLIENT] Retrying after server timeout (${retryCount + 1}/${maxRetries})...`);
+                state.loading.enrichment = false;
+                
+                // Wait a bit longer before retry after timeout
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                return await forceRefreshBatches(retryCount + 1, maxRetries);
+              }
+              
+              return false;
+            }
+            
+            // Handle other errors
             console.error('🔴 [CLIENT] Error refreshing batches:', error);
             
             // Add retry logic for other errors
@@ -4714,7 +4760,7 @@
             return false;
           } finally {
             // Always ensure loading state is cleared when we're done
-            if (retryCount === maxRetries) {
+            if (retryCount === maxRetries || retryCount === 0) {
               state.loading.enrichment = false;
             }
           }

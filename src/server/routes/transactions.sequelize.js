@@ -1332,14 +1332,17 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     console.log(`[GET /uploads/${uploadId}/batches] - Finding transactions with this uploadId`);
     
     // Set a timeout for database operations to prevent hanging
-    const QUERY_TIMEOUT = 10000; // 10 seconds timeout
+    const QUERY_TIMEOUT = 15000; // 15 seconds timeout (increased from 10 seconds)
     
     // Create a promise that will reject after the timeout period
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), QUERY_TIMEOUT);
+      setTimeout(() => {
+        console.log(`⚠️ [WARNING] Database operation timeout triggered after ${QUERY_TIMEOUT/1000} seconds for upload ${uploadId}`);
+        reject(new Error(`Database operation timed out after ${QUERY_TIMEOUT/1000} seconds. This upload may contain too many transactions to process at once.`));
+      }, QUERY_TIMEOUT);
     });
     
-    // Create the database query promise
+    // Create the database query promise with timeouts enabled in the ORM
     const dbQueryPromise = Transaction.findAll({
       where: {
         uploadId: uploadId
@@ -1352,11 +1355,45 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           required: false
         }
       ],
-      order: [['date', 'DESC']]
+      order: [['date', 'DESC']],
+      // Set ORM-level timeouts (if supported by Sequelize version)
+      ...((process.env.NODE_ENV === 'production') ? { 
+        lock: false,  // Avoid DB locks that could contribute to timeout issues
+        skipLocked: true // Skip rows that are locked
+      } : {})
     });
     
-    // Race the database query against the timeout
-    const transactions = await Promise.race([dbQueryPromise, timeoutPromise]);
+    // Variable to store the timeout ID for cleanup
+    let timeoutId;
+    
+    // Create a wrapping promise that handles cleanup
+    const racePromise = new Promise(async (resolve, reject) => {
+      try {
+        // Set up the timeout handler with ability to clean up
+        timeoutId = setTimeout(() => {
+          console.log(`⚠️ [WARNING] Database query timeout for upload ${uploadId}`);
+          reject(new Error(`Database query timed out after ${QUERY_TIMEOUT/1000} seconds. This upload may contain too many transactions to process at once.`));
+        }, QUERY_TIMEOUT);
+        
+        // Execute the database query
+        const result = await dbQueryPromise;
+        
+        // Clear the timeout since the query completed
+        clearTimeout(timeoutId);
+        
+        // Resolve with the query result
+        resolve(result);
+      } catch (error) {
+        // Clear the timeout if there was an error with the query
+        clearTimeout(timeoutId);
+        
+        // Reject with the error
+        reject(error);
+      }
+    });
+    
+    // Execute the race promise
+    const transactions = await racePromise;
     
     console.log(`[GET /uploads/${uploadId}/batches] - Found ${transactions.length} transactions`);
     
@@ -1622,18 +1659,59 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
   } catch (error) {
     console.error('Error getting batches:', error);
     
+    // Check the type of error for better handling
+    let errorCategory = 'unknown';
+    let statusCode = 500;
+    let errorMessage = `Error fetching batches: ${error.message}`;
+    let recoveryHint = null;
+    
     // Check if this is a timeout error
     const isTimeout = error.message && (
       error.message.includes('timed out') || 
       error.message.includes('timeout')
     );
     
-    // Return appropriate status code and error info
-    res.status(isTimeout ? 408 : 500).json({ 
-      error: `Error fetching batches: ${error.message}`,
+    if (isTimeout) {
+      errorCategory = 'timeout';
+      statusCode = 408; // Request Timeout
+      errorMessage = `Database operation timed out: ${error.message}`;
+      recoveryHint = "Try refreshing with fewer transactions at a time or contact support for help with large datasets.";
+    } 
+    // Check if this is a database connection error
+    else if (error.name === 'SequelizeConnectionError' || 
+             error.message.includes('connection') || 
+             error.message.includes('connect')) {
+      errorCategory = 'connection';
+      statusCode = 503; // Service Unavailable
+      errorMessage = `Database connection issue: ${error.message}`;
+      recoveryHint = "Please try again in a few moments. The database may be temporarily unavailable.";
+    }
+    // Check if this is a query/syntax error
+    else if (error.name === 'SequelizeDatabaseError' || error.name === 'Error') {
+      errorCategory = 'query';
+      statusCode = 400; // Bad Request
+      errorMessage = `Database query error: ${error.message}`;
+      recoveryHint = "There may be an issue with the transaction data. Try refreshing or contact support.";
+    }
+    
+    // Log detailed error information for server logs
+    console.error(`[ERROR] ${errorCategory.toUpperCase()} ERROR in /uploads/${req.params.uploadId}/batches:`, {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      category: errorCategory,
+      statusCode
+    });
+    
+    // Return detailed error response to the client
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      errorType: errorCategory,
       isTimeout: isTimeout,
       timeoutType: isTimeout ? 'database_operation' : undefined,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      recoveryHint: recoveryHint,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 });
