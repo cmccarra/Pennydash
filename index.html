@@ -751,7 +751,7 @@
             </svg>
             <span class="btm-nav-label text-xs">More</span>
           </button>
-          <ul tabindex="0" class="dropdown-content menu p-2 shadow-lg bg-base-200 rounded-box w-52 mb-2">
+          <ul tabindex="0" class="dropdown-content menu p-2 shadow-lg bg-base-200 rounded-box w-52 mb-2 right-0">
             <li><a href="#" @click.prevent="activeTab = 'settings'">Settings</a></li>
           </ul>
         </div>
@@ -3118,6 +3118,22 @@
           '#64748B'  // Slate
         ];
         
+        // Settings form for user preferences
+        const settingsForm = reactive({
+          currency: 'USD',
+          locale: 'en-US',
+          dateFormat: 'MM/DD/YYYY',
+          theme: 'dark',
+          categorySuggestionConfidence: 0.7,
+          defaultView: 'dashboard',
+          budgetStart: '1', // First day of month
+          notifications: {
+            budgetWarnings: true,
+            weeklyReports: false,
+            emailAlerts: false
+          }
+        });
+        
         // Fetch transactions from API
         const fetchTransactions = async () => {
           state.loading.transactions = true;
@@ -3223,11 +3239,53 @@
           
           try {
             state.settings = await api.settings.get();
+            
+            // Copy settings to the settings form
+            if (state.settings) {
+              settingsForm.currency = state.settings.currency || 'USD';
+              settingsForm.locale = state.settings.locale || 'en-US';
+              settingsForm.dateFormat = state.settings.dateFormat || 'MM/DD/YYYY';
+              settingsForm.theme = state.settings.theme || 'dark';
+              settingsForm.categorySuggestionConfidence = state.settings.categorySuggestionConfidence || 0.7;
+              settingsForm.defaultView = state.settings.defaultView || 'dashboard';
+              settingsForm.budgetStart = state.settings.budgetStart || '1';
+              
+              // Handle notifications with fallback for backward compatibility
+              if (state.settings.notifications) {
+                settingsForm.notifications = {
+                  budgetWarnings: state.settings.notifications.budgetWarnings ?? true,
+                  weeklyReports: state.settings.notifications.weeklyReports ?? true,
+                  emailAlerts: state.settings.notifications.emailAlerts ?? false
+                };
+              }
+            }
           } catch (error) {
             state.errors.settings = error.message;
             console.error('Failed to fetch settings:', error);
           } finally {
             state.loading.settings = false;
+          }
+        };
+        
+        // Save settings to API
+        const saveSettings = async () => {
+          state.loading.saveSettings = true;
+          state.errors.settings = null;
+          
+          try {
+            // Save the settings form to the API
+            const result = await api.settings.update(settingsForm);
+            
+            // Update the settings in the state
+            state.settings = { ...result };
+            
+            // Show success message or notification
+            alert('Settings saved successfully!');
+          } catch (error) {
+            state.errors.settings = error.message;
+            console.error('Failed to save settings:', error);
+          } finally {
+            state.loading.saveSettings = false;
           }
         };
         
@@ -5717,6 +5775,10 @@
           sortedTransactions,
           paginatedTransactions,
           currentPage,
+          
+          // Settings management
+          settingsForm,
+          saveSettings,
           
           // Transaction functions
           formatDate,

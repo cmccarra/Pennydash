@@ -1331,8 +1331,16 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     
     console.log(`[GET /uploads/${uploadId}/batches] - Finding transactions with this uploadId`);
     
-    // Get all transactions for this upload, grouped by batch
-    const transactions = await Transaction.findAll({
+    // Set a timeout for database operations to prevent hanging
+    const QUERY_TIMEOUT = 10000; // 10 seconds timeout
+    
+    // Create a promise that will reject after the timeout period
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), QUERY_TIMEOUT);
+    });
+    
+    // Create the database query promise
+    const dbQueryPromise = Transaction.findAll({
       where: {
         uploadId: uploadId
       },
@@ -1346,6 +1354,9 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
       ],
       order: [['date', 'DESC']]
     });
+    
+    // Race the database query against the timeout
+    const transactions = await Promise.race([dbQueryPromise, timeoutPromise]);
     
     console.log(`[GET /uploads/${uploadId}/batches] - Found ${transactions.length} transactions`);
     
@@ -1411,13 +1422,37 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     console.log(`[GET /uploads/${uploadId}/batches] - Unique batch IDs: ${JSON.stringify(uniqueBatchIds)}`);
     
     // Ensure that transactions have up-to-date data from database
-    const refreshedTransactions = await Promise.all(
+    // Create a promise that will reject after the timeout period (for the refresh operation)
+    const refreshTimeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Transaction refresh operation timed out after 10 seconds')), QUERY_TIMEOUT);
+    });
+    
+    // Create the refresh promise
+    const refreshPromise = Promise.all(
       transactions.map(async tx => {
-        // Get the latest version from the database
-        const latestTx = await Transaction.findByPk(tx.id);
-        return latestTx || tx; // Use the original if not found
+        try {
+          // Get the latest version from the database with a timeout
+          const txTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error(`Transaction lookup timed out for ID ${tx.id}`)), QUERY_TIMEOUT / 2);
+          });
+          
+          const latestTx = await Promise.race([Transaction.findByPk(tx.id), txTimeoutPromise]);
+          return latestTx || tx; // Use the original if not found
+        } catch (err) {
+          console.warn(`Warning: Failed to refresh transaction ${tx.id}:`, err.message);
+          return tx; // Fall back to the original on error
+        }
       })
     );
+    
+    // Race the refresh operation against the timeout
+    let refreshedTransactions;
+    try {
+      refreshedTransactions = await Promise.race([refreshPromise, refreshTimeoutPromise]);
+    } catch (timeoutErr) {
+      console.warn(`Warning: ${timeoutErr.message}, using original transactions`);
+      refreshedTransactions = transactions; // Fall back to original transactions on timeout
+    }
     
     console.log(`[GET /uploads/${uploadId}/batches] - Refreshed ${refreshedTransactions.length} transactions from database`);
     
@@ -1586,8 +1621,18 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error('Error getting batches:', error);
-    res.status(500).json({ 
+    
+    // Check if this is a timeout error
+    const isTimeout = error.message && (
+      error.message.includes('timed out') || 
+      error.message.includes('timeout')
+    );
+    
+    // Return appropriate status code and error info
+    res.status(isTimeout ? 408 : 500).json({ 
       error: `Error fetching batches: ${error.message}`,
+      isTimeout: isTimeout,
+      timeoutType: isTimeout ? 'database_operation' : undefined,
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
