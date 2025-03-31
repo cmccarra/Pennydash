@@ -2293,6 +2293,10 @@
                   <div class="stat-value text-success">{{ state.enrichment.processedBatches.length }}</div>
                 </div>
                 <div class="stat">
+                  <div class="stat-title">Batches Skipped</div>
+                  <div class="stat-value text-error">{{ getSkippedBatchCount() }}</div>
+                </div>
+                <div class="stat">
                   <div class="stat-title">Total Batches</div>
                   <div class="stat-value">{{ state.enrichment.transactionBatches.length }}</div>
                 </div>
@@ -2499,7 +2503,13 @@
                   Cancel Review
                 </button>
                 
-                <button class="btn btn-warning" @click="nextBatch()" v-if="!isLastBatch()">
+                <button class="btn btn-warning" 
+                  @click="nextBatch()" 
+                  v-if="!isLastBatch()"
+                  title="Skip this batch - transactions will remain uncategorized">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                   Skip This Batch
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -3420,11 +3430,19 @@
             // Update the batch in the state
             const batchIndex = state.enrichment.transactionBatches.findIndex(b => b.batchId === batchId);
             if (batchIndex !== -1) {
-              state.enrichment.transactionBatches[batchIndex] = result;
+              // Update the batch with the result and ensure it has a status
+              state.enrichment.transactionBatches[batchIndex] = {
+                ...result,
+                status: 'enriched' // Mark as enriched when we successfully apply a category
+              };
+              
+              console.log(`✅ [CLIENT] Batch ${batchId} successfully enriched and marked with status 'enriched'`);
             }
             
             // Move the batch from pending to processed
-            state.enrichment.processedBatches.push(batchId);
+            if (!state.enrichment.processedBatches.includes(batchId)) {
+              state.enrichment.processedBatches.push(batchId);
+            }
             state.enrichment.pendingBatches = state.enrichment.pendingBatches.filter(id => id !== batchId);
             
             // Update progress
@@ -3795,15 +3813,34 @@
                 state.enrichment.transactionBatches = batchResult.batches;
                 state.enrichment.statistics = batchResult.statistics;
                 
+                // Initialize the pending batches and processed batches arrays
+                state.enrichment.pendingBatches = batchResult.batches.map(batch => batch.batchId || '');
+                state.enrichment.processedBatches = []; // Reset processed batches
+                
                 // Fix any batches that don't have batch IDs
                 const fixedBatches = batchResult.batches.map((batch, index) => {
                   if (!batch.batchId) {
                     console.warn(`⚠️ [CLIENT] Batch at index ${index} is missing a batchId, generating a synthetic one`);
+                    const syntheticId = `synthetic_batch_${Date.now()}_${index}`;
+                    
+                    // Update pendingBatches to use the synthetic ID
+                    const pendingIndex = state.enrichment.pendingBatches.indexOf('');
+                    if (pendingIndex !== -1) {
+                      state.enrichment.pendingBatches[pendingIndex] = syntheticId;
+                    }
+                    
                     return {
                       ...batch,
-                      batchId: `synthetic_batch_${Date.now()}_${index}`
+                      batchId: syntheticId,
+                      status: 'pending' // Add default status
                     };
                   }
+                  
+                  // Ensure batch has a status
+                  if (!batch.status) {
+                    batch.status = 'pending';
+                  }
+                  
                   return batch;
                 });
                 
