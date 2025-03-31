@@ -168,11 +168,21 @@
             <div>
               <h3 class="font-medium text-gray-700">Reminders</h3>
               <p class="text-sm text-gray-600 mt-1">
-                This application uses in-memory storage. Data will be lost when the server restarts.
-                In future versions, data will be stored in MongoDB.
+                This application uses PostgreSQL for persistent storage.
               </p>
             </div>
           </div>
+        </div>
+        
+        <!-- AI Status Panel -->
+        <div class="card mt-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">AI Services</h2>
+          <AIStatusWidget 
+            :showConfigOptions="true"
+            :refreshInterval="60000"
+            @apiKeyConfigured="handleApiKeyConfigured"
+            @statusUpdated="handleAiStatusUpdated"
+          />
         </div>
         
         <div class="card mt-6">
@@ -306,10 +316,15 @@
 
 <script>
 import { defineComponent, ref, computed, onMounted } from 'vue';
-import { transactionsApi, categoriesApi, reportsApi } from '../services/api';
+import { transactionsApi, categoriesApi, reportsApi, aiStatusApi } from '../services/api';
+import AIStatusWidget from '../components/AIStatusWidget.js';
 
 export default defineComponent({
   name: 'Settings',
+  
+  components: {
+    AIStatusWidget
+  },
   
   setup() {
     // State
@@ -467,6 +482,26 @@ export default defineComponent({
       }, 3000);
     };
     
+    // AI Status handlers
+    const handleApiKeyConfigured = (result) => {
+      if (result.configured) {
+        showNotification('OpenAI API key configured successfully.');
+        
+        if (result.requiresRestart) {
+          showNotification('Server will need to be restarted to apply the new API key.');
+        }
+      }
+    };
+    
+    const handleAiStatusUpdated = (status) => {
+      console.log('AI Status updated:', status);
+      // You can update other parts of the UI based on AI status if needed
+      
+      if (!status.available && !status.apiKeyConfigured) {
+        // Optional: Show a more prominent notification if API key is missing
+      }
+    };
+    
     // Initialize
     onMounted(() => {
       fetchSettings();
@@ -489,7 +524,9 @@ export default defineComponent({
       exportData,
       retrainAI,
       resetAllData,
-      showNotification
+      showNotification,
+      handleApiKeyConfigured,
+      handleAiStatusUpdated
     };
   }
 });

@@ -11,8 +11,14 @@ class CategorySuggestionService {
     this.tokenizer = new natural.WordTokenizer();
     this.classifier = new natural.BayesClassifier();
     this.trained = false;
-    this.useOpenAI = process.env.OPENAI_API_KEY ? true : false;
+    this.useOpenAI = openaiService.isAvailable();
     this.categoryCache = new Map(); // Cache for OpenAI suggestions
+    
+    // Log OpenAI availability at startup
+    console.log(`[CategorySuggestion] OpenAI service availability: ${this.useOpenAI ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
+    if (!this.useOpenAI) {
+      console.log('[CategorySuggestion] Will use Bayes classifier as the primary categorization method');
+    }
   }
 
   /**

@@ -656,3 +656,21 @@ export const settingsApi = {
   get: () => fetchData('/settings'),
   update: (data) => putData('/settings', data)
 };
+
+// AI Status API for monitoring and configuring AI services
+export const aiStatusApi = {
+  // Get current AI services status
+  getStatus: () => fetchData('/ai-status'),
+  
+  // Check if an OpenAI API key is valid (without saving it)
+  checkApiKey: (apiKey) => postData('/ai-status/check-key', { apiKey }),
+  
+  // Configure an OpenAI API key for the current session
+  configureApiKey: (apiKey) => postData('/ai-status/configure', { apiKey }),
+  
+  // Reset metrics for AI services
+  resetMetrics: () => postData('/ai-status/reset-metrics', {}),
+  
+  // Clear the response cache
+  clearCache: () => postData('/ai-status/clear-cache', {})
+};

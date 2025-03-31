@@ -1,13 +1,23 @@
 
 const OpenAI = require('openai');
 
-// Configure OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Check if OpenAI API key is configured
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const API_KEY_CONFIGURED = !!OPENAI_API_KEY;
+
+// Configure OpenAI client if API key is available
+let openai = null;
+if (API_KEY_CONFIGURED) {
+  openai = new OpenAI({
+    apiKey: OPENAI_API_KEY
+  });
+}
 
 // Flag to simulate API failures (for testing)
 const SIMULATE_FAILURE = process.env.SIMULATE_OPENAI_FAILURE === 'true';
+
+// Flag to indicate if OpenAI is available
+const OPENAI_AVAILABLE = API_KEY_CONFIGURED && !SIMULATE_FAILURE;
 
 // Tracking metrics and cache to optimize API usage
 const metrics = {
@@ -100,6 +110,18 @@ function generateCacheKey(description, amount, type) {
  * @returns {Promise<Object>} Object containing suggested category and confidence
  */
 async function categorizeTransaction(description, amount, type = 'expense', existingCategories = []) {
+  // Check if OpenAI is available
+  if (!OPENAI_AVAILABLE) {
+    console.log(`[OpenAI] API not available for transaction: "${description}"`);
+    return {
+      categoryName: null,
+      confidence: 0,
+      reasoning: "OpenAI API not available. Please configure your OPENAI_API_KEY.",
+      error: true,
+      errorType: "api_not_configured"
+    };
+  }
+
   // Create cache key - normalize to avoid case sensitivity issues
   const cacheKey = generateCacheKey(description, amount, type);
   
@@ -289,6 +311,19 @@ function findMatchingCategory(suggestedName, existingCategories, transactionType
 async function categorizeBatch(transactions, existingCategories = []) {
   if (!transactions || transactions.length === 0) {
     return [];
+  }
+  
+  // Check if OpenAI is available
+  if (!OPENAI_AVAILABLE) {
+    console.log(`[OpenAI] API not available for batch categorization of ${transactions.length} transactions`);
+    return transactions.map(transaction => ({
+      transactionId: transaction.id,
+      categoryName: null,
+      confidence: 0,
+      reasoning: "OpenAI API not available. Please configure your OPENAI_API_KEY.",
+      error: true,
+      errorType: "api_not_configured"
+    }));
   }
   
   console.log(`[OpenAI] Batch categorizing ${transactions.length} transactions`);
@@ -558,10 +593,16 @@ async function categorizeBatch(transactions, existingCategories = []) {
 }
 
 /**
- * Check if we are currently rate limited or have exceeded quota
- * @returns {boolean} Whether we are currently rate limited
+ * Check if we are currently rate limited or have exceeded quota or API is not configured
+ * @returns {boolean} Whether requests should be blocked
  */
 function isRateLimited() {
+  // If API key is not configured, treat as rate limited
+  if (!API_KEY_CONFIGURED) {
+    console.log('[OpenAI] API key not configured');
+    return true;
+  }
+  
   // If simulating failure, always return true
   if (SIMULATE_FAILURE) {
     console.log('[OpenAI] Simulating API failure for testing');
@@ -595,10 +636,21 @@ async function callWithRetry(apiFn, ...args) {
   let retryCount = 0;
   let lastError = null;
   
+  // Check if OpenAI is not available (API key missing or simulation)
+  if (!API_KEY_CONFIGURED) {
+    const error = new Error('OpenAI API key not configured');
+    error.code = 'api_key_missing';
+    error.type = 'configuration_error';
+    throw error;
+  }
+  
   // Check if we're rate limited before even trying
   if (isRateLimited()) {
     console.log('[OpenAI] Currently rate limited, using fallback mechanism');
-    throw new Error('OpenAI API rate limited');
+    const error = new Error('OpenAI API rate limited');
+    error.code = 'rate_limited';
+    error.type = 'api_restriction';
+    throw error;
   }
   
   while (retryCount <= MAX_RETRIES) {
@@ -611,10 +663,33 @@ async function callWithRetry(apiFn, ...args) {
         metrics.retries++;
       }
       
-      // Make the API call
-      return await apiFn(...args);
+      // Add timeout to prevent hanging requests
+      const timeoutMs = 10000; // 10 seconds
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('OpenAI request timed out after 10 seconds')), timeoutMs);
+      });
+      
+      // Race the API call against the timeout
+      return await Promise.race([
+        apiFn(...args),
+        timeoutPromise
+      ]);
     } catch (error) {
       lastError = error;
+      
+      // Handle timeout errors
+      if (error.message && error.message.includes('timed out')) {
+        console.warn('[OpenAI] API request timed out, will retry');
+        metrics.errors++;
+        
+        if (retryCount >= MAX_RETRIES) {
+          console.warn(`[OpenAI] Exceeded max retries after timeout (${MAX_RETRIES})`);
+          break;
+        }
+        
+        retryCount++;
+        continue;
+      }
       
       // Check for rate limiting errors
       if (error.status === 429 || 
@@ -624,6 +699,10 @@ async function callWithRetry(apiFn, ...args) {
         metrics.rateLimitErrors++;
         metrics.lastRateLimitTime = Date.now();
         metrics.isRateLimited = true;
+        
+        // Enhance error with additional information
+        error.code = 'rate_limited';
+        error.type = 'api_restriction';
         
         // Don't retry if we've exceeded our quota
         if (error.error && (error.error.type === 'insufficient_quota' || 
@@ -642,6 +721,13 @@ async function callWithRetry(apiFn, ...args) {
       } else {
         // For other errors, don't retry
         console.error('[OpenAI] API error:', error);
+        
+        // Enhance error with additional information if possible
+        if (!error.code) {
+          error.code = 'api_error';
+          error.type = 'api_error';
+        }
+        
         break;
       }
     }
@@ -693,6 +779,28 @@ function clearCache() {
   console.log('[OpenAI] Response cache cleared');
 }
 
+/**
+ * Check if OpenAI service is available and properly configured
+ * @returns {boolean} Whether OpenAI is available
+ */
+function isAvailable() {
+  return OPENAI_AVAILABLE;
+}
+
+/**
+ * Get information about the OpenAI service status
+ * @returns {Object} Status information
+ */
+function getStatus() {
+  return {
+    available: OPENAI_AVAILABLE,
+    apiKeyConfigured: API_KEY_CONFIGURED,
+    simulatingFailure: SIMULATE_FAILURE,
+    rateLimited: isRateLimited(),
+    metricsSnapshot: getMetrics()
+  };
+}
+
 module.exports = {
   categorizeTransaction,
   categorizeBatch,
@@ -701,5 +809,7 @@ module.exports = {
   resetMetrics,
   clearCache,
   isRateLimited,
-  callWithRetry
+  callWithRetry,
+  isAvailable,
+  getStatus
 };
