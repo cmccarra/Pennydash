@@ -238,7 +238,7 @@ export default defineComponent({
             Last updated: {{ formatTimestamp(status.timestamp) }}
           </span>
           <button class="btn btn-xs btn-ghost ml-auto" @click="fetchStatus">
-            <i class="fas fa-sync-alt"></i>
+            ↻
           </button>
         </div>
         
