@@ -68,7 +68,7 @@
     </div>
 
     <!-- Transaction List -->
-    <div class="card pb-36">
+    <div class="card mb-20">
       <div v-if="isLoading" class="py-8 text-center">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
         <p class="mt-2 text-gray-600">Loading transactions...</p>
@@ -168,7 +168,7 @@
         </div>
 
         <!-- Pagination -->
-        <div class="flex justify-between items-center p-4 border-t border-gray-200 mb-36">
+        <div class="sticky bottom-16 bg-white flex justify-between items-center p-4 border-t border-gray-200">
           <div>
             <span class="text-sm text-gray-700">
               Showing {{ paginationStart }} to {{ paginationEnd }} of {{ totalTransactions }} transactions
@@ -365,7 +365,7 @@
         </div>
       </div>
     </div>
-    <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-[9999] max-w-[100vw] pointer-events-auto">
+    <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-[9999]">
             <div class="flex items-center space-x-4">
               <span class="font-medium">{{ selectedTransactions.length }} transactions selected</span>
               <button 
