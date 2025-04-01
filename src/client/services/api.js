@@ -19,11 +19,20 @@ export const fetchData = async (endpoint, options = {}) => {
   try {
     // Add timeout mechanism for requests that might hang
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+    const timeout = options.timeout || 30000;
+    const timeoutId = setTimeout(() => {
+      console.warn(`🔍 [API] Request to ${endpoint} is taking too long, aborting after ${timeout}ms`);
+      controller.abort();
+    }, timeout);
 
     const response = await fetch(`${API_URL}${endpoint}`, {
       signal: controller.signal,
-      ...options
+      ...options,
+      headers: {
+        ...options.headers,
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
     });
 
     // Clear timeout once response is received

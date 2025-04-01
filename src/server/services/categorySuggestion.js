@@ -26,9 +26,26 @@ class CategorySuggestionService {
    */
   async trainClassifier() {
     try {
-      const { Transaction, Category } = getModels();
+      console.log('[CategorySuggestion] Starting classifier training');
+      
+      // Get models safely
+      let Transaction, Category;
+      try {
+        const models = getModels();
+        Transaction = models.Transaction;
+        Category = models.Category;
+        
+        if (!Transaction || !Category) {
+          console.error('[CategorySuggestion] Models not properly initialized for training');
+          throw new Error('Database models not initialized');
+        }
+      } catch (modelError) {
+        console.error('[CategorySuggestion] Error getting models for training:', modelError);
+        throw new Error(`Failed to initialize database models: ${modelError.message}`);
+      }
 
       // Find categorized transactions with their categories
+      console.log('[CategorySuggestion] Fetching categorized transactions for training');
       const categorizedTransactions = await Transaction.findAll({
         where: {
           categoryId: {
@@ -158,12 +175,22 @@ class CategorySuggestionService {
     try {
       console.log('[CategorySuggestion] Starting suggestion for:', { description, amount, type });
 
-      const models = getModels();
-      const { Transaction, Category } = models;
-
-      if (!Transaction || !Category) {
-        console.error('[CategorySuggestion] Failed to get models:', models);
-        throw new Error('Database models not initialized');
+      // Get models safely
+      let Transaction, Category;
+      try {
+        const models = getModels();
+        Transaction = models.Transaction;
+        Category = models.Category;
+        
+        if (!Transaction || !Category) {
+          console.error('[CategorySuggestion] Models not properly initialized:', models);
+          throw new Error('Database models not initialized');
+        }
+        
+        console.log('[CategorySuggestion] Models initialized successfully');
+      } catch (modelError) {
+        console.error('[CategorySuggestion] Error getting models:', modelError);
+        throw new Error(`Failed to initialize database models: ${modelError.message}`);
       }
 
       // Check if we're a new user (less than 10 categorized transactions)
@@ -339,31 +366,53 @@ class CategorySuggestionService {
       }
 
       // Fall back to Bayes classifier if OpenAI failed or is disabled
+      console.log('[CategorySuggestion] Falling back to Bayes classifier');
 
-      // If still not trained, return null suggestion
+      // If still not trained, attempt to train now
       if (!this.trained) {
-        return { categoryId: null, confidence: 0, suggestionSource: 'untrained' };
+        console.log('[CategorySuggestion] Classifier not trained, attempting to train now');
+        const trainingResult = await this.trainClassifier();
+        console.log('[CategorySuggestion] Training result:', trainingResult);
+        
+        if (!this.trained) {
+          console.log('[CategorySuggestion] Failed to train classifier, returning untrained suggestion');
+          return { categoryId: null, confidence: 0, suggestionSource: 'untrained' };
+        }
       }
 
       // Preprocess the description
       const processedText = this.preprocessText(description);
+      console.log('[CategorySuggestion] Preprocessed text:', processedText);
 
       // Get classifier results
-      const classifications = this.classifier.getClassifications(processedText);
+      try {
+        const classifications = this.classifier.getClassifications(processedText);
+        console.log('[CategorySuggestion] Classifications:', classifications);
 
-      if (classifications.length === 0) {
-        return { categoryId: null, confidence: 0, suggestionSource: 'no-classifications' };
+        if (!classifications || classifications.length === 0) {
+          console.log('[CategorySuggestion] No classifications returned');
+          return { categoryId: null, confidence: 0, suggestionSource: 'no-classifications' };
+        }
+
+        // Get the top classification
+        const topClassification = classifications[0];
+        console.log('[CategorySuggestion] Top classification:', topClassification);
+
+        return {
+          categoryId: topClassification.label,
+          confidence: topClassification.confidence || topClassification.value || 0.5,
+          suggestionSource: 'bayes-classifier',
+          reasoning: `Matched based on text similarity to previously categorized transactions`
+        };
+      } catch (classifierError) {
+        console.error('[CategorySuggestion] Classifier error:', classifierError);
+        return { 
+          categoryId: null, 
+          confidence: 0, 
+          suggestionSource: 'classifier-error',
+          reasoning: `Classifier error: ${classifierError.message}`
+        };
       }
-
-      // Get the top classification
-      const topClassification = classifications[0];
-
-      return {
-        categoryId: topClassification.label,
-        confidence: topClassification.confidence || topClassification.value,
-        suggestionSource: 'bayes-classifier',
-        reasoning: `Matched based on text similarity to previously categorized transactions`
-      };
     } catch (error) {
       console.error('Error suggesting category:', error);
       return { categoryId: null, confidence: 0, suggestionSource: 'error', reasoning: error.message };

@@ -23,23 +23,52 @@ router.get('/category', async (req, res) => {
     
     console.log(`[GET /suggestions/category] Suggesting category for "${description}" (${amount || 'unknown amount'})`);
     
-    const suggestion = await categorySuggestionService.suggestCategory(
-      description,
-      amount ? parseFloat(amount) : null,
-      type
-    );
+    // Add debug logging
+    console.log('[GET /suggestions/category] Calling suggestCategory with params:', { 
+      description, 
+      amount: amount ? parseFloat(amount) : null, 
+      type 
+    });
     
-    // Find category name from ID if available
-    if (suggestion.categoryId) {
-      const category = categories.find(c => c.id === suggestion.categoryId);
-      if (category) {
-        suggestion.categoryName = category.name;
-        suggestion.categoryColor = category.color;
-        suggestion.categoryIcon = category.icon;
+    try {
+      const suggestion = await categorySuggestionService.suggestCategory(
+        description,
+        amount ? parseFloat(amount) : null,
+        type
+      );
+      
+      console.log('[GET /suggestions/category] Received suggestion:', suggestion);
+      
+      // Find category name from ID if available
+      if (suggestion.categoryId) {
+        const category = categories.find(c => c.id === suggestion.categoryId);
+        if (category) {
+          suggestion.categoryName = category.name;
+          suggestion.categoryColor = category.color;
+          suggestion.categoryIcon = category.icon;
+          suggestion.category = category;
+        }
       }
+      
+      // Add needsReview flag based on confidence
+      const confidenceThreshold = 0.7;
+      suggestion.needsReview = suggestion.confidence < confidenceThreshold;
+      suggestion.autoApply = !suggestion.needsReview;
+      
+      console.log('[GET /suggestions/category] Returning suggestion:', suggestion);
+      res.json(suggestion);
+    } catch (suggestionError) {
+      console.error('[GET /suggestions/category] Error generating suggestion:', suggestionError);
+      // Return a fallback response instead of failing
+      res.json({
+        categoryId: null,
+        confidence: 0,
+        suggestionSource: 'error',
+        reasoning: suggestionError.message,
+        needsReview: true,
+        autoApply: false
+      });
     }
-    
-    res.json(suggestion);
   } catch (error) {
     console.error('[GET /suggestions/category] Error:', error);
     res.status(500).json({ error: error.message });
