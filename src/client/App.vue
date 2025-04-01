@@ -18,7 +18,9 @@ export default defineComponent({
   },
   data() {
     return {
-      moreMenuOpen: false
+      moreMenuOpen: false,
+      loading: false,
+      error: null
     }
   },
 });

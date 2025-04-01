@@ -156,8 +156,15 @@ class CategorySuggestionService {
    */
   async suggestCategory(description, amount = null, type = 'expense') {
     try {
-      const { Transaction, Category } = getModels();
-      console.log('[CategorySuggestion] Starting suggestion for:', description);
+      console.log('[CategorySuggestion] Starting suggestion for:', { description, amount, type });
+
+      const models = getModels();
+      const { Transaction, Category } = models;
+
+      if (!Transaction || !Category) {
+        console.error('[CategorySuggestion] Failed to get models:', models);
+        throw new Error('Database models not initialized');
+      }
 
       // Check if we're a new user (less than 10 categorized transactions)
       const categorizedCount = await Transaction.count({
