@@ -168,7 +168,7 @@
         </div>
 
         <!-- Pagination -->
-        <div class="flex justify-between items-center p-4 border-t border-gray-200" style="margin-bottom: 120px;">
+        <div class="flex justify-between items-center p-4 border-t border-gray-200" style="margin-bottom: 160px;">
           <div>
             <span class="text-sm text-gray-700">
               Showing {{ paginationStart }} to {{ paginationEnd }} of {{ totalTransactions }} transactions
@@ -365,7 +365,7 @@
         </div>
       </div>
     </div>
-    <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-50">
+    <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-[100]">
             <div class="flex items-center space-x-4">
               <span class="font-medium">{{ selectedTransactions.length }} transactions selected</span>
               <button 
