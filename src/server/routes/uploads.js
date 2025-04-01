@@ -83,7 +83,11 @@ router.get('/:uploadId/batches', async (req, res) => {
     
     // Find all batches for this upload
     const batches = await Batch.findAll({
-      where: sequelize.literal(`CAST("batch"."upload_id" AS TEXT) = '${uploadId.toString()}'`),
+      where: { 
+        uploadId: { 
+          [Op.eq]: uploadId.toString() 
+        } 
+      },
       include: [
         {
           model: Transaction,
@@ -139,17 +143,23 @@ router.get('/:uploadId/stats', async (req, res) => {
     
     // Count batches in this upload
     const batchCount = await Batch.count({
-      where: sequelize.literal(`CAST("batch"."upload_id" AS TEXT) = '${uploadId.toString()}'`)
+      where: {
+        uploadId: uploadId.toString()
+      }
     });
     
     // Count transactions in this upload
     const transactionCount = await Transaction.count({
-      where: sequelize.literal(`CAST("transaction"."upload_id" AS TEXT) = '${uploadId.toString()}'`)
+      where: {
+        uploadId: uploadId.toString()
+      }
     });
     
     // Get totals by transaction type
     const totals = await Transaction.findAll({
-      where: sequelize.literal(`CAST("transaction"."upload_id" AS TEXT) = '${uploadId.toString()}'`),
+      where: {
+        uploadId: uploadId.toString()
+      },
       attributes: [
         'type',
         [sequelize.fn('SUM', sequelize.col('amount')), 'total']
@@ -165,7 +175,12 @@ router.get('/:uploadId/stats', async (req, res) => {
     
     // Get categorization stats
     const categorizedCount = await Transaction.count({
-      where: sequelize.literal(`CAST("transaction"."upload_id" AS TEXT) = '${uploadId.toString()}' AND "transaction"."category_id" IS NOT NULL`)
+      where: {
+        uploadId: uploadId.toString(),
+        categoryId: {
+          [Op.not]: null
+        }
+      }
     });
     
     return res.json({
@@ -209,7 +224,10 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
     
     // Find the specific batch
     const batch = await Batch.findOne({
-      where: sequelize.literal(`CAST("batch"."id" AS TEXT) = '${batchId.toString()}' AND CAST("batch"."upload_id" AS TEXT) = '${uploadId.toString()}'`),
+      where: {
+        id: batchId.toString(),
+        uploadId: uploadId.toString()
+      },
       include: [
         {
           model: Transaction,
@@ -263,7 +281,10 @@ router.patch('/:uploadId/batches/:batchId', async (req, res) => {
     
     // Find the batch
     const batch = await Batch.findOne({
-      where: sequelize.literal(`CAST("batch"."id" AS TEXT) = '${batchId.toString()}' AND CAST("batch"."upload_id" AS TEXT) = '${uploadId.toString()}'`)
+      where: {
+        id: batchId.toString(),
+        uploadId: uploadId.toString()
+      }
     });
     
     if (!batch) {
@@ -563,7 +584,10 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
     
     // Get all transactions for this upload that don't already have a batch
     const transactions = await Transaction.findAll({
-      where: sequelize.literal(`"transaction"."upload_id"::text = '${uploadId.toString()}' AND "transaction"."batch_id" IS NULL`),
+      where: {
+        uploadId: uploadId.toString(),
+        batchId: null
+      },
       order: [['date', 'ASC']]
     });
     
@@ -634,7 +658,10 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
     
     // Handle remaining transactions (create a "Miscellaneous" batch)
     const remainingTransactions = await Transaction.findAll({
-      where: sequelize.literal(`"transaction"."upload_id"::text = '${uploadId.toString()}' AND "transaction"."batch_id" IS NULL`)
+      where: {
+        uploadId: uploadId.toString(),
+        batchId: null
+      }
     });
     
     if (remainingTransactions.length > 0) {
@@ -722,7 +749,10 @@ router.post('/:uploadId/complete', async (req, res) => {
     await Batch.update(
       { status: 'completed' },
       {
-        where: sequelize.literal(`"batch"."upload_id"::text = '${uploadId.toString()}' AND "batch"."status" = 'pending'`)
+        where: {
+          uploadId: uploadId.toString(),
+          status: 'pending'
+        }
       }
     );
     
@@ -758,31 +788,57 @@ router.get('/', async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
     
-    // Get all uploads with batch and transaction counts
+    // Get all uploads (without the complex counts for now)
     const uploads = await Upload.findAndCountAll({
       limit,
       offset,
-      order: [['createdAt', 'DESC']],
-      attributes: {
-        include: [
-          [
-            sequelize.literal(`(
-              SELECT COUNT(*)
-              FROM batches
-              WHERE CAST(batches.upload_id AS TEXT) = CAST("upload".id AS TEXT)
-            )`),
-            'batchCount'
-          ],
-          [
-            sequelize.literal(`(
-              SELECT COUNT(*)
-              FROM transactions
-              WHERE CAST(transactions.upload_id AS TEXT) = CAST("upload".id AS TEXT)
-            )`),
-            'transactionCount'
-          ]
-        ]
-      }
+      order: [['createdAt', 'DESC']]
+    });
+    
+    // Get batch and transaction counts separately to avoid complex SQL
+    const uploadIds = uploads.rows.map(upload => upload.id);
+    
+    // Get batch counts
+    const batchCounts = await Batch.findAll({
+      attributes: [
+        'uploadId',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: {
+        uploadId: {
+          [Op.in]: uploadIds.map(id => id.toString())
+        }
+      },
+      group: ['uploadId'],
+      raw: true
+    });
+    
+    // Get transaction counts
+    const transactionCounts = await Transaction.findAll({
+      attributes: [
+        'uploadId',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: sequelize.literal(`CAST("transaction"."upload_id" AS VARCHAR) IN (${uploadIds.map(id => `'${id.toString()}'`).join(", ")})`),
+      group: ['uploadId'],
+      raw: true
+    });
+    
+    // Create a map of counts
+    const batchCountMap = {};
+    batchCounts.forEach(item => {
+      batchCountMap[item.uploadId] = parseInt(item.count);
+    });
+    
+    const transactionCountMap = {};
+    transactionCounts.forEach(item => {
+      transactionCountMap[item.uploadId] = parseInt(item.count);
+    });
+    
+    // Add counts to upload objects
+    uploads.rows.forEach(upload => {
+      upload.dataValues.batchCount = batchCountMap[upload.id] || 0;
+      upload.dataValues.transactionCount = transactionCountMap[upload.id] || 0;
     });
     
     return res.json({
