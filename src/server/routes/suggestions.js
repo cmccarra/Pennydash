@@ -54,6 +54,8 @@ router.post('/batch', async (req, res) => {
     if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
       return res.status(400).json({ error: 'Transaction IDs array is required' });
     }
+
+    console.log(`Processing suggestions for ${transactionIds.length} transactions`);
     
     console.log(`[POST /suggestions/batch] Processing ${transactionIds.length} transactions with threshold ${confidenceThreshold}`);
     
@@ -75,10 +77,18 @@ router.post('/batch', async (req, res) => {
     console.log(`[POST /suggestions/batch] Found ${transactions.length} transactions`);
     
     // Get suggestions for the batch
+    // Get category suggestions with logging
+    console.log('Fetching suggestions from categorySuggestionService');
     const suggestionResult = await categorySuggestionService.suggestCategoriesForBatch(
       transactions,
       confidenceThreshold
     );
+    
+    console.log('Suggestion result:', {
+      suggestionsCount: suggestionResult.suggestions?.length,
+      topCategories: suggestionResult.topCategories,
+      averageConfidence: suggestionResult.averageConfidence
+    });
     
     // Fetch categories for all suggested categoryIds
     const categoryIds = [...new Set(
