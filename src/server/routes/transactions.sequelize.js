@@ -412,8 +412,132 @@ function calculateBatchStatistics(transactions) {
  * @param {Array} batchResults - Array of batch result objects
  * @returns {Object} Aggregated statistics
  */
+/**
+ * Optimized version of calculateBatchStatistics for large transaction sets
+ * Uses sampling for expensive operations but calculates core metrics accurately
+ * @param {Array} transactions - Array of transaction objects
+ * @returns {Object} Statistics object with totals, date ranges, etc.
+ */
+function calculateBatchStatisticsOptimized(transactions) {
+  console.log(`Using optimized batch statistics for ${transactions.length} transactions`);
+  
+  // Handle edge case of empty array
+  if (!transactions || transactions.length === 0) {
+    return {
+      totalTransactions: 0,
+      incomeTransactions: 0,
+      expenseTransactions: 0,
+      totalIncome: 0,
+      totalExpense: 0,
+      netAmount: 0,
+      netDirection: 'neutral',
+      dateRange: { from: null, to: null },
+      sources: [],
+      categorization: {
+        categorized: 0,
+        uncategorized: 0,
+        percentage: 0
+      },
+      isOptimized: true
+    };
+  }
+  
+  // Take a sample of transactions for expensive operations
+  const sampleSize = Math.min(200, transactions.length);
+  const sample = transactions.slice(0, sampleSize);
+  
+  // Count by type - use the full dataset for accuracy on these core metrics
+  const incomeTransactions = transactions.filter(t => t.type === 'income');
+  const expenseTransactions = transactions.filter(t => t.type === 'expense');
+  
+  // Calculate amounts
+  let totalIncome = incomeTransactions.reduce((sum, t) => {
+    const amount = parseFloat(t.amount) || 0;
+    return sum + amount;
+  }, 0);
+  
+  let totalExpense = expenseTransactions.reduce((sum, t) => {
+    const amount = parseFloat(t.amount) || 0;
+    return sum + amount;
+  }, 0);
+  
+  // Calculate net amounts
+  const netAmount = totalIncome - totalExpense;
+  const netDirection = netAmount > 0 ? 'positive' : (netAmount < 0 ? 'negative' : 'neutral');
+  
+  // Calculate date range using the full dataset
+  const dates = transactions
+    .map(t => new Date(t.date))
+    .filter(d => !isNaN(d.getTime()));
+  
+  let dateRange = {
+    from: null,
+    to: null
+  };
+  
+  if (dates.length > 0) {
+    dateRange.from = new Date(Math.min(...dates.map(d => d.getTime())));
+    dateRange.to = new Date(Math.max(...dates.map(d => d.getTime())));
+    
+    // Format dates
+    dateRange.from = dateRange.from.toISOString().split('T')[0];
+    dateRange.to = dateRange.to.toISOString().split('T')[0];
+  }
+  
+  // Calculate sources using the sample for performance
+  const sourceMap = {};
+  sample.forEach(t => {
+    const source = t.source || t.accountType || 'Unknown';
+    if (!sourceMap[source]) {
+      sourceMap[source] = 0;
+    }
+    sourceMap[source]++;
+  });
+  
+  const sources = Object.keys(sourceMap).map(key => ({
+    name: key,
+    count: sourceMap[key],
+    percentage: Math.round((sourceMap[key] / sample.length) * 100)
+  }));
+  
+  // Calculate categorization data using the sample
+  const categorized = sample.filter(t => t.categoryId != null).length;
+  const categorization = {
+    categorized,
+    uncategorized: sample.length - categorized,
+    percentage: Math.round((categorized / sample.length) * 100)
+  };
+  
+  // Return statistics
+  return {
+    totalTransactions: transactions.length,
+    incomeTransactions: incomeTransactions.length,
+    expenseTransactions: expenseTransactions.length,
+    totalIncome,
+    totalExpense,
+    netAmount,
+    netDirection,
+    dateRange,
+    sources,
+    categorization,
+    isOptimized: true
+  };
+}
+
 function calculateTotalStatistics(batchResults) {
+  console.log(`Calculating total statistics for ${batchResults.length} batches`);
+  
+  // Combine all transactions
   const allTransactions = batchResults.flatMap(batch => batch.transactions);
+  console.log(`Total of ${allTransactions.length} transactions across all batches`);
+  
+  // Use optimized function for large transaction sets
+  if (allTransactions.length > 500) {
+    console.log(`Using optimized statistics calculation for large dataset (${allTransactions.length} transactions)`);
+    return calculateBatchStatisticsOptimized(allTransactions);
+  }
+  
+  // Use standard calculation for smaller sets
   return calculateBatchStatistics(allTransactions);
 }
 
@@ -910,8 +1034,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
           returning: true
         });
         
-        // Calculate batch statistics
-        const batchStatistics = calculateBatchStatistics(savedBatch);
+        // Calculate batch statistics (use optimized function for large batches)
+        let batchStatistics;
+        if (savedBatch.length > 200) {
+          console.log(`[POST /uploads/${uploadId}/batches] - Using optimized statistics for large batch (${savedBatch.length} transactions)`);
+          batchStatistics = calculateBatchStatisticsOptimized(savedBatch);
+        } else {
+          batchStatistics = calculateBatchStatistics(savedBatch);
+        }
         
         batchResults.push({
           batchId,
@@ -939,8 +1069,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       returning: true
     });
     
-    // Calculate some statistics
-    const statistics = calculateBatchStatistics(savedTransactions);
+    // Calculate some statistics (optimized for large transaction sets)
+    let statistics;
+    if (savedTransactions.length > 200) {
+      console.log(`[POST /transactions/upload] - Using optimized statistics for large dataset (${savedTransactions.length} transactions)`);
+      statistics = calculateBatchStatisticsOptimized(savedTransactions);
+    } else {
+      statistics = calculateBatchStatistics(savedTransactions);
+    }
     
     res.status(201).json({
       message: `Successfully imported ${savedTransactions.length} transactions`,
@@ -1431,68 +1567,88 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     console.log(`[GET /uploads/${uploadId}/batches] - Finding transactions with this uploadId`);
     
     // Set a timeout for database operations to prevent hanging
-    const QUERY_TIMEOUT = 15000; // 15 seconds timeout (increased from 10 seconds)
+    const QUERY_TIMEOUT = 30000; // 30 seconds timeout (increased from 15 seconds)
     
-    // Create a promise that will reject after the timeout period
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        console.log(`⚠️ [WARNING] Database operation timeout triggered after ${QUERY_TIMEOUT/1000} seconds for upload ${uploadId}`);
-        reject(new Error(`Database operation timed out after ${QUERY_TIMEOUT/1000} seconds. This upload may contain too many transactions to process at once.`));
-      }, QUERY_TIMEOUT);
-    });
+    // Instead of fetching all transactions at once, we'll use pagination to retrieve them in batches
+    // This helps prevent timeouts by processing data in smaller chunks
+    const PAGE_SIZE = 100; // Process 100 transactions at a time
     
-    // Create the database query promise with timeouts enabled in the ORM
-    const dbQueryPromise = Transaction.findAll({
-      where: {
-        uploadId: uploadId
-      },
-      include: [
-        {
-          model: Category,
-          as: 'category',
-          attributes: ['id', 'name', 'color', 'icon'],
-          required: false
+    console.log(`[GET /uploads/${uploadId}/batches] - Using paginated query with page size: ${PAGE_SIZE}`);
+    
+    // Function to fetch transactions in pages
+    async function fetchTransactionPages() {
+      let offset = 0;
+      let allTransactions = [];
+      let hasMore = true;
+      
+      while (hasMore) {
+        console.log(`[GET /uploads/${uploadId}/batches] - Fetching page of transactions (offset: ${offset}, limit: ${PAGE_SIZE})`);
+        
+        // Create a promise that will reject after the timeout period for this page
+        const pageTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            console.log(`⚠️ [WARNING] Page query timeout triggered after ${QUERY_TIMEOUT/1000} seconds`);
+            reject(new Error(`Page query timed out after ${QUERY_TIMEOUT/1000} seconds.`));
+          }, QUERY_TIMEOUT);
+        });
+        
+        // Create the database query promise for this page
+        const pageQueryPromise = Transaction.findAll({
+          where: {
+            uploadId: uploadId
+          },
+          include: [
+            {
+              model: Category,
+              as: 'category',
+              attributes: ['id', 'name', 'color', 'icon'],
+              required: false
+            }
+          ],
+          order: [['date', 'DESC']],
+          limit: PAGE_SIZE,
+          offset: offset,
+          // Set ORM-level optimizations
+          lock: false,  // Avoid DB locks that could contribute to timeout issues
+          skipLocked: true // Skip rows that are locked
+        });
+        
+        try {
+          // Race the page query against the timeout
+          const pageResults = await Promise.race([pageQueryPromise, pageTimeoutPromise]);
+          
+          // Add the results to our collection
+          allTransactions = allTransactions.concat(pageResults);
+          console.log(`[GET /uploads/${uploadId}/batches] - Retrieved ${pageResults.length} transactions (total so far: ${allTransactions.length})`);
+          
+          // Check if we've reached the end
+          if (pageResults.length < PAGE_SIZE) {
+            hasMore = false;
+          } else {
+            // Move to the next page
+            offset += PAGE_SIZE;
+          }
+        } catch (error) {
+          console.error(`Error fetching transaction page:`, error);
+          // Stop fetching on error
+          hasMore = false;
+          
+          // If we already have some transactions, we'll continue with those
+          // instead of failing completely
+          if (allTransactions.length > 0) {
+            console.log(`[GET /uploads/${uploadId}/batches] - Continuing with ${allTransactions.length} transactions retrieved before error`);
+          } else {
+            // If we have no transactions at all, rethrow the error
+            throw error;
+          }
         }
-      ],
-      order: [['date', 'DESC']],
-      // Set ORM-level timeouts (if supported by Sequelize version)
-      ...((process.env.NODE_ENV === 'production') ? { 
-        lock: false,  // Avoid DB locks that could contribute to timeout issues
-        skipLocked: true // Skip rows that are locked
-      } : {})
-    });
-    
-    // Variable to store the timeout ID for cleanup
-    let timeoutId;
-    
-    // Create a wrapping promise that handles cleanup
-    const racePromise = new Promise(async (resolve, reject) => {
-      try {
-        // Set up the timeout handler with ability to clean up
-        timeoutId = setTimeout(() => {
-          console.log(`⚠️ [WARNING] Database query timeout for upload ${uploadId}`);
-          reject(new Error(`Database query timed out after ${QUERY_TIMEOUT/1000} seconds. This upload may contain too many transactions to process at once.`));
-        }, QUERY_TIMEOUT);
-        
-        // Execute the database query
-        const result = await dbQueryPromise;
-        
-        // Clear the timeout since the query completed
-        clearTimeout(timeoutId);
-        
-        // Resolve with the query result
-        resolve(result);
-      } catch (error) {
-        // Clear the timeout if there was an error with the query
-        clearTimeout(timeoutId);
-        
-        // Reject with the error
-        reject(error);
       }
-    });
+      
+      return allTransactions;
+    }
     
-    // Execute the race promise
-    const transactions = await racePromise;
+    // Fetch all transactions using pagination
+    const transactions = await fetchTransactionPages();
     
     console.log(`[GET /uploads/${uploadId}/batches] - Found ${transactions.length} transactions`);
     
@@ -1558,37 +1714,12 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     console.log(`[GET /uploads/${uploadId}/batches] - Unique batch IDs: ${JSON.stringify(uniqueBatchIds)}`);
     
     // Ensure that transactions have up-to-date data from database
-    // Create a promise that will reject after the timeout period (for the refresh operation)
-    const refreshTimeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Transaction refresh operation timed out after 10 seconds')), QUERY_TIMEOUT);
-    });
+    // Since we're already using paginated fetching, we don't need to refresh every transaction
+    // We can simply use the transactions we already fetched
+    console.log(`[GET /uploads/${uploadId}/batches] - Using already fetched transactions without additional refresh`);
     
-    // Create the refresh promise
-    const refreshPromise = Promise.all(
-      transactions.map(async tx => {
-        try {
-          // Get the latest version from the database with a timeout
-          const txTimeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error(`Transaction lookup timed out for ID ${tx.id}`)), QUERY_TIMEOUT / 2);
-          });
-          
-          const latestTx = await Promise.race([Transaction.findByPk(tx.id), txTimeoutPromise]);
-          return latestTx || tx; // Use the original if not found
-        } catch (err) {
-          console.warn(`Warning: Failed to refresh transaction ${tx.id}:`, err.message);
-          return tx; // Fall back to the original on error
-        }
-      })
-    );
-    
-    // Race the refresh operation against the timeout
-    let refreshedTransactions;
-    try {
-      refreshedTransactions = await Promise.race([refreshPromise, refreshTimeoutPromise]);
-    } catch (timeoutErr) {
-      console.warn(`Warning: ${timeoutErr.message}, using original transactions`);
-      refreshedTransactions = transactions; // Fall back to original transactions on timeout
-    }
+    // Skip the individual transaction refresh to improve performance
+    const refreshedTransactions = transactions;
     
     console.log(`[GET /uploads/${uploadId}/batches] - Refreshed ${refreshedTransactions.length} transactions from database`);
     
@@ -1758,16 +1889,46 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     }
     
     // Convert to array of batches with statistics
-    const batches = Object.keys(batchMap).map(batchId => {
+    console.log(`[GET /uploads/${uploadId}/batches] - Processing ${Object.keys(batchMap).length} batches`);
+    
+    // Convert map to array of batches for the response
+    console.log(`[GET /uploads/${uploadId}/batches] - Creating batch objects for ${Object.keys(batchMap).length} batches`);
+    const batches = [];
+    
+    // Process each batch
+    Object.keys(batchMap).forEach(batchId => {
       const batchTransactions = batchMap[batchId];
       console.log(`[GET /uploads/${uploadId}/batches] - Processing batch ${batchId} with ${batchTransactions.length} transactions`);
       
       // Take a sample transaction for debugging
       const sampleTx = batchTransactions[0];
-      console.log(`[GET /uploads/${uploadId}/batches] - Sample transaction: ${sampleTx.id} - ${sampleTx.description}`);
+      if (sampleTx) {
+        console.log(`[GET /uploads/${uploadId}/batches] - Sample transaction: ${sampleTx.id} - ${sampleTx.description}`);
+      }
       
       try {
-        const batchStats = calculateBatchStatistics(batchTransactions);
+        // Calculate statistics
+        let batchStats;
+        
+        try {
+          // Use optimized statistics for large batches
+          if (batchTransactions.length > 200) {
+            console.log(`Using optimized statistics for large batch ${batchId} (${batchTransactions.length} transactions)`);
+            batchStats = calculateBatchStatisticsOptimized(batchTransactions);
+          } else {
+            batchStats = calculateBatchStatistics(batchTransactions);
+          }
+        } catch (statsError) {
+          console.error(`Error calculating batch statistics for ${batchId}:`, statsError);
+          // Provide fallback statistics
+          batchStats = {
+            totalTransactions: batchTransactions.length,
+            incomeTransactions: 0,
+            expenseTransactions: 0,
+            netAmount: 0,
+            error: statsError.message
+          };
+        }
         
         // Generate batch title/summary if not already present
         let batchTitle = '';
@@ -1804,13 +1965,17 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           }
         }
         
-        return {
+        // Create a batch object with the calculated data
+        const batchObject = {
           batchId,
           title: batchTitle,
           transactions: batchTransactions,
           statistics: batchStats,
           status: batchTransactions[0]?.enrichmentStatus || 'pending'
         };
+        
+        // Add to batches array
+        batches.push(batchObject);
       } catch (statError) {
         console.error(`Error calculating statistics for batch ${batchId}:`, statError);
         // In case of error, still try to provide a helpful title
@@ -1835,7 +2000,8 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           console.error(`Error generating fallback title:`, titleError);
         }
         
-        return {
+        // Create an error batch object
+        const errorBatchObject = {
           batchId,
           title: errorTitle,
           transactions: batchTransactions,
@@ -1845,6 +2011,9 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           },
           status: 'error'
         };
+        
+        // Add to batches array
+        batches.push(errorBatchObject);
       }
     });
     
@@ -2002,7 +2171,15 @@ router.get('/batches/needs-enrichment', async (req, res) => {
     const batches = Object.keys(batchMap).map(batchId => {
       try {
         const batchTransactions = batchMap[batchId];
-        const batchStats = calculateBatchStatistics(batchTransactions);
+        
+        // Use optimized statistics for large batches
+        let batchStats;
+        if (batchTransactions.length > 200) {
+          console.log(`[GET /batches/needs-enrichment] - Using optimized statistics for large batch ${batchId} (${batchTransactions.length} transactions)`);
+          batchStats = calculateBatchStatisticsOptimized(batchTransactions);
+        } else {
+          batchStats = calculateBatchStatistics(batchTransactions);
+        }
         
         // Determine the status based on the transactions
         let batchStatus = 'needs_enrichment';
@@ -2441,8 +2618,14 @@ router.put('/batches/:batchId/enrich', async (req, res) => {
       });
     }
     
-    // Calculate statistics for the batch
-    const statistics = calculateBatchStatistics(updatedTransactions);
+    // Calculate statistics for the batch (optimized for large datasets)
+    let statistics;
+    if (updatedTransactions.length > 200) {
+      console.log(`[PUT /batches/${batchId}/enrich] - Using optimized statistics for large batch (${updatedTransactions.length} transactions)`);
+      statistics = calculateBatchStatisticsOptimized(updatedTransactions);
+    } else {
+      statistics = calculateBatchStatistics(updatedTransactions);
+    }
     
     // Build the response with enrichment data
     const response = {
