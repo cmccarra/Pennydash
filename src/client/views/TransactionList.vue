@@ -1,7 +1,7 @@
 <template>
   <div class="transaction-list">
     <h1 class="text-2xl font-bold text-gray-900 mb-6">Transactions</h1>
-    
+
     <!-- Filters and Controls -->
     <div class="card mb-6">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -16,7 +16,7 @@
               @input="applyFilters"
             />
           </div>
-          
+
           <div class="flex-shrink-0 w-32">
             <select v-model="filters.category" class="input" @change="applyFilters">
               <option value="">All Categories</option>
@@ -30,7 +30,7 @@
               </option>
             </select>
           </div>
-          
+
           <div class="flex-shrink-0 w-32">
             <select v-model="filters.type" class="input" @change="applyFilters">
               <option value="">All Types</option>
@@ -39,7 +39,7 @@
             </select>
           </div>
         </div>
-        
+
         <!-- Batch Actions -->
         <div class="w-full md:w-1/3 flex justify-end gap-2">
           <button 
@@ -53,7 +53,7 @@
             </svg>
             Categorize Selected ({{ selectedTransactions.length }})
           </button>
-          
+
           <button 
             @click="createTransaction" 
             class="btn btn-success flex items-center gap-1"
@@ -66,19 +66,19 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Transaction List -->
     <div class="card">
       <div v-if="isLoading" class="py-8 text-center">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
         <p class="mt-2 text-gray-600">Loading transactions...</p>
       </div>
-      
+
       <div v-else-if="error" class="p-4 bg-red-100 text-red-700 rounded mb-4">
         {{ error }}
         <button @click="fetchTransactions" class="ml-2 underline">Retry</button>
       </div>
-      
+
       <div v-else-if="filteredTransactions.length === 0" class="py-8 text-center">
         <p class="text-gray-600">No transactions found.</p>
         <p v-if="hasFiltersApplied" class="mt-2 text-sm text-gray-500">
@@ -88,7 +88,7 @@
           <router-link to="/upload" class="underline">Upload some transactions</router-link> to get started.
         </p>
       </div>
-      
+
       <div v-else>
         <!-- Transaction List Header -->
         <div class="flex items-center p-4 font-medium text-gray-700 bg-gray-50 border-b border-gray-200">
@@ -106,11 +106,11 @@
           <div class="w-32">Category</div>
           <div class="w-24 text-right">Actions</div>
         </div>
-        
+
         <!-- Transaction Items -->
         <div class="divide-y divide-gray-200">
           <div 
-            v-for="transaction in filteredTransactions" 
+            v-for="transaction in paginatedTransactions" 
             :key="transaction.id"
             class="flex items-center p-4 hover:bg-gray-50"
           >
@@ -166,9 +166,10 @@
             </div>
           </div>
         </div>
-        
+
         <!-- Pagination -->
-        <div class="flex justify-between items-center p-4 border-t border-gray-200">
+        <!-- Add bottom padding to accommodate floating bar -->
+        <div class="flex justify-between items-center p-4 border-t border-gray-200 mb-20">
           <div>
             <span class="text-sm text-gray-700">
               Showing {{ paginationStart }} to {{ paginationEnd }} of {{ totalTransactions }} transactions
@@ -193,7 +194,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Transaction Modal -->
     <div 
       v-if="showTransactionModal" 
@@ -204,7 +205,7 @@
           <h3 class="text-lg font-medium text-gray-900 mb-4">
             {{ isEditing ? 'Edit Transaction' : 'Add Transaction' }}
           </h3>
-          
+
           <form @submit.prevent="saveTransaction">
             <div class="mb-4">
               <label for="description" class="label">Description</label>
@@ -216,7 +217,7 @@
                 required
               />
             </div>
-            
+
             <div class="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label for="amount" class="label">Amount</label>
@@ -230,7 +231,7 @@
                   required
                 />
               </div>
-              
+
               <div>
                 <label for="date" class="label">Date</label>
                 <input 
@@ -242,7 +243,7 @@
                 />
               </div>
             </div>
-            
+
             <div class="mb-4">
               <label for="type" class="label">Type</label>
               <select id="type" v-model="currentTransaction.type" class="input">
@@ -250,7 +251,7 @@
                 <option value="income">Income</option>
               </select>
             </div>
-            
+
             <div class="mb-4">
               <CategorySelector 
                 v-model="currentTransaction.categoryId"
@@ -260,7 +261,7 @@
                 @category-created="categoryCreated"
               />
             </div>
-            
+
             <div class="mb-4">
               <label for="notes" class="label">Notes</label>
               <textarea 
@@ -270,7 +271,7 @@
                 rows="3"
               ></textarea>
             </div>
-            
+
             <div class="flex justify-end space-x-3">
               <button 
                 type="button" 
@@ -287,7 +288,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Batch Edit Modal -->
     <div 
       v-if="showBatchEditModal" 
@@ -298,7 +299,7 @@
           <h3 class="text-lg font-medium text-gray-900 mb-4">
             Categorize {{ selectedTransactions.length }} Transactions
           </h3>
-          
+
           <form @submit.prevent="saveBatchEdit">
             <div class="mb-6">
               <CategorySelector 
@@ -309,7 +310,7 @@
                 @category-created="categoryCreated"
               />
             </div>
-            
+
             <div class="flex justify-end space-x-3">
               <button 
                 type="button" 
@@ -330,7 +331,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Delete Confirmation Modal -->
     <div 
       v-if="showDeleteModal" 
@@ -341,11 +342,11 @@
           <h3 class="text-lg font-medium text-gray-900 mb-4">
             Delete Transaction
           </h3>
-          
+
           <p class="mb-6 text-gray-700">
             Are you sure you want to delete this transaction? This action cannot be undone.
           </p>
-          
+
           <div class="flex justify-end space-x-3">
             <button 
               type="button" 
@@ -365,6 +366,25 @@
         </div>
       </div>
     </div>
+    <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-50">
+            <div class="flex items-center space-x-4">
+              <span class="font-medium">{{ selectedTransactions.length }} transactions selected</span>
+              <button 
+                @click="selectAllFiltered" 
+                class="btn btn-secondary btn-sm"
+                v-if="selectedTransactions.length < filteredTransactions.length"
+              >
+                Select All {{ filteredTransactions.length }} Transactions
+              </button>
+              <button 
+                @click="clearSelection" 
+                class="btn btn-secondary btn-sm"
+                v-else
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
   </div>
 </template>
 
@@ -377,15 +397,15 @@ import CategorySelector from '../components/CategorySelector.vue';
 
 export default defineComponent({
   name: 'TransactionList',
-  
+
   components: {
     CategorySelector
   },
-  
+
   setup() {
     const route = useRoute();
     const router = useRouter();
-    
+
     // State
     const isLoading = ref(true);
     const error = ref('');
@@ -399,7 +419,7 @@ export default defineComponent({
     const selectedTransactions = ref([]);
     const itemsPerPage = 20;
     const currentPage = ref(1);
-    
+
     // Modal state
     const showTransactionModal = ref(false);
     const showBatchEditModal = ref(false);
@@ -408,14 +428,14 @@ export default defineComponent({
     const transactionToDelete = ref(null);
     const batchEditCategoryId = ref('');
     const isEditing = ref(false);
-    
+
     // Provide categories to child components
     provide('categories', categories);
-    
+
     // Computed properties
     const filteredTransactions = computed(() => {
       let result = [...transactions.value];
-      
+
       // Apply search filter
       if (filters.value.search) {
         const searchTerm = filters.value.search.toLowerCase();
@@ -424,61 +444,61 @@ export default defineComponent({
           t.notes?.toLowerCase().includes(searchTerm)
         );
       }
-      
+
       // Apply category filter
       if (filters.value.category === 'uncategorized') {
         result = result.filter(t => !t.categoryId);
       } else if (filters.value.category) {
         result = result.filter(t => t.categoryId === filters.value.category);
       }
-      
+
       // Apply type filter
       if (filters.value.type) {
         result = result.filter(t => t.type === filters.value.type);
       }
-      
+
       return result;
     });
-    
+
     const totalTransactions = computed(() => filteredTransactions.value.length);
     const totalPages = computed(() => Math.ceil(totalTransactions.value / itemsPerPage));
-    
+
     const paginatedTransactions = computed(() => {
       const start = (currentPage.value - 1) * itemsPerPage;
       const end = start + itemsPerPage;
       return filteredTransactions.value.slice(start, end);
     });
-    
+
     const paginationStart = computed(() => {
       if (totalTransactions.value === 0) return 0;
       return (currentPage.value - 1) * itemsPerPage + 1;
     });
-    
+
     const paginationEnd = computed(() => {
       if (totalTransactions.value === 0) return 0;
       return Math.min(currentPage.value * itemsPerPage, totalTransactions.value);
     });
-    
+
     const isAllSelected = computed(() => {
       return paginatedTransactions.value.length > 0 && 
             paginatedTransactions.value.every(t => isSelected(t.id));
     });
-    
+
     const hasFiltersApplied = computed(() => {
       return filters.value.search || filters.value.category || filters.value.type;
     });
-    
+
     // Methods
     const fetchTransactions = async () => {
       isLoading.value = true;
       error.value = '';
-      
+
       try {
         const [transactionsData, categoriesData] = await Promise.all([
           transactionsApi.getAll(),
           categoriesApi.getAll()
         ]);
-        
+
         transactions.value = transactionsData;
         categories.value = categoriesData;
       } catch (err) {
@@ -488,10 +508,10 @@ export default defineComponent({
         isLoading.value = false;
       }
     };
-    
+
     const formatDate = (dateString) => {
       if (!dateString) return '';
-      
+
       const date = new Date(dateString);
       return date.toLocaleDateString(undefined, {
         year: 'numeric',
@@ -499,30 +519,30 @@ export default defineComponent({
         day: 'numeric'
       });
     };
-    
+
     const getCategoryName = (categoryId) => {
       if (!categoryId) return 'Uncategorized';
-      
+
       const category = categories.value.find(c => c.id === categoryId);
       return category ? category.name : 'Uncategorized';
     };
-    
+
     const getCategoryStyle = (categoryId) => {
       if (!categoryId) return { backgroundColor: '#f3f4f6', color: '#6b7280' };
-      
+
       const category = categories.value.find(c => c.id === categoryId);
       if (!category) return { backgroundColor: '#f3f4f6', color: '#6b7280' };
-      
+
       return { 
         backgroundColor: `${category.color}30`, 
         color: category.color 
       };
     };
-    
+
     const applyFilters = () => {
       currentPage.value = 1;
       selectedTransactions.value = [];
-      
+
       // Update URL query params
       router.replace({ 
         query: { 
@@ -531,7 +551,7 @@ export default defineComponent({
         } 
       });
     };
-    
+
     const resetFilters = () => {
       filters.value = {
         search: '',
@@ -540,29 +560,29 @@ export default defineComponent({
       };
       currentPage.value = 1;
       selectedTransactions.value = [];
-      
+
       // Update URL query params
       router.replace({ query: {} });
     };
-    
+
     const nextPage = () => {
       if (currentPage.value < totalPages.value) {
         currentPage.value++;
         selectedTransactions.value = [];
       }
     };
-    
+
     const previousPage = () => {
       if (currentPage.value > 1) {
         currentPage.value--;
         selectedTransactions.value = [];
       }
     };
-    
+
     const isSelected = (id) => {
       return selectedTransactions.value.includes(id);
     };
-    
+
     const toggleSelect = (id) => {
       const index = selectedTransactions.value.indexOf(id);
       if (index === -1) {
@@ -571,12 +591,10 @@ export default defineComponent({
         selectedTransactions.value.splice(index, 1);
       }
     };
-    
+
     const toggleSelectAll = () => {
       if (isAllSelected.value) {
-        selectedTransactions.value = selectedTransactions.value.filter(
-          id => !paginatedTransactions.value.some(t => t.id === id)
-        );
+        selectedTransactions.value = [];
       } else {
         paginatedTransactions.value.forEach(t => {
           if (!isSelected(t.id)) {
@@ -585,7 +603,20 @@ export default defineComponent({
         });
       }
     };
-    
+
+    const selectAllFiltered = () => {
+      filteredTransactions.value.forEach(t => {
+        if (!isSelected(t.id)) {
+          selectedTransactions.value.push(t.id);
+        }
+      });
+    };
+
+    const clearSelection = () => {
+      selectedTransactions.value = [];
+    };
+
+
     const createTransaction = () => {
       currentTransaction.value = {
         description: '',
@@ -598,13 +629,13 @@ export default defineComponent({
       isEditing.value = false;
       showTransactionModal.value = true;
     };
-    
+
     const editTransaction = (transaction) => {
       currentTransaction.value = { ...transaction };
       isEditing.value = true;
       showTransactionModal.value = true;
     };
-    
+
     const saveTransaction = async () => {
       try {
         if (isEditing.value) {
@@ -612,7 +643,7 @@ export default defineComponent({
         } else {
           await transactionsApi.create(currentTransaction.value);
         }
-        
+
         showTransactionModal.value = false;
         await fetchTransactions();
       } catch (err) {
@@ -620,12 +651,12 @@ export default defineComponent({
         alert('Error saving transaction. Please try again.');
       }
     };
-    
+
     const deleteTransaction = (id) => {
       transactionToDelete.value = id;
       showDeleteModal.value = true;
     };
-    
+
     const confirmDelete = async () => {
       try {
         await transactionsApi.delete(transactionToDelete.value);
@@ -637,18 +668,18 @@ export default defineComponent({
         alert('Error deleting transaction. Please try again.');
       }
     };
-    
+
     const saveBatchEdit = async () => {
       try {
         if (!batchEditCategoryId.value || selectedTransactions.value.length === 0) {
           return;
         }
-        
+
         await transactionsApi.batchCategorize({
           transactionIds: selectedTransactions.value,
           categoryId: batchEditCategoryId.value
         });
-        
+
         showBatchEditModal.value = false;
         batchEditCategoryId.value = '';
         selectedTransactions.value = [];
@@ -658,16 +689,16 @@ export default defineComponent({
         alert('Error updating categories. Please try again.');
       }
     };
-    
+
     const cancelBatchEdit = () => {
       showBatchEditModal.value = false;
       batchEditCategoryId.value = '';
     };
-    
+
     const categoryCreated = (newCategory) => {
       categories.value.push(newCategory);
     };
-    
+
     // Watch for route changes
     watch(() => route.query, (newQuery) => {
       if (newQuery.filter !== filters.value.category) {
@@ -675,12 +706,12 @@ export default defineComponent({
         currentPage.value = 1;
       }
     });
-    
+
     // Initialize
     onMounted(() => {
       fetchTransactions();
     });
-    
+
     return {
       isLoading,
       error,
@@ -715,6 +746,8 @@ export default defineComponent({
       isSelected,
       toggleSelect,
       toggleSelectAll,
+      selectAllFiltered,
+      clearSelection,
       createTransaction,
       editTransaction,
       saveTransaction,
