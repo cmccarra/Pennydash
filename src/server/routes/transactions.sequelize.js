@@ -3058,8 +3058,22 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
       error: 'Failed to complete upload',
       details: error.message
     });
-  } need to handle errors more gracefully so the client doesn't hang
+  }
+});
+  
+// Create a new route for updating transaction status more gracefully
+// This prevents client-side hanging during long database operations
+router.post('/uploads/:uploadId/updateTransactions', async (req, res) => {
     try {
+      const { Transaction } = getModels();
+      const { uploadId } = req.params;
+      
+      if (!uploadId) {
+        return res.status(400).json({ error: 'Upload ID is required' });
+      }
+      
+      console.log(`🔍 [SERVER] Updating transaction status for uploadId: ${uploadId}`);
+      
       // Create a promise that updates the transactions with a shorter timeout
       const updatePromise = Transaction.update(
         { enrichmentStatus: 'completed' },
@@ -3084,76 +3098,62 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
       if (updatedCount === 0) {
         console.warn(`⚠️ [SERVER] No transactions were updated for uploadId: ${uploadId}. This might indicate an issue.`);
       }
-    } catch (updateError) {
-      console.error(`⚠️ [SERVER] Error updating transaction status:`, updateError);
-      // If it's a timeout, we should still return some response
-      if (updateError.message === 'Database operation timed out') {
-        console.warn(`⚠️ [SERVER] Database update timed out - returning partial response`);
-        return res.json({
-          message: `Completed upload process (update timed out)`,
-          uploadId,
-          status: 'completed',
-          partial: true,
-          timedOut: true
+      
+      // Get the updated transactions (with a timeout)
+      let transactions = [];
+      try {
+        const findPromise = Transaction.findAll({
+          where: {
+            uploadId: uploadId
+          },
+          limit: 1000 // Limit to prevent excessive data loading
         });
+        
+        // Race the find operation against a timeout
+        transactions = await Promise.race([
+          findPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Find operation timed out')), 5000))
+        ]);
+        
+        console.log(`🔍 [SERVER] Found ${transactions.length} transactions for uploadId: ${uploadId}`);
+      } catch (findError) {
+        console.error(`⚠️ [SERVER] Error retrieving transactions:`, findError);
+        // If it's a timeout, we should still return some response
+        if (findError.message === 'Find operation timed out') {
+          console.warn(`⚠️ [SERVER] Transaction retrieval timed out - returning simplified response`);
+          return res.json({
+            message: `Completed upload process (retrieval timed out)`,
+            uploadId,
+            status: 'completed',
+            partial: true,
+            timedOut: true
+          });
+        }
       }
-      // Continue processing despite other errors - we'll try to return whatever data we can
-    }
-    
-    // Get the updated transactions (with a timeout)
-    let transactions = [];
-    try {
-      const findPromise = Transaction.findAll({
-        where: {
-          uploadId: uploadId
-        },
-        limit: 1000 // Limit to prevent excessive data loading
+      
+      // Get unique batch IDs (safely)
+      const batchIds = [...new Set((transactions || []).map(t => t.batchId).filter(Boolean))];
+      console.log(`🔍 [SERVER] Found ${batchIds.length} unique batch IDs`);
+      
+      const response = {
+        message: `Completed upload with ${transactions.length} transactions across ${batchIds.length} batches`,
+        uploadId,
+        batchIds,
+        status: 'completed'
+      };
+      
+      console.log(`🔍 [SERVER] Sending response for complete upload:`, JSON.stringify(response));
+      res.json(response);
+      
+    } catch (error) {
+      console.error('Error updating transactions:', error);
+      res.status(500).json({ 
+        error: error.message,
+        uploadId: req.params.uploadId,
+        status: 'error'
       });
-      
-      // Race the find operation against a timeout
-      transactions = await Promise.race([
-        findPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Find operation timed out')), 5000))
-      ]);
-      
-      console.log(`🔍 [SERVER] Found ${transactions.length} transactions for uploadId: ${uploadId}`);
-    } catch (findError) {
-      console.error(`⚠️ [SERVER] Error retrieving transactions:`, findError);
-      // If it's a timeout, we should still return some response
-      if (findError.message === 'Find operation timed out') {
-        console.warn(`⚠️ [SERVER] Transaction retrieval timed out - returning simplified response`);
-        return res.json({
-          message: `Completed upload process (retrieval timed out)`,
-          uploadId,
-          status: 'completed',
-          partial: true,
-          timedOut: true
-        });
-      }
     }
-    
-    // Get unique batch IDs (safely)
-    const batchIds = [...new Set((transactions || []).map(t => t.batchId).filter(Boolean))];
-    console.log(`🔍 [SERVER] Found ${batchIds.length} unique batch IDs`);
-    
-    const response = {
-      message: `Completed upload with ${transactions.length} transactions across ${batchIds.length} batches`,
-      uploadId,
-      batchIds,
-      status: 'completed'
-    };
-    
-    console.log(`🔍 [SERVER] Sending response for complete upload:`, JSON.stringify(response));
-    res.json(response);
-  } catch (error) {
-    console.error('Error completing upload:', error);
-    res.status(500).json({ 
-      error: error.message,
-      uploadId: req.params.uploadId,
-      status: 'error'
-    });
-  }
-});
+  });
 
 // Get upload statistics (unique source file names, account types, etc.)
 router.get('/upload-stats', async (req, res) => {
@@ -3332,6 +3332,148 @@ router.put('/uploads/:fileId/account-info', async (req, res) => {
 // Complete an upload
 // PUT route for completing upload removed - using POST endpoint instead
 
+// Get batch details including transactions for a specific batch within an upload
+router.get('/uploads/:uploadId/batches/:batchId', async (req, res) => {
+  try {
+    const { uploadId, batchId } = req.params;
+    console.log(`[GET /uploads/${uploadId}/batches/${batchId}] - Fetching batch details`);
+    
+    // Validate params
+    if (!uploadId || !batchId) {
+      return res.status(400).json({ 
+        error: 'Missing parameters',
+        details: 'Both uploadId and batchId are required'
+      });
+    }
+    
+    const { Transaction, Category, Batch } = getModels();
+    
+    // First, try to find the actual batch record
+    const batch = await Batch.findOne({
+      where: { id: batchId, uploadId: uploadId }
+    });
+    
+    // Fetch transactions associated with this batch
+    const transactions = await Transaction.findAll({
+      where: { 
+        uploadId: uploadId,
+        batchId: batchId
+      },
+      include: [{
+        model: Category,
+        as: 'category'
+      }],
+      order: [['date', 'DESC']]
+    });
+    
+    if (transactions.length === 0) {
+      return res.status(404).json({
+        error: 'Batch not found',
+        details: `No transactions found for batch ${batchId} in upload ${uploadId}`
+      });
+    }
+    
+    // Generate batch summary
+    const batchInfo = await generateBatchSummary(transactions);
+    
+    // Calculate batch statistics
+    const statistics = transactions.length > 200 
+      ? calculateBatchStatisticsOptimized(transactions)
+      : calculateBatchStatistics(transactions);
+    
+    // Return batch details
+    res.json({
+      batchId,
+      uploadId,
+      title: batch?.title || batchInfo.summary,
+      summary: batchInfo.summary,
+      insights: batchInfo.insights || [],
+      statistics,
+      transactions: transactions.map(t => {
+        const plainTransaction = t.get({ plain: true });
+        return {
+          ...plainTransaction,
+          categoryName: plainTransaction.category?.name || null
+        };
+      }),
+      status: transactions[0]?.enrichmentStatus || 'pending'
+    });
+  } catch (error) {
+    console.error(`Error fetching batch details:`, error);
+    res.status(500).json({ 
+      error: 'Server error',
+      details: error.message
+    });
+  }
+});
+
+// Helper function to generate batch summary
+async function generateBatchSummary(transactions) {
+  if (!transactions || transactions.length === 0) {
+    return { summary: "Empty batch" };
+  }
+  
+  try {
+    // Check for common merchant
+    const merchants = [...new Set(transactions.map(t => t.merchant).filter(Boolean))];
+    if (merchants.length === 1) {
+      return { summary: `Transactions from ${merchants[0]}` };
+    }
+    
+    // If available, use OpenAI to generate a better summary
+    if (process.env.OPENAI_API_KEY) {
+      const openaiService = require('../services/openai');
+      
+      if (!openaiService.isRateLimited()) {
+        try {
+          const descriptions = transactions.slice(0, 5).map(t => t.description).join(", ");
+          
+          const prompt = `Summarize these financial transactions in 5 words or less: ${descriptions}`;
+          
+          const client = openaiService.getOpenAIClient();
+          if (client) {
+            const completion = await openaiService.callWithRetry(
+              async () => await client.chat.completions.create({
+                model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
+                messages: [
+                  { role: "system", content: "Summarize financial transactions in 5 words or less." },
+                  { role: "user", content: prompt }
+                ],
+                temperature: 0.3,
+                max_tokens: 20
+              })
+            );
+            
+            const summary = completion.choices[0].message.content.trim();
+            if (summary) {
+              return { summary };
+            }
+          }
+        } catch (error) {
+          console.error('Error generating batch summary with OpenAI:', error);
+          // Fall through to default summary
+        }
+      }
+    }
+    
+    // Default summary based on date range
+    const dates = transactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
+    
+    if (dates.length > 0) {
+      const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+      const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+      
+      return { 
+        summary: `Transactions from ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`
+      };
+    }
+    
+    return { summary: `Batch of ${transactions.length} transactions` };
+  } catch (error) {
+    console.error('Error generating batch summary:', error);
+    return { summary: `Batch of ${transactions.length} transactions` };
+  }
+}
 
 
 module.exports = router;
