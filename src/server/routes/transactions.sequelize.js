@@ -19,7 +19,12 @@ const { v4: uuidv4 } = require('uuid');
  * @param {Array} transactions - Array of transactions to organize
  * @returns {Array} Array of transaction batches with metadata
  */
-function organizeIntoBatches(transactions) {
+// Import the improved batch organization logic from our service module
+const batchOrganization = require('../services/batchOrganization');
+const { organizeIntoBatches, findCommonWords, getDateRange, getFormattedDateRange } = batchOrganization;
+
+// Legacy function kept for reference, but not used
+function _organizeIntoBatchesOld(transactions) {
   const natural = require('natural');
   const maxBatchSize = 50; // Max transactions per batch
   const batches = [];
@@ -289,65 +294,7 @@ function organizeIntoBatches(transactions) {
   return batches;
 }
 
-/**
- * Helper function to get date range from a batch of transactions
- * @param {Array} transactions - Array of transactions
- * @returns {Object} Object with from and to dates in YYYY-MM-DD format
- */
-function getDateRange(transactions) {
-  try {
-    const dates = transactions
-      .map(t => t.date ? new Date(t.date) : null)
-      .filter(d => d && !isNaN(d.getTime()));
-    
-    if (dates.length === 0) {
-      return { from: 'unknown', to: 'unknown' };
-    }
-    
-    const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
-    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
-    
-    return {
-      from: minDate.toISOString().split('T')[0],
-      to: maxDate.toISOString().split('T')[0]
-    };
-  } catch (error) {
-    console.error('Error calculating date range:', error);
-    return { from: 'unknown', to: 'unknown' };
-  }
-}
-
-/**
- * Helper function to find common words across descriptions
- * @param {Array} descriptions - Array of transaction descriptions
- * @returns {Array} Array of common words
- */
-function findCommonWords(descriptions) {
-  try {
-    // Join all descriptions and split into words
-    const words = descriptions.join(' ').split(/\s+/);
-    const wordCounts = {};
-    
-    // Count occurrences of each word
-    words.forEach(word => {
-      if (word.length > 3) { // Skip short words
-        const normalized = word.toLowerCase().replace(/[^\w]/g, '');
-        if (normalized) {
-          wordCounts[normalized] = (wordCounts[normalized] || 0) + 1;
-        }
-      }
-    });
-    
-    // Find most common words
-    return Object.entries(wordCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 2)
-      .map(entry => entry[0]);
-  } catch (error) {
-    console.error('Error finding common words:', error);
-    return [];
-  }
-}
+// NOTE: getDateRange and findCommonWords functions are now imported from batchOrganization service
 
 /**
  * Calculate statistics for a batch of transactions
@@ -1763,6 +1710,9 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
       
       if (unbatchedTransactions.length > 0) {
         console.log(`[GET /uploads/${uploadId}/batches] - Found ${unbatchedTransactions.length} transactions without batch IDs after recovery attempt`);
+        
+        // Use the improved batch organization service for better grouping
+        // We already imported batchOrganization at the top of the file
         
         // Use our sophisticated organizeIntoBatches function to create logical groupings
         const newBatches = organizeIntoBatches(unbatchedTransactions);
