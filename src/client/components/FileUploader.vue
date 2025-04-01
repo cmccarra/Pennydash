@@ -123,6 +123,7 @@ export default defineComponent({
     const isDragging = ref(false);
     const error = ref('');
     const uploadResult = ref(null);
+    const moreMenuOpen = ref(false);
     
     const handleFileChange = (event) => {
       const files = event.target.files;
@@ -238,6 +239,7 @@ export default defineComponent({
       isDragging,
       error,
       uploadResult,
+      moreMenuOpen,
       handleFileChange,
       handleFileDrop,
       uploadFile,

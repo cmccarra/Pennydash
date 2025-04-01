@@ -1,3 +1,185 @@
+
+/**
+ * API service for making requests to the server
+ */
+const API_BASE_URL = '/api';
+
+// Helper function to handle API responses
+const handleResponse = async (response) => {
+  if (!response.ok) {
+    // Try to get error details from the response
+    let errorMessage;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorData.message || `API error: ${response.status}`;
+    } catch (e) {
+      errorMessage = `API error: ${response.status} ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+  
+  return response.json();
+};
+
+// Helper for retrying failed requests
+const fetchWithRetry = async (url, options, retries = 3, delay = 500) => {
+  try {
+    const response = await fetch(url, options);
+    return await handleResponse(response);
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`Retrying request to ${url}, ${retries} attempts left...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return fetchWithRetry(url, options, retries - 1, delay * 1.5);
+    }
+    throw error;
+  }
+};
+
+// Transaction API endpoints
+const transactionsApi = {
+  // Get all transactions
+  getAll: async () => {
+    try {
+      return await fetchWithRetry(`${API_BASE_URL}/transactions`);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      throw error;
+    }
+  },
+  
+  // Upload file for transaction import
+  upload: async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch(`${API_BASE_URL}/transactions/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      throw error;
+    }
+  },
+  
+  // Confirm a transaction upload
+  confirmUpload: async (uploadId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/uploads/${uploadId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Error confirming upload:', error);
+      throw error;
+    }
+  },
+  
+  // Cancel a transaction upload
+  cancelUpload: async (uploadId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/uploads/${uploadId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Error canceling upload:', error);
+      throw error;
+    }
+  },
+  
+  // Get upload batches
+  getUploadBatches: async (uploadId) => {
+    try {
+      return await fetchWithRetry(`${API_BASE_URL}/uploads/${uploadId}/batches`);
+    } catch (error) {
+      console.error('Error fetching upload batches:', error);
+      throw error;
+    }
+  }
+};
+
+// Categories API endpoints
+const categoriesApi = {
+  getAll: async () => {
+    try {
+      return await fetchWithRetry(`${API_BASE_URL}/categories`);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      throw error;
+    }
+  }
+};
+
+// Reports API endpoints
+const reportsApi = {
+  getDashboard: async () => {
+    try {
+      return await fetchWithRetry(`${API_BASE_URL}/reports/dashboard`);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      throw error;
+    }
+  },
+  
+  getCategorySummary: async () => {
+    try {
+      return await fetchWithRetry(`${API_BASE_URL}/reports/category-summary`);
+    } catch (error) {
+      console.error('Error fetching category summary:', error);
+      throw error;
+    }
+  }
+};
+
+// Settings API endpoints
+const settingsApi = {
+  getSettings: async () => {
+    try {
+      return await fetchWithRetry(`${API_BASE_URL}/settings`);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      throw error;
+    }
+  },
+  
+  updateSettings: async (settings) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/settings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(settings)
+      });
+      
+      return await handleResponse(response);
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      throw error;
+    }
+  }
+};
+
+export {
+  transactionsApi,
+  categoriesApi,
+  reportsApi,
+  settingsApi
+};
+
 /**
  * API service for making HTTP requests to the backend
  */

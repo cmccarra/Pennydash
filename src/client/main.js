@@ -1,3 +1,17 @@
+
+import { createApp } from 'vue'
+import App from './App.vue'
+
+// Ensure Vue is in production mode
+if (process.env.NODE_ENV !== 'production') {
+  console.log('Running in development mode');
+} else {
+  console.log('Running in production mode');
+}
+
+const app = createApp(App)
+app.mount('#app')
+
 import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
