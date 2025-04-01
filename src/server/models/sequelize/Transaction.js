@@ -162,18 +162,18 @@ class Transaction extends Model {
         comment: 'Source file name or import method'
       },
       uploadId: {
-        type: DataTypes.UUID,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'ID of the upload batch this transaction belongs to',
+        comment: 'ID of the upload batch this transaction belongs to - stored as VARCHAR in DB but referenced as UUID',
         references: {
           model: 'uploads',
           key: 'id'
         }
       },
       batchId: {
-        type: DataTypes.UUID,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'ID of the specific batch within an upload this transaction belongs to',
+        comment: 'ID of the specific batch within an upload this transaction belongs to - stored as VARCHAR in DB but referenced as UUID',
         references: {
           model: 'batches',
           key: 'id'

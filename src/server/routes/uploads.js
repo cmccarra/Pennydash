@@ -11,6 +11,9 @@ const { getDB } = require('../db/sequelize');
 const Sequelize = require('sequelize');
 const { Op } = Sequelize;
 
+// Get OpenAI service for batch summaries (if available)
+const openaiService = require('../services/openai');
+
 // Set up file storage with multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -81,18 +84,16 @@ router.get('/:uploadId/batches', async (req, res) => {
       });
     }
     
-    // Find all batches for this upload
+    // Find all batches for this upload (uploadId in batches table is UUID)
     const batches = await Batch.findAll({
       where: { 
-        uploadId: { 
-          [Op.eq]: uploadId.toString() 
-        } 
+        uploadId: uploadId.toString()
       },
       include: [
         {
           model: Transaction,
           as: 'transactions',
-          attributes: ['id', 'description', 'amount', 'date', 'categoryId', 'type']
+          attributes: ['id', 'description', 'amount', 'date', 'categoryId', 'type', 'merchant']
         }
       ],
       order: [
@@ -100,9 +101,56 @@ router.get('/:uploadId/batches', async (req, res) => {
       ]
     });
     
+    // Generate summaries for each batch
+    const batchesWithSummaries = await Promise.all(
+      batches.map(async (batch) => {
+        // Generate a summary if one isn't already set
+        if (!batch.title || batch.title === 'Untitled Batch') {
+          const summary = await generateBatchSummary(batch.transactions);
+          // Update the batch title in the database if we generated a good summary
+          if (summary && summary.summary) {
+            try {
+              await batch.update({ title: summary.summary });
+              batch.title = summary.summary;
+            } catch (updateError) {
+              console.error(`Error updating batch title: ${updateError.message}`);
+              // Continue even if update fails
+            }
+          }
+        }
+        
+        // Calculate statistics for the batch
+        const totalAmount = batch.transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+        const merchantCounts = {};
+        batch.transactions.forEach(tx => {
+          const merchant = tx.merchant || 'Unknown';
+          merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
+        });
+        
+        // Find the most common merchant
+        let dominantMerchant = null;
+        let maxCount = 0;
+        Object.entries(merchantCounts).forEach(([merchant, count]) => {
+          if (count > maxCount) {
+            maxCount = count;
+            dominantMerchant = merchant;
+          }
+        });
+        
+        return {
+          ...batch.toJSON(),
+          statistics: {
+            totalAmount,
+            dominantMerchant,
+            transactionCount: batch.transactions.length
+          }
+        };
+      })
+    );
+    
     return res.json({
       uploadId,
-      batches
+      batches: batchesWithSummaries
     });
   } catch (error) {
     console.error('Error getting upload batches:', error);
@@ -249,7 +297,50 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
       });
     }
     
-    return res.json(batch);
+    // Generate a summary if one isn't already set
+    if (!batch.title || batch.title === 'Untitled Batch') {
+      const summary = await generateBatchSummary(batch.transactions);
+      // Update the batch title in the database if we generated a good summary
+      if (summary && summary.summary) {
+        try {
+          await batch.update({ title: summary.summary });
+          batch.title = summary.summary;
+        } catch (updateError) {
+          console.error(`Error updating batch title: ${updateError.message}`);
+          // Continue even if update fails
+        }
+      }
+    }
+    
+    // Calculate batch statistics
+    const totalAmount = batch.transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+    const merchantCounts = {};
+    batch.transactions.forEach(tx => {
+      const merchant = tx.merchant || 'Unknown';
+      merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
+    });
+    
+    // Find the most common merchant
+    let dominantMerchant = null;
+    let maxCount = 0;
+    Object.entries(merchantCounts).forEach(([merchant, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        dominantMerchant = merchant;
+      }
+    });
+    
+    // Add statistics to the batch response
+    const batchWithStats = {
+      ...batch.toJSON(),
+      statistics: {
+        totalAmount,
+        dominantMerchant,
+        transactionCount: batch.transactions.length
+      }
+    };
+    
+    return res.json(batchWithStats);
   } catch (error) {
     console.error('Error getting batch details:', error);
     return res.status(500).json({
@@ -374,6 +465,44 @@ router.post('/', upload.single('file'), async (req, res) => {
     console.error('Error uploading file:', error);
     return res.status(500).json({
       error: 'Failed to upload file',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * @route POST /uploads/dummy
+ * @desc Create a dummy upload for testing
+ * @access Public
+ */
+router.post('/dummy', async (req, res) => {
+  try {
+    // Get the database models after initialization
+    const sequelize = getDB();
+    const { Upload } = sequelize.models;
+    
+    const { name, source, type } = req.body;
+    
+    // Create upload record in database
+    const upload = await Upload.create({
+      filename: 'dummy-file.csv',
+      originalFilename: name || 'Dummy Upload',
+      fileType: type || 'csv',
+      fileSize: 1024,
+      status: 'pending',
+      importSource: source || 'Test'
+    });
+    
+    // Return the upload record
+    return res.status(201).json({
+      message: 'Dummy upload created successfully',
+      uploadId: upload.id,
+      upload
+    });
+  } catch (error) {
+    console.error('Error creating dummy upload:', error);
+    return res.status(500).json({
+      error: 'Failed to create dummy upload',
       details: error.message
     });
   }
@@ -819,7 +948,11 @@ router.get('/', async (req, res) => {
         'uploadId',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
-      where: sequelize.literal(`CAST("transaction"."upload_id" AS VARCHAR) IN (${uploadIds.map(id => `'${id.toString()}'`).join(", ")})`),
+      where: {
+        uploadId: {
+          [Op.in]: uploadIds.map(id => id.toString())
+        }
+      },
       group: ['uploadId'],
       raw: true
     });
@@ -856,5 +989,144 @@ router.get('/', async (req, res) => {
     });
   }
 });
+
+/**
+ * Helper function to generate a batch summary using transactions
+ * @param {Array} transactions - Array of transactions in the batch
+ * @returns {Promise<Object>} Object with summary information
+ */
+async function generateBatchSummary(transactions) {
+  if (!transactions || transactions.length === 0) {
+    return { summary: "Empty batch" };
+  }
+  
+  try {
+    // Check for common merchant
+    const merchants = [...new Set(transactions.map(t => t.merchant).filter(Boolean))];
+    if (merchants.length === 1) {
+      return { summary: `Transactions from ${merchants[0]}` };
+    }
+    
+    // If available, use OpenAI to generate a better summary
+    if (openaiService.isAvailable() && !openaiService.isRateLimited()) {
+      try {
+        // Get a client instance
+        const client = openaiService.getOpenAIClient();
+        if (client) {
+          // Get date range
+          const dates = transactions.map(t => new Date(t.date));
+          const minDate = new Date(Math.min(...dates));
+          const maxDate = new Date(Math.max(...dates));
+          
+          // Format dates
+          const startDate = minDate.toISOString().split('T')[0];
+          const endDate = maxDate.toISOString().split('T')[0];
+          
+          // Calculate total amount
+          const totalAmount = transactions.reduce((sum, tx) => {
+            const amount = parseFloat(tx.amount);
+            return sum + (isNaN(amount) ? 0 : amount);
+          }, 0);
+          
+          // Format amount
+          const formattedAmount = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+          }).format(Math.abs(totalAmount));
+          
+          // Get transaction types
+          const expenseCount = transactions.filter(t => t.type === 'expense').length;
+          const incomeCount = transactions.filter(t => t.type === 'income').length;
+          
+          // Prepare merchant data
+          const merchantCounts = {};
+          transactions.forEach(tx => {
+            const merchant = tx.merchant || 'Unknown';
+            merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
+          });
+          
+          // Get top merchants (up to 3)
+          const topMerchants = Object.entries(merchantCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([name, count]) => ({ name, count }));
+          
+          // Prepare transaction list for prompt
+          const txList = transactions.slice(0, 10).map(tx => ({
+            date: tx.date,
+            description: tx.description,
+            amount: tx.amount,
+            type: tx.type,
+            merchant: tx.merchant
+          }));
+          
+          // Create a comprehensive prompt
+          const prompt = JSON.stringify({
+            instructions: "Generate a concise, 5-8 word title that accurately summarizes these transactions. The title should highlight the common theme (merchant, purpose, or time period). Make it human-readable and useful for financial tracking.",
+            batchInfo: {
+              transactionCount: transactions.length,
+              dateRange: { startDate, endDate },
+              totalAmount: formattedAmount,
+              isExpense: totalAmount < 0,
+              transactionTypes: { 
+                expenseCount, 
+                incomeCount 
+              },
+              topMerchants
+            },
+            transactions: txList
+          });
+          
+          // Make the API call
+          const completion = await openaiService.callWithRetry(
+            async () => {
+              return await client.chat.completions.create({
+                model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. Do not change this unless explicitly requested by the user
+                messages: [
+                  { 
+                    role: "system", 
+                    content: "You are a financial data analyst. Create concise, meaningful summaries of transaction batches." 
+                  },
+                  { role: "user", content: prompt }
+                ],
+                temperature: 0.2,
+                max_tokens: 30
+              });
+            }
+          );
+          
+          const summary = completion.choices[0].message.content.trim();
+          if (summary) {
+            return { summary };
+          }
+        }
+      } catch (error) {
+        console.error('Error generating batch summary with OpenAI:', error);
+        // Fall through to default summary
+      }
+    }
+    
+    // Default summary based on date range and transaction count
+    const dates = transactions.map(t => new Date(t.date));
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    
+    // Calculate total amount
+    const totalAmount = transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+    const formattedAmount = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(Math.abs(totalAmount));
+    
+    const typeDesc = totalAmount < 0 ? 'Expenses' : 'Income';
+    
+    return { 
+      summary: `${typeDesc} (${formattedAmount}) - ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`
+    };
+  } catch (error) {
+    console.error('Error generating batch summary:', error);
+    return { summary: `Batch of ${transactions.length} transactions` };
+  }
+}
 
 module.exports = router;

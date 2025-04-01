@@ -18,6 +18,7 @@ const suggestionRoutes = require('./routes/suggestions');
 const aiStatusRoutes = require('./routes/ai-status');
 const categorizationRoutes = require('./routes/categorization');
 const uploadsRoutes = require('./routes/uploads');
+const transactionTestRoutes = require('./routes/transactions-test');
 
 // Initialize express app
 const app = express();
@@ -46,6 +47,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Use routes
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/transactions', transactionReviewedRoutes);
+app.use('/api/transactions', transactionTestRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
