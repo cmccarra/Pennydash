@@ -14,6 +14,86 @@ const { Op } = Sequelize;
 // Get OpenAI service for batch summaries (if available)
 const openaiService = require('../services/openai');
 
+/**
+ * Generate a summary for a batch based on its transactions
+ * @param {Array} transactions - Array of transactions in the batch
+ * @returns {Object} Summary object with title and insights
+ */
+async function generateBatchSummary(transactions) {
+  try {
+    if (!transactions || transactions.length === 0) {
+      return { summary: 'Empty Batch', insights: [] };
+    }
+
+    // Format transactions for OpenAI processing
+    const transactionData = transactions.map(tx => ({
+      date: tx.date,
+      description: tx.description,
+      amount: tx.amount,
+      type: tx.type,
+      merchant: tx.merchant || 'Unknown',
+      category: tx.category ? tx.category.name : 'Uncategorized'
+    }));
+
+    // Use OpenAI to generate a summary if available
+    if (openaiService && openaiService.generateBatchSummary) {
+      try {
+        const summary = await openaiService.generateBatchSummary(transactionData);
+        return summary;
+      } catch (error) {
+        console.error('Error generating batch summary with OpenAI:', error);
+        // Continue with fallback
+      }
+    }
+
+    // Fallback: Generate a basic summary based on transaction metadata
+    // Get date range
+    const dates = transactions.map(tx => new Date(tx.date)).sort((a, b) => a - b);
+    const startDate = dates[0];
+    const endDate = dates[dates.length - 1];
+    
+    // Format dates
+    const formatDate = (date) => {
+      const options = { month: 'short', day: 'numeric' };
+      return date.toLocaleDateString('en-US', options);
+    };
+    
+    // Count merchants
+    const merchantCounts = {};
+    transactions.forEach(tx => {
+      const merchant = tx.merchant || 'Unknown';
+      merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
+    });
+    
+    // Get dominant merchant if one accounts for >50% of transactions
+    let dominantMerchant = null;
+    Object.entries(merchantCounts).forEach(([merchant, count]) => {
+      if (count / transactions.length > 0.5) {
+        dominantMerchant = merchant;
+      }
+    });
+    
+    // Generate a title
+    let title = '';
+    if (dominantMerchant && dominantMerchant !== 'Unknown') {
+      title = `${dominantMerchant} (${formatDate(startDate)} - ${formatDate(endDate)})`;
+    } else {
+      title = `${transactions.length} Transactions (${formatDate(startDate)} - ${formatDate(endDate)})`;
+    }
+    
+    return {
+      summary: title,
+      insights: [
+        `${transactions.length} transactions from ${formatDate(startDate)} to ${formatDate(endDate)}`,
+        `Includes merchants: ${Object.keys(merchantCounts).slice(0, 3).join(', ')}${Object.keys(merchantCounts).length > 3 ? '...' : ''}`
+      ]
+    };
+  } catch (error) {
+    console.error('Error generating batch summary:', error);
+    return { summary: 'Transaction Batch', insights: [] };
+  }
+}
+
 // Set up file storage with multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -74,7 +154,7 @@ router.get('/:uploadId/batches', async (req, res) => {
   try {
     // Get the database models after initialization
     const sequelize = getDB();
-    const { Batch, Transaction } = sequelize.models;
+    const { Batch, Transaction, Upload } = sequelize.models;
     
     const { uploadId } = req.params;
     
@@ -84,22 +164,145 @@ router.get('/:uploadId/batches', async (req, res) => {
       });
     }
     
-    // Find all batches for this upload (uploadId in batches table is UUID)
-    const batches = await Batch.findAll({
-      where: { 
-        uploadId: uploadId.toString()
-      },
-      include: [
-        {
-          model: Transaction,
-          as: 'transactions',
-          attributes: ['id', 'description', 'amount', 'date', 'categoryId', 'type', 'merchant']
-        }
-      ],
-      order: [
-        ['createdAt', 'DESC']
-      ]
-    });
+    console.log(`Getting batches for upload ID: ${uploadId}`);
+    
+    // Check if the uploadId is a UUID or string format
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uploadId);
+    
+    let batches = [];
+    
+    if (isUUID) {
+      // For UUID format IDs, use standard query
+      console.log(`Looking up batches using UUID format: ${uploadId}`);
+      batches = await Batch.findAll({
+        where: { 
+          uploadId: uploadId
+        },
+        include: [
+          {
+            model: Transaction,
+            as: 'transactions',
+            // Use database-specific query for the join condition to handle type conversion
+            on: sequelize.literal(`"transactions"."batch_id"::uuid = "batch"."id"::uuid`),
+            attributes: ['id', 'description', 'amount', 'date', 'categoryId', 'type', 'merchant']
+          }
+        ],
+        order: [
+          ['createdAt', 'DESC']
+        ]
+      });
+    } else {
+      // For string format IDs like "upload_1234567890", we need a different approach
+      console.log(`Looking up using string format ID: ${uploadId}`);
+      
+      // First check if any real batches exist
+      try {
+        batches = await Batch.findAll({
+          where: { 
+            uploadId: uploadId
+          },
+          include: [
+            {
+              model: Transaction,
+              as: 'transactions',
+              attributes: ['id', 'description', 'amount', 'date', 'categoryId', 'type', 'merchant']
+            }
+          ],
+          order: [
+            ['createdAt', 'DESC']
+          ]
+        });
+      } catch (error) {
+        console.log(`Error finding batches with string ID, continuing with alternative lookup: ${error.message}`);
+      }
+      
+      // If no batches found, check transactions with batchId starting with uploadId_batch_
+      if (batches.length === 0) {
+        console.log('No standard batches found, looking for string format batch IDs in transactions');
+        
+        // Find all transactions for this upload
+        const transactions = await Transaction.findAll({
+          where: {
+            uploadId: uploadId
+          },
+          attributes: ['id', 'batchId', 'description', 'amount', 'date', 'categoryId', 'type', 'merchant']
+        });
+        
+        // Group transactions by batchId
+        const batchesMap = {};
+        transactions.forEach(tx => {
+          if (tx.batchId && tx.batchId.startsWith(uploadId)) {
+            if (!batchesMap[tx.batchId]) {
+              batchesMap[tx.batchId] = {
+                transactions: []
+              };
+            }
+            batchesMap[tx.batchId].transactions.push(tx);
+          }
+        });
+        
+        // Create virtual batch objects
+        batches = Object.entries(batchesMap).map(([batchId, data]) => {
+          const txs = data.transactions;
+          
+          // Calculate batch statistics
+          let totalAmount = 0;
+          let startDate = null;
+          let endDate = null;
+          let merchantCounts = {};
+          
+          txs.forEach(transaction => {
+            totalAmount += parseFloat(transaction.amount);
+            
+            const txDate = new Date(transaction.date);
+            if (!startDate || txDate < startDate) startDate = txDate;
+            if (!endDate || txDate > endDate) endDate = txDate;
+            
+            const merchant = transaction.merchant || 'Unknown';
+            merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
+          });
+          
+          // Find dominant merchant (if any)
+          let dominantMerchant = null;
+          let maxCount = 0;
+          Object.entries(merchantCounts).forEach(([merchant, count]) => {
+            if (count > maxCount) {
+              maxCount = count;
+              dominantMerchant = merchant;
+            }
+          });
+          
+          // Create a virtual batch
+          return {
+            id: batchId,
+            uploadId: uploadId,
+            title: 'Virtual Batch',
+            type: 'custom',
+            startDate: startDate ? startDate.toISOString().split('T')[0] : null,
+            endDate: endDate ? endDate.toISOString().split('T')[0] : null,
+            transactionCount: txs.length,
+            totalAmount,
+            dominantMerchant,
+            transactions: txs,
+            isVirtual: true,
+            toJSON: function() {
+              return {
+                id: this.id,
+                uploadId: this.uploadId,
+                title: this.title,
+                type: this.type,
+                startDate: this.startDate,
+                endDate: this.endDate,
+                transactionCount: this.transactionCount,
+                totalAmount: this.totalAmount,
+                dominantMerchant: this.dominantMerchant,
+                isVirtual: true
+              };
+            }
+          };
+        });
+      }
+    }
     
     // Generate summaries for each batch
     const batchesWithSummaries = await Promise.all(
@@ -270,16 +473,50 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
       });
     }
     
-    // Find the specific batch
-    const batch = await Batch.findOne({
-      where: {
-        id: batchId.toString(),
-        uploadId: uploadId.toString()
-      },
-      include: [
-        {
-          model: Transaction,
-          as: 'transactions',
+    // Check if we're dealing with new UUIDs or old string format IDs
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(batchId);
+    
+    // Declare batch outside the if blocks to make it accessible throughout the function
+    let batch;
+    
+    // For UUID batches, use the model's association
+    // For string format IDs (upload_XXX_batch_Y), use raw query to avoid type conversion issues
+    if (isUUID) {
+      // Use standard Sequelize query for UUID formatted IDs
+      batch = await Batch.findOne({
+        where: {
+          id: batchId,
+          uploadId: uploadId
+        },
+        include: [
+          {
+            model: Transaction,
+            as: 'transactions',
+            required: false,
+            include: [
+              {
+                model: Category,
+                as: 'category',
+                attributes: ['id', 'name', 'type', 'color']
+              }
+            ]
+          }
+        ]
+      });
+    } else {
+      console.log(`Looking for batch with uploadId=${uploadId}, batchId=${batchId} (string format)`);
+      
+      try {
+        // For string IDs like "upload_1743221430232_batch_2", we need a completely different approach
+        // Skip the batch lookup in the batches table - go straight to finding transactions
+        console.log('Checking for transactions with this batchId');
+          
+        // Check if any transactions exist with this batchId
+        const transactions = await Transaction.findAll({
+          where: {
+            uploadId: uploadId,
+            batchId: batchId
+          },
           include: [
             {
               model: Category,
@@ -287,9 +524,96 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
               attributes: ['id', 'name', 'type', 'color']
             }
           ]
+        });
+        
+        console.log(`Found ${transactions.length} transactions with batchId=${batchId}`);
+        
+        if (transactions.length > 0) {
+          // Create a "virtual" batch from the transactions
+          // Calculate batch statistics
+          let totalAmount = 0;
+          let startDate = null;
+          let endDate = null;
+          let merchantCounts = {};
+          
+          transactions.forEach(transaction => {
+            totalAmount += parseFloat(transaction.amount);
+            
+            const txDate = new Date(transaction.date);
+            if (!startDate || txDate < startDate) startDate = txDate;
+            if (!endDate || txDate > endDate) endDate = txDate;
+            
+            const merchant = transaction.merchant || 'Unknown';
+            merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
+          });
+          
+          // Find dominant merchant (if any)
+          let dominantMerchant = null;
+          let maxCount = 0;
+          Object.entries(merchantCounts).forEach(([merchant, count]) => {
+            if (count > maxCount) {
+              maxCount = count;
+              dominantMerchant = merchant;
+            }
+          });
+          
+          // Create a virtual batch object with a toJSON method to mimic a Sequelize model
+          batch = {
+            id: batchId,
+            uploadId: uploadId,
+            title: 'Virtual Batch',
+            type: 'custom',
+            startDate: startDate ? startDate.toISOString().split('T')[0] : null,
+            endDate: endDate ? endDate.toISOString().split('T')[0] : null,
+            transactionCount: transactions.length,
+            totalAmount,
+            dominantMerchant,
+            transactions,
+            isVirtual: true, // Flag to indicate this is not a real batch record
+            toJSON: function() {
+              return {
+                id: this.id,
+                uploadId: this.uploadId,
+                title: this.title,
+                type: this.type,
+                startDate: this.startDate,
+                endDate: this.endDate,
+                transactionCount: this.transactionCount,
+                totalAmount: this.totalAmount,
+                dominantMerchant: this.dominantMerchant,
+                transactions: this.transactions,
+                isVirtual: this.isVirtual
+              };
+            },
+            update: async function(fields) {
+              // No-op update method since this is a virtual object
+              console.log('Cannot update virtual batch, but would update these fields:', fields);
+              // We can still update the in-memory object for the current request
+              if (fields.title) {
+                this.title = fields.title;
+              }
+              return this;
+            }
+          };
+        } else {
+          console.log('No transactions found with this batch ID');
+          
+          // Try a more flexible search to understand what's in the database
+          const sampleTransactions = await Transaction.findAll({
+            where: {
+              uploadId: uploadId
+            },
+            attributes: ['id', 'batchId'],
+            limit: 5
+          });
+          
+          console.log('Sample transactions from this upload:', 
+            sampleTransactions.map(t => ({ id: t.id, batchId: t.batchId })));
         }
-      ]
-    });
+      } catch (error) {
+        console.error('Error during batch or transaction lookup:', error);
+      }
+    }
     
     if (!batch) {
       return res.status(404).json({
@@ -298,18 +622,35 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
     }
     
     // Generate a summary if one isn't already set
-    if (!batch.title || batch.title === 'Untitled Batch') {
+    if (!batch.title || batch.title === 'Untitled Batch' || batch.title === 'Virtual Batch') {
+      console.log(`Generating summary for batch with title: "${batch.title}"`);
+      
       const summary = await generateBatchSummary(batch.transactions);
+      console.log('OpenAI generated summary:', summary);
+      
       // Update the batch title in the database if we generated a good summary
       if (summary && summary.summary) {
         try {
-          await batch.update({ title: summary.summary });
-          batch.title = summary.summary;
+          console.log(`Updating batch title to: "${summary.summary}"`);
+          
+          if (batch.isVirtual) {
+            console.log(`Updating virtual batch title in response only to: "${summary.summary}"`);
+            // For virtual batches, just update the title in the response
+            batch.title = summary.summary;
+          } else {
+            // For real batches, update in the database
+            await batch.update({ title: summary.summary });
+            batch.title = summary.summary;
+          }
         } catch (updateError) {
           console.error(`Error updating batch title: ${updateError.message}`);
           // Continue even if update fails
         }
+      } else {
+        console.log('No valid summary was generated by OpenAI');
       }
+    } else {
+      console.log(`Using existing batch title: "${batch.title}"`);
     }
     
     // Calculate batch statistics

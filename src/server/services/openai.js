@@ -47,6 +47,105 @@ function isOpenAIConfigured() {
   return !!getOpenAIClient();
 }
 
+/**
+ * Generate a summary for a batch of transactions
+ * @param {Array} transactions - Array of transaction objects
+ * @returns {Promise<Object>} Object with summary and insights
+ */
+async function generateBatchSummary(transactions) {
+  // Check if OpenAI is available
+  if (!isAvailable()) {
+    console.log(`[OpenAI] API not available for batch summary`);
+    return {
+      summary: "Transactions Batch",
+      insights: ["OpenAI API not available for generating insights."]
+    };
+  }
+
+  try {
+    console.log(`[OpenAI] Generating summary for ${transactions.length} transactions`);
+    metrics.apiCalls++;
+    
+    // Format transactions for the prompt
+    const transactionSummary = transactions.slice(0, 15).map((t, idx) => 
+      `Transaction ${idx + 1}: "${t.description}" for $${t.amount} (${t.type || 'expense'})${t.merchant ? ` - Merchant: ${t.merchant}` : ''}${t.category ? ` - Category: ${t.category}` : ''}`
+    ).join('\n');
+    
+    const totalAmount = transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0).toFixed(2);
+    
+    // Get date range info
+    const dates = transactions
+      .map(t => new Date(t.date))
+      .filter(d => !isNaN(d.getTime()))
+      .sort((a, b) => a - b);
+    
+    const dateRangeSummary = dates.length > 0 
+      ? `Date range: ${dates[0].toLocaleDateString()} to ${dates[dates.length-1].toLocaleDateString()}` 
+      : 'Date range: Unknown';
+    
+    // Create the API request configuration
+    const requestConfig = {
+      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. Do not change this unless explicitly requested by the user
+      messages: [{
+        role: "system",
+        content: "You are a financial analyst assistant. Your task is to analyze transaction data and provide a concise, informative summary. Focus on identifying patterns, dominant merchants, time periods, and any notable insights."
+      }, {
+        role: "user",
+        content: `Please analyze these transactions and provide a summary and key insights:\n\n${transactionSummary}\n\n${dateRangeSummary}\nTotal amount: $${totalAmount}\nTotal transactions: ${transactions.length}`
+      }],
+      temperature: 0.3,
+      max_tokens: 400,
+      response_format: { type: "json_object" }
+    };
+    
+    // Make API call with retry logic
+    const completion = await callWithRetry(
+      async () => {
+        const client = getOpenAIClient();
+        if (!client) {
+          throw new Error('OpenAI client not available');
+        }
+        return await client.chat.completions.create(requestConfig);
+      }
+    );
+    
+    // Parse the JSON response
+    const responseText = completion.choices[0].message.content.trim();
+    console.log(`[OpenAI] Batch summary response: ${responseText}`);
+    
+    try {
+      const response = JSON.parse(responseText);
+      
+      // Expected format: { summary: string, insights: string[] }
+      return {
+        summary: response.summary || "Transaction Batch",
+        insights: Array.isArray(response.insights) ? response.insights : 
+                 (response.insights ? [response.insights] : [])
+      };
+    } catch (parseError) {
+      console.error('[OpenAI] Failed to parse JSON response:', parseError);
+      metrics.errors++;
+      
+      // Fallback - extract key information from text
+      const lines = responseText.split('\n').filter(line => line.trim());
+      const summary = lines[0] || "Transaction Batch";
+      const insights = lines.slice(1).filter(line => line.trim());
+      
+      return {
+        summary,
+        insights: insights.length > 0 ? insights : ["No additional insights available."]
+      };
+    }
+  } catch (error) {
+    console.error('[OpenAI] API Error generating batch summary:', error);
+    metrics.errors++;
+    return {
+      summary: "Transaction Batch",
+      insights: [`Error generating insights: ${error.message}`]
+    };
+  }
+}
+
 // Flag to simulate API failures (for testing)
 const SIMULATE_FAILURE = process.env.SIMULATE_OPENAI_FAILURE === 'true';
 
@@ -851,6 +950,7 @@ function getStatus() {
 module.exports = {
   categorizeTransaction,
   categorizeBatch,
+  generateBatchSummary,
   findMatchingCategory,
   getMetrics,
   resetMetrics,
