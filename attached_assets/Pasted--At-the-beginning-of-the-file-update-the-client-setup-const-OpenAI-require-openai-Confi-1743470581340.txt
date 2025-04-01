@@ -1,0 +1,177 @@
+// At the beginning of the file, update the client setup
+const OpenAI = require('openai');
+
+// Configure OpenAI client with error handling
+const openai = process.env.OPENAI_API_KEY ? 
+  new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : 
+  null;
+
+// Add a function to check if OpenAI is properly configured
+function isOpenAIConfigured() {
+  return !!openai;
+}
+
+// Update the isRateLimited function
+function isRateLimited() {
+  // If simulating failure, always return true
+  if (SIMULATE_FAILURE) {
+    console.log('[OpenAI] Simulating API failure for testing');
+    metrics.isRateLimited = true;
+    return true;
+  }
+
+  // If OpenAI is not configured, we should consider it rate limited
+  if (!isOpenAIConfigured()) {
+    console.log('[OpenAI] OpenAI is not configured');
+    return true;
+  }
+  
+  // If we've seen a rate limit error recently, enforce a cooldown period
+  if (metrics.lastRateLimitTime > 0) {
+    const timeSinceLastRateLimit = Date.now() - metrics.lastRateLimitTime;
+    if (timeSinceLastRateLimit < RATE_LIMIT_WINDOW) {
+      // Still in the rate limit cooldown window
+      return true;
+    } else {
+      // Reset rate limit status after cooldown
+      metrics.lastRateLimitTime = 0;
+      metrics.isRateLimited = false;
+    }
+  }
+  
+  return metrics.isRateLimited;
+}
+
+// Update categorizeTransaction function
+async function categorizeTransaction(description, amount, type = 'expense', existingCategories = []) {
+  // Create cache key - normalize to avoid case sensitivity issues
+  const cacheKey = generateCacheKey(description, amount, type);
+  
+  // Check cache first
+  const cachedResult = getFromCache(cacheKey);
+  if (cachedResult) {
+    console.log(`[OpenAI] Cache hit for transaction: "${description}"`);
+    return {
+      ...cachedResult,
+      fromCache: true
+    };
+  }
+  
+  // If OpenAI is not configured, return a fallback result
+  if (!isOpenAIConfigured()) {
+    console.log('[OpenAI] Not configured, using fallback categorization');
+    return {
+      categoryName: null,
+      confidence: 0.1,
+      reasoning: "OpenAI API key not configured",
+      error: true
+    };
+  }
+  
+  try {
+    console.log(`[OpenAI] Categorizing transaction: "${description}" for $${amount} (${type})`);
+    metrics.apiCalls++;
+    
+    // Prepare system instruction with existing categories if available
+    let systemContent = "You are a financial transaction categorizer. Analyze the transaction and provide a category.";
+    
+    if (existingCategories && existingCategories.length > 0) {
+      // Format categories for the prompt
+      const categoryOptions = existingCategories
+        .filter(cat => cat.type === type || type === 'unknown') // Only include relevant category types
+        .map(cat => `- ${cat.name} (${cat.type})`)
+        .join('\n');
+      
+      if (categoryOptions) {
+        systemContent += `\n\nPlease categorize into one of these existing categories:\n${categoryOptions}\n\nIf none fit well, suggest a new category name.`;
+      }
+    }
+
+    // Add instruction to return as JSON
+    systemContent += "\n\nRespond with a JSON object containing:\n1. category: The suggested category name\n2. confidence: Your confidence score (0.0-1.0) in this categorization\n3. reasoning: Brief explanation for why this category fits";
+
+    // Create the API request configuration
+    const requestConfig = {
+      model: "gpt-4o",
+      messages: [{
+        role: "system",
+        content: systemContent
+      }, {
+        role: "user",
+        content: `Categorize this ${type} transaction: "${description}" for $${amount}`
+      }],
+      temperature: 0.2,
+      max_tokens: 300,
+      response_format: { type: "json_object" }
+    };
+    
+    // Set a timeout for the OpenAI call
+    const openaiPromise = callWithRetry(
+      async () => await openai.chat.completions.create(requestConfig)
+    );
+    
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('OpenAI API call timed out')), 10000));
+    
+    // Use Promise.race to implement the timeout
+    const completion = await Promise.race([openaiPromise, timeoutPromise]);
+    
+    // Parse the JSON response
+    const responseText = completion.choices[0].message.content.trim();
+    console.log(`[OpenAI] Raw response: ${responseText}`);
+    
+    try {
+      const response = JSON.parse(responseText);
+      
+      // Format and validate the response
+      const result = {
+        categoryName: response.category || null,
+        confidence: parseFloat(response.confidence) || 0.5,
+        reasoning: response.reasoning || "No reasoning provided",
+        responseText
+      };
+      
+      // Add to cache
+      addToCache(cacheKey, result);
+      
+      return result;
+    } catch (parseError) {
+      console.error('[OpenAI] Failed to parse JSON response:', parseError);
+      metrics.errors++;
+      // Fallback to basic extraction in case of JSON parsing failure
+      const result = {
+        categoryName: responseText.split('\n')[0],
+        confidence: 0.3,
+        reasoning: "Error parsing structured response",
+        responseText
+      };
+      
+      // Even with parsing error, cache the result to avoid repeated API calls
+      addToCache(cacheKey, result);
+      
+      return result;
+    }
+  } catch (error) {
+    console.error('[OpenAI] API Error:', error);
+    metrics.errors++;
+    return {
+      categoryName: null,
+      confidence: 0,
+      reasoning: `Error: ${error.message}`,
+      error: true
+    };
+  }
+}
+
+// Export the new function
+module.exports = {
+  categorizeTransaction,
+  categorizeBatch,
+  findMatchingCategory,
+  getMetrics,
+  resetMetrics,
+  clearCache,
+  isRateLimited,
+  isOpenAIConfigured,
+  callWithRetry
+};

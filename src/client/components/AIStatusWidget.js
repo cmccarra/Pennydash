@@ -179,6 +179,37 @@ export default defineComponent({
       }
     };
     
+    // Reset to environment API key
+    const resetToEnvApiKey = async () => {
+      configForm.validating = true;
+      configForm.error = null;
+      configForm.success = null;
+      
+      try {
+        // Special value to reset to environment API key
+        const configResponse = await aiStatusApi.configureApiKey('RESET_TO_ENV');
+        
+        if (configResponse.success) {
+          configForm.success = 'API key reset to original environment value';
+          
+          // Refresh status
+          await fetchStatus();
+          
+          // Emit event for parent components
+          emit('apiKeyConfigured', { 
+            configured: true, 
+            requiresRestart: false 
+          });
+        } else {
+          configForm.error = configResponse.message || 'Failed to reset API key';
+        }
+      } catch (err) {
+        configForm.error = err.message || 'An error occurred while resetting API key';
+      } finally {
+        configForm.validating = false;
+      }
+    };
+    
     // Setup refresh timer
     const setupRefreshTimer = () => {
       if (refreshTimer.value) {
@@ -206,7 +237,8 @@ export default defineComponent({
       formatRuntime,
       resetMetrics,
       clearCache,
-      configureApiKey
+      configureApiKey,
+      resetToEnvApiKey
     };
   },
   
@@ -347,8 +379,26 @@ export default defineComponent({
             </div>
           </div>
           
-          <div v-else class="text-sm">
+          <div v-else class="text-sm space-y-2">
             <p>API key is already configured.</p>
+            <div class="flex justify-end">
+              <button 
+                class="btn btn-sm btn-outline btn-warning" 
+                @click="resetToEnvApiKey"
+                :disabled="configForm.validating"
+              >
+                <span v-if="configForm.validating" class="loading loading-spinner loading-xs"></span>
+                <span v-else>Reset to Original</span>
+              </button>
+            </div>
+            
+            <div v-if="configForm.error" class="alert alert-error alert-sm py-2 text-sm">
+              {{ configForm.error }}
+            </div>
+            
+            <div v-if="configForm.success" class="alert alert-success alert-sm py-2 text-sm">
+              {{ configForm.success }}
+            </div>
           </div>
         </div>
       </div>

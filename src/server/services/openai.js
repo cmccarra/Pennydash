@@ -1,16 +1,50 @@
 
 const OpenAI = require('openai');
 
+// Instead of creating a fixed client instance, we'll use a function that
+// returns a configured client based on the current environment state
+let openaiClient = null;
+
+/**
+ * Get or create an OpenAI client instance
+ * This allows dynamic reconfiguration without server restarts
+ * @returns {Object|null} Configured OpenAI client or null
+ */
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  
+  // If no API key is available, return null
+  if (!apiKey) {
+    return null;
+  }
+  
+  // Create a new client if one doesn't exist or if the API key has changed
+  if (!openaiClient || openaiClient._options.apiKey !== apiKey) {
+    try {
+      console.log('[OpenAI] Configuring client with API key');
+      openaiClient = new OpenAI({ apiKey });
+    } catch (error) {
+      console.error('[OpenAI] Error configuring client:', error);
+      return null;
+    }
+  }
+  
+  return openaiClient;
+}
+
+// For backward compatibility and easier access
+const openai = getOpenAIClient();
+
 // Check if OpenAI API key is configured
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const API_KEY_CONFIGURED = !!OPENAI_API_KEY;
 
-// Configure OpenAI client if API key is available
-let openai = null;
-if (API_KEY_CONFIGURED) {
-  openai = new OpenAI({
-    apiKey: OPENAI_API_KEY
-  });
+/**
+ * Check if OpenAI is properly configured
+ * @returns {boolean} Whether OpenAI is properly configured
+ */
+function isOpenAIConfigured() {
+  return !!getOpenAIClient();
 }
 
 // Flag to simulate API failures (for testing)
@@ -111,7 +145,7 @@ function generateCacheKey(description, amount, type) {
  */
 async function categorizeTransaction(description, amount, type = 'expense', existingCategories = []) {
   // Check if OpenAI is available
-  if (!OPENAI_AVAILABLE) {
+  if (!isAvailable()) {
     console.log(`[OpenAI] API not available for transaction: "${description}"`);
     return {
       categoryName: null,
@@ -172,9 +206,15 @@ async function categorizeTransaction(description, amount, type = 'expense', exis
       response_format: { type: "json_object" } // Ensure response is formatted as JSON
     };
     
-    // Make API call with retry logic
+    // Make API call with retry logic using dynamically retrieved client
     const completion = await callWithRetry(
-      async () => await openai.chat.completions.create(requestConfig)
+      async () => {
+        const client = getOpenAIClient();
+        if (!client) {
+          throw new Error('OpenAI client not available');
+        }
+        return await client.chat.completions.create(requestConfig);
+      }
     );
     
     // Parse the JSON response
@@ -314,7 +354,7 @@ async function categorizeBatch(transactions, existingCategories = []) {
   }
   
   // Check if OpenAI is available
-  if (!OPENAI_AVAILABLE) {
+  if (!isAvailable()) {
     console.log(`[OpenAI] API not available for batch categorization of ${transactions.length} transactions`);
     return transactions.map(transaction => ({
       transactionId: transaction.id,
@@ -373,9 +413,15 @@ async function categorizeBatch(transactions, existingCategories = []) {
         response_format: { type: "json_object" }
       };
       
-      // Make API call with retry logic
+      // Make API call with retry logic using dynamically retrieved client
       const completion = await callWithRetry(
-        async () => await openai.chat.completions.create(requestConfig)
+        async () => {
+          const client = getOpenAIClient();
+          if (!client) {
+            throw new Error('OpenAI client not available');
+          }
+          return await client.chat.completions.create(requestConfig);
+        }
       );
       
       metrics.apiCalls++;
@@ -597,9 +643,9 @@ async function categorizeBatch(transactions, existingCategories = []) {
  * @returns {boolean} Whether requests should be blocked
  */
 function isRateLimited() {
-  // If API key is not configured, treat as rate limited
-  if (!API_KEY_CONFIGURED) {
-    console.log('[OpenAI] API key not configured');
+  // If OpenAI client is not available, treat as rate limited
+  if (!getOpenAIClient()) {
+    console.log('[OpenAI] OpenAI client not available');
     return true;
   }
   
@@ -636,9 +682,9 @@ async function callWithRetry(apiFn, ...args) {
   let retryCount = 0;
   let lastError = null;
   
-  // Check if OpenAI is not available (API key missing or simulation)
-  if (!API_KEY_CONFIGURED) {
-    const error = new Error('OpenAI API key not configured');
+  // Check if OpenAI client is available
+  if (!getOpenAIClient()) {
+    const error = new Error('OpenAI client not available');
     error.code = 'api_key_missing';
     error.type = 'configuration_error';
     throw error;
@@ -784,7 +830,7 @@ function clearCache() {
  * @returns {boolean} Whether OpenAI is available
  */
 function isAvailable() {
-  return OPENAI_AVAILABLE;
+  return isOpenAIConfigured() && !SIMULATE_FAILURE;
 }
 
 /**
@@ -793,8 +839,9 @@ function isAvailable() {
  */
 function getStatus() {
   return {
-    available: OPENAI_AVAILABLE,
-    apiKeyConfigured: API_KEY_CONFIGURED,
+    available: isOpenAIConfigured() && !SIMULATE_FAILURE,
+    apiKeyConfigured: !!process.env.OPENAI_API_KEY,
+    clientConfigured: isOpenAIConfigured(),
     simulatingFailure: SIMULATE_FAILURE,
     rateLimited: isRateLimited(),
     metricsSnapshot: getMetrics()
@@ -811,5 +858,7 @@ module.exports = {
   isRateLimited,
   callWithRetry,
   isAvailable,
-  getStatus
+  getStatus,
+  isOpenAIConfigured,
+  getOpenAIClient
 };

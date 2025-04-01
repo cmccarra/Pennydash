@@ -148,6 +148,29 @@ router.post('/configure', (req, res) => {
       });
     }
     
+    // Special case to reset to the original API key from environment
+    if (apiKey === 'RESET_TO_ENV') {
+      // Use the original API key from the environment (.env file)
+      const originalKey = process.env.ORIGINAL_OPENAI_API_KEY || process.env.OPENAI_API_KEY_ORIGINAL;
+      
+      if (!originalKey) {
+        return res.status(400).json({
+          error: true,
+          message: 'No original API key found in environment'
+        });
+      }
+      
+      process.env.OPENAI_API_KEY = originalKey;
+      console.log('[OpenAI] Reset API key to original environment value');
+      
+      const isConfigured = openaiService.isOpenAIConfigured();
+      return res.json({
+        success: isConfigured,
+        message: 'OpenAI API key reset to original environment value',
+        requiresRestart: false
+      });
+    }
+    
     // Simple check of API key format
     if (!apiKey.startsWith('sk-')) {
       return res.status(400).json({
@@ -156,17 +179,27 @@ router.post('/configure', (req, res) => {
       });
     }
     
+    // Save the original key if we haven't already (for reset functionality)
+    if (!process.env.ORIGINAL_OPENAI_API_KEY) {
+      process.env.ORIGINAL_OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    }
+    
     // Set the API key in the environment
     process.env.OPENAI_API_KEY = apiKey;
     
-    // We need to restart the OpenAI service to apply the new key
-    // For this implementation, we'll require a server restart
-    // In a more complex implementation, we would reinitialize the OpenAI client
+    // Dynamically reconfigure OpenAI (no restart needed with our updated setup)
+    // We're using a dynamic OpenAI client configuration that checks the environment variables
+    // each time it's accessed
+    
+    // Check if the configuration was successful
+    const isConfigured = openaiService.isOpenAIConfigured();
     
     res.json({
-      success: true,
-      message: 'API key configured. The server will need to be restarted to apply the changes.',
-      requiresRestart: true
+      success: isConfigured,
+      message: isConfigured 
+        ? 'OpenAI API key successfully configured and ready to use' 
+        : 'API key set but OpenAI client configuration failed',
+      requiresRestart: false
     });
   } catch (error) {
     console.error('Error configuring API key:', error);
