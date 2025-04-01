@@ -236,7 +236,11 @@ async function createBatch(uploadId, transactionIds) {
  * @returns {Promise<Object>} Batch details
  */
 async function getBatchDetails(uploadId, batchId) {
-  const response = await fetchData(`${API_BASE_URL}/uploads/${uploadId}/batches/${batchId}`);
+  // For API endpoints that expect upload_timestamp format, convert UUID to string ID
+  const stringUploadId = `upload_${Date.now()}`;
+  
+  // Try to get the batch directly first
+  const response = await fetchData(`${API_BASE_URL}/transactions/batches/${batchId}`);
   
   let data;
   try {

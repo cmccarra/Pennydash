@@ -4096,6 +4096,11 @@ const moreMenuOpen = ref(false);
             return '';
           }
           
+          // First, check if the batch already has a title from the backend
+          if (batch.title && batch.title !== 'Untitled Batch' && batch.title !== 'Virtual Batch') {
+            return batch.title;
+          }
+          
           // Helper function to extract merchant name from description
           const extractMerchant = (description) => {
             if (!description) return null;
