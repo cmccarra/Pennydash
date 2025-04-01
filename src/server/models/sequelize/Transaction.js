@@ -22,17 +22,17 @@ class Transaction extends Model {
           // Return the date in YYYY-MM-DD format
           const value = this.getDataValue('date');
           if (!value) return null;
-          
+
           // Handle string dates (already in YYYY-MM-DD format)
           if (typeof value === 'string') {
             return value;
           }
-          
+
           // Handle Date objects
           if (value instanceof Date) {
             return value.toISOString().split('T')[0];
           }
-          
+
           // Unknown format - return as is
           return value;
         },
@@ -45,12 +45,12 @@ class Transaction extends Model {
               const day = ddMmmYyyyMatch[1].padStart(2, '0');
               const monthStr = ddMmmYyyyMatch[2];
               const year = ddMmmYyyyMatch[3];
-              
+
               const monthMap = {
                 'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
                 'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
               };
-              
+
               const month = monthMap[monthStr];
               if (month) {
                 // Store as YYYY-MM-DD
@@ -59,7 +59,7 @@ class Transaction extends Model {
               }
             }
           }
-          
+
           // Default handling
           this.setDataValue('date', value);
         }
@@ -162,7 +162,7 @@ class Transaction extends Model {
         comment: 'Source file name or import method'
       },
       uploadId: {
-        type: DataTypes.STRING,
+        type: DataTypes.UUID,
         allowNull: true,
         comment: 'ID of the upload batch this transaction belongs to',
         references: {
@@ -171,7 +171,7 @@ class Transaction extends Model {
         }
       },
       batchId: {
-        type: DataTypes.STRING,
+        type: DataTypes.UUID,
         allowNull: true,
         comment: 'ID of the specific batch within an upload this transaction belongs to',
         references: {
@@ -248,14 +248,14 @@ class Transaction extends Model {
         foreignKey: 'categoryId',
         as: 'category'
       });
-      
+
       // Transaction can also belong to a subcategory
       this.belongsTo(models.Category, {
         foreignKey: 'subcategoryId',
         as: 'subcategory'
       });
     }
-    
+
     // Transaction belongs to an Upload
     if (models.Upload) {
       this.belongsTo(models.Upload, {
@@ -263,7 +263,7 @@ class Transaction extends Model {
         as: 'upload'
       });
     }
-    
+
     // Transaction belongs to a Batch
     if (models.Batch) {
       this.belongsTo(models.Batch, {
@@ -283,21 +283,21 @@ class Transaction extends Model {
     const normalizedRow = {};
     Object.keys(csvRow).forEach(key => {
       normalizedRow[key.toLowerCase()] = csvRow[key];
-      
+
       // Preserve original keys as well to handle fields with mixed case
       normalizedRow[key] = csvRow[key];
     });
-    
+
     // Parse amount and fix the sign convention
     // We always store positive amounts in the database and use the type field to determine
     // whether it's an income or expense
     let amount = parseFloat(normalizedRow.amount || 0);
     let type = 'expense';
-    
+
     // Detect account type early to correctly interpret the amount sign
     const accountType = (normalizedRow.accounttype || '').toLowerCase();
     const account = (normalizedRow.account || '').toLowerCase();
-    
+
     const isLikelyCreditCard = 
       accountType === 'credit_card' ||
       account.includes('credit') || 
@@ -305,7 +305,7 @@ class Transaction extends Model {
       account.includes('amex') ||
       account.includes('mastercard') ||
       account.includes('visa');
-    
+
     // For regular bank accounts:
     // - Negative values are expenses (money going out)
     // - Positive values are income (money coming in)
@@ -313,7 +313,7 @@ class Transaction extends Model {
     // For credit cards:
     // - Positive values are expenses (charges to the card)
     // - Negative values are income (payments to the card)
-    
+
     if (isLikelyCreditCard) {
       // Credit card logic - positive means expense, negative means income
       if (amount < 0) {
@@ -331,7 +331,7 @@ class Transaction extends Model {
         type = 'income';  // Money entering the account
       }
     }
-    
+
     // Determine account type if not explicitly specified
     let finalAccountType = normalizedRow.accounttype || null;
     if (!finalAccountType && normalizedRow.account) {
@@ -350,20 +350,20 @@ class Transaction extends Model {
         finalAccountType = 'other';
       }
     }
-    
+
     // Extract tags if any, supporting multiple separator formats
     let tags = [];
-    
+
     // Show detailed debugging - raw values including capitalized Tags
     console.log('🔍 CSV row object:', Object.keys(csvRow));
     console.log('🔍 Looking for "tags" (lowercase):', normalizedRow.tags);
     console.log('🔍 Looking for "Tags" (capitalized):', normalizedRow.Tags);
     console.log('🔍 All keys in normalized row:', Object.keys(normalizedRow));
-    
+
     // Check for Tags first in original case format and directly use it if found
     if (csvRow.Tags) {
       console.log('📌 FOUND "Tags" (uppercase) in original CSV row:', csvRow.Tags);
-      
+
       // Process Tags directly from the original CSV row
       if (typeof csvRow.Tags === 'string') {
         if (csvRow.Tags.includes(';')) {
@@ -378,11 +378,11 @@ class Transaction extends Model {
         }
       }
     }
-    
+
     if (normalizedRow.tags) {
       if (typeof normalizedRow.tags === 'string') {
         console.log(`📌 Tags string value: "${normalizedRow.tags}"`);
-        
+
         // Support multiple separator formats
         if (normalizedRow.tags.includes(';')) {
           tags = normalizedRow.tags.split(';').map(tag => tag.trim());
@@ -402,7 +402,7 @@ class Transaction extends Model {
       }
     } else {
       console.log('📌 No tags field found in CSV data');
-      
+
       // Special case: Check for "Tags" (capital T) since CSV headers might be case-sensitive
       if (normalizedRow.Tags) {
         console.log(`📌 Found "Tags" (capital T): ${normalizedRow.Tags}`);
@@ -420,7 +420,7 @@ class Transaction extends Model {
         }
       }
     }
-    
+
     // Parse balance if provided
     let balance = null;
     if (normalizedRow.balance) {
@@ -430,10 +430,10 @@ class Transaction extends Model {
         console.warn('Could not parse balance:', normalizedRow.balance);
       }
     }
-    
+
     // Format date properly
     let formattedDate = normalizedRow.date || new Date().toISOString().split('T')[0];
-    
+
     // Handle date format like "DD MMM YYYY" (e.g., "02 Sep 2024")
     if (typeof formattedDate === 'string' && /^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(formattedDate)) {
       try {
@@ -445,7 +445,7 @@ class Transaction extends Model {
         };
         const month = monthMap[parts[1]];
         const year = parts[2];
-        
+
         if (month) {
           formattedDate = `${year}-${month}-${day}`;
         }
@@ -454,7 +454,7 @@ class Transaction extends Model {
         // Keep original date if parsing fails
       }
     }
-    
+
     // Create transaction object
     const txObject = {
       date: formattedDate,
@@ -471,12 +471,12 @@ class Transaction extends Model {
       importSource: normalizedRow.importsource || 'CSV Import',
       originalText: JSON.stringify(csvRow)
     };
-    
+
     console.log('📦 Final transaction object with tags:', JSON.stringify({
       description: txObject.description,
       tags: txObject.tags
     }));
-    
+
     return txObject;
   }
 
@@ -489,11 +489,11 @@ class Transaction extends Model {
     // Parse amount with correct sign convention
     let amount = parseFloat(xmlItem.amount || 0);
     let type = 'expense';
-    
+
     // Try to detect if this is a credit card statement
     const account = ((xmlItem.account && xmlItem.account[0]) || '').toLowerCase();
     const rawAccountType = (xmlItem.accountType && xmlItem.accountType[0] || '').toLowerCase();
-    
+
     const isLikelyCreditCard = 
       rawAccountType === 'credit_card' ||
       account.includes('credit') || 
@@ -501,7 +501,7 @@ class Transaction extends Model {
       account.includes('amex') ||
       account.includes('mastercard') ||
       account.includes('visa');
-    
+
     // For regular bank accounts:
     // - Negative values are expenses (money going out)
     // - Positive values are income (money coming in)
@@ -509,7 +509,7 @@ class Transaction extends Model {
     // For credit cards:
     // - Positive values are expenses (charges to the card)
     // - Negative values are income (payments to the card)
-    
+
     if (isLikelyCreditCard) {
       // Credit card logic - positive means expense, negative means income
       if (amount < 0) {
@@ -527,7 +527,7 @@ class Transaction extends Model {
         type = 'income';  // Money entering the account
       }
     }
-    
+
     // Determine final account type if not specified
     let finalAccountType = (xmlItem.accountType && xmlItem.accountType[0]) || null;
     if (!finalAccountType && xmlItem.account) {
@@ -546,7 +546,7 @@ class Transaction extends Model {
         finalAccountType = 'other';
       }
     }
-    
+
     // Extract tags if any
     let tags = [];
     if (xmlItem.tags && xmlItem.tags[0]) {
@@ -556,10 +556,10 @@ class Transaction extends Model {
         tags = xmlItem.tags[0].split(',').map(tag => tag.trim());
       }
     }
-    
+
     // Get date and format it properly
     let dateValue = xmlItem.date?.[0] || xmlItem.transactionDate?.[0] || new Date().toISOString().split('T')[0];
-    
+
     // Handle date format like "DD MMM YYYY" (e.g., "02 Sep 2024")
     if (typeof dateValue === 'string' && /^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(dateValue)) {
       try {
@@ -571,7 +571,7 @@ class Transaction extends Model {
         };
         const month = monthMap[parts[1]];
         const year = parts[2];
-        
+
         if (month) {
           dateValue = `${year}-${month}-${day}`;
         }
@@ -580,7 +580,7 @@ class Transaction extends Model {
         // Keep original date if parsing fails
       }
     }
-    
+
     return {
       date: dateValue,
       description: xmlItem.description?.[0] || 'Unknown transaction',
