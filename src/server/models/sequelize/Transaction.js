@@ -162,14 +162,22 @@ class Transaction extends Model {
         comment: 'Source file name or import method'
       },
       uploadId: {
-        type: DataTypes.STRING,
+        type: DataTypes.UUID,
         allowNull: true,
-        comment: 'ID of the upload batch this transaction belongs to'
+        comment: 'ID of the upload batch this transaction belongs to',
+        references: {
+          model: 'uploads',
+          key: 'id'
+        }
       },
       batchId: {
-        type: DataTypes.STRING,
+        type: DataTypes.UUID,
         allowNull: true,
-        comment: 'ID of the specific batch within an upload this transaction belongs to'
+        comment: 'ID of the specific batch within an upload this transaction belongs to',
+        references: {
+          model: 'batches',
+          key: 'id'
+        }
       },
       enrichmentStatus: {
         type: DataTypes.ENUM('pending', 'enriched', 'completed'),
@@ -245,6 +253,22 @@ class Transaction extends Model {
       this.belongsTo(models.Category, {
         foreignKey: 'subcategoryId',
         as: 'subcategory'
+      });
+    }
+    
+    // Transaction belongs to an Upload
+    if (models.Upload) {
+      this.belongsTo(models.Upload, {
+        foreignKey: 'uploadId',
+        as: 'upload'
+      });
+    }
+    
+    // Transaction belongs to a Batch
+    if (models.Batch) {
+      this.belongsTo(models.Batch, {
+        foreignKey: 'batchId',
+        as: 'batch'
       });
     }
   }

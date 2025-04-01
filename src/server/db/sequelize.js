@@ -7,6 +7,8 @@ const { Sequelize } = require('sequelize');
 const Transaction = require('../models/sequelize/Transaction');
 const Category = require('../models/sequelize/Category');
 const Settings = require('../models/sequelize/Settings');
+const Upload = require('../models/sequelize/Upload');
+const Batch = require('../models/sequelize/Batch');
 
 let sequelize;
 
@@ -42,7 +44,9 @@ const initDB = async () => {
     const models = {
       Transaction: Transaction.init(sequelize),
       Category: Category.init(sequelize),
-      Settings: Settings.init(sequelize)
+      Settings: Settings.init(sequelize),
+      Upload: Upload.init(sequelize),
+      Batch: Batch.init(sequelize)
     };
     
     // Make models available through sequelize.models

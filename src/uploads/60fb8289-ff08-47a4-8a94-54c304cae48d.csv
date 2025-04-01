@@ -1,0 +1,11 @@
+Date,Description,Amount,Account,AccountType,Merchant,Tags,Currency,Balance
+2025-03-28,Test Deposit,100.00,Chase Checking,bank,Employer,salary;direct deposit,USD,1500.00
+2025-03-27,Test Payment,-75.50,Chase Checking,bank,Utility Company,utilities;monthly,USD,1400.00
+2025-03-26,Grocery Shopping,-45.99,Amex Platinum,credit_card,Whole Foods,groceries;food,USD,345.99
+2025-03-25,Gas Fill-up,-35.75,Amex Platinum,credit_card,Shell Gas,transportation;car,USD,300.00
+2025-03-24,Dinner Out,-28.45,Amex Platinum,credit_card,Local Restaurant,dining;entertainment,USD,264.25
+2025-03-23,Online Purchase,-59.99,Bank Debit,bank,Amazon,shopping;household,USD,1375.50
+2025-03-22,Paycheck Deposit,1250.00,Chase Checking,bank,Employer,salary;income,USD,1435.49
+2025-03-21,Netflix Monthly,-9.99,Amex Platinum,credit_card,Netflix,subscription;entertainment,USD,235.80
+2025-03-20,Water & Electric,-120.50,Bank Debit,bank,City Utilities,utilities;housing,USD,1315.49
+2025-03-19,Mobile Phone,-65.00,Bank Debit,bank,Verizon,utilities;monthly,USD,1194.99
