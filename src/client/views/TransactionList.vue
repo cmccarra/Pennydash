@@ -168,7 +168,7 @@
         </div>
 
         <!-- Pagination -->
-        <div class="flex justify-between items-center p-4 border-t border-gray-200" style="margin-bottom: 80px;">
+        <div class="flex justify-between items-center p-4 border-t border-gray-200" style="margin-bottom: 120px;">
           <div>
             <span class="text-sm text-gray-700">
               Showing {{ paginationStart }} to {{ paginationEnd }} of {{ totalTransactions }} transactions
