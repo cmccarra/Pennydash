@@ -51,20 +51,20 @@ async function generateBatchSummary(transactions) {
     const dates = transactions.map(tx => new Date(tx.date)).sort((a, b) => a - b);
     const startDate = dates[0];
     const endDate = dates[dates.length - 1];
-    
+
     // Format dates
     const formatDate = (date) => {
       const options = { month: 'short', day: 'numeric' };
       return date.toLocaleDateString('en-US', options);
     };
-    
+
     // Count merchants
     const merchantCounts = {};
     transactions.forEach(tx => {
       const merchant = tx.merchant || 'Unknown';
       merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
     });
-    
+
     // Get dominant merchant if one accounts for >50% of transactions
     let dominantMerchant = null;
     Object.entries(merchantCounts).forEach(([merchant, count]) => {
@@ -72,15 +72,15 @@ async function generateBatchSummary(transactions) {
         dominantMerchant = merchant;
       }
     });
-    
+
     // Generate a title
     let title = '';
     if (dominantMerchant && dominantMerchant !== 'Unknown') {
-      title = `${dominantMerchant} (${formatDate(startDate)} - ${formatDate(endDate)})`;
+      title = `${dominantMerchant}`;
     } else {
-      title = `${transactions.length} Transactions (${formatDate(startDate)} - ${formatDate(endDate)})`;
+      title = `${transactions.length} Transactions`;
     }
-    
+
     return {
       summary: title,
       insights: [
@@ -98,12 +98,12 @@ async function generateBatchSummary(transactions) {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../../uploads');
-    
+
     // Create uploads directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
-    
+
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
@@ -127,7 +127,7 @@ const fileFilter = (req, file, cb) => {
     'application/x-ofx',
     'application/x-qfx'
   ];
-  
+
   // Check MIME type
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
@@ -155,22 +155,22 @@ router.get('/:uploadId/batches', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Batch, Transaction, Upload } = sequelize.models;
-    
+
     const { uploadId } = req.params;
-    
+
     if (!uploadId) {
       return res.status(400).json({
         error: 'Upload ID is required'
       });
     }
-    
+
     console.log(`Getting batches for upload ID: ${uploadId}`);
-    
+
     // Check if the uploadId is a UUID or string format
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uploadId);
-    
+
     let batches = [];
-    
+
     if (isUUID) {
       // For UUID format IDs, use standard query
       console.log(`Looking up batches using UUID format: ${uploadId}`);
@@ -194,7 +194,7 @@ router.get('/:uploadId/batches', async (req, res) => {
     } else {
       // For string format IDs like "upload_1234567890", we need a different approach
       console.log(`Looking up using string format ID: ${uploadId}`);
-      
+
       // First check if any real batches exist
       try {
         batches = await Batch.findAll({
@@ -215,11 +215,11 @@ router.get('/:uploadId/batches', async (req, res) => {
       } catch (error) {
         console.log(`Error finding batches with string ID, continuing with alternative lookup: ${error.message}`);
       }
-      
+
       // If no batches found, check transactions with batchId starting with uploadId_batch_
       if (batches.length === 0) {
         console.log('No standard batches found, looking for string format batch IDs in transactions');
-        
+
         // Find all transactions for this upload
         const transactions = await Transaction.findAll({
           where: {
@@ -227,7 +227,7 @@ router.get('/:uploadId/batches', async (req, res) => {
           },
           attributes: ['id', 'batchId', 'description', 'amount', 'date', 'categoryId', 'type', 'merchant']
         });
-        
+
         // Group transactions by batchId
         const batchesMap = {};
         transactions.forEach(tx => {
@@ -240,28 +240,28 @@ router.get('/:uploadId/batches', async (req, res) => {
             batchesMap[tx.batchId].transactions.push(tx);
           }
         });
-        
+
         // Create virtual batch objects
         batches = Object.entries(batchesMap).map(([batchId, data]) => {
           const txs = data.transactions;
-          
+
           // Calculate batch statistics
           let totalAmount = 0;
           let startDate = null;
           let endDate = null;
           let merchantCounts = {};
-          
+
           txs.forEach(transaction => {
             totalAmount += parseFloat(transaction.amount);
-            
+
             const txDate = new Date(transaction.date);
             if (!startDate || txDate < startDate) startDate = txDate;
             if (!endDate || txDate > endDate) endDate = txDate;
-            
+
             const merchant = transaction.merchant || 'Unknown';
             merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
           });
-          
+
           // Find dominant merchant (if any)
           let dominantMerchant = null;
           let maxCount = 0;
@@ -271,7 +271,7 @@ router.get('/:uploadId/batches', async (req, res) => {
               dominantMerchant = merchant;
             }
           });
-          
+
           // Create a virtual batch
           return {
             id: batchId,
@@ -303,7 +303,7 @@ router.get('/:uploadId/batches', async (req, res) => {
         });
       }
     }
-    
+
     // Generate summaries for each batch
     const batchesWithSummaries = await Promise.all(
       batches.map(async (batch) => {
@@ -321,7 +321,7 @@ router.get('/:uploadId/batches', async (req, res) => {
             }
           }
         }
-        
+
         // Calculate statistics for the batch
         const totalAmount = batch.transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
         const merchantCounts = {};
@@ -329,7 +329,7 @@ router.get('/:uploadId/batches', async (req, res) => {
           const merchant = tx.merchant || 'Unknown';
           merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
         });
-        
+
         // Find the most common merchant
         let dominantMerchant = null;
         let maxCount = 0;
@@ -339,7 +339,7 @@ router.get('/:uploadId/batches', async (req, res) => {
             dominantMerchant = merchant;
           }
         });
-        
+
         return {
           ...batch.toJSON(),
           statistics: {
@@ -350,7 +350,7 @@ router.get('/:uploadId/batches', async (req, res) => {
         };
       })
     );
-    
+
     return res.json({
       uploadId,
       batches: batchesWithSummaries
@@ -374,38 +374,38 @@ router.get('/:uploadId/stats', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Batch, Transaction, Upload } = sequelize.models;
-    
+
     const { uploadId } = req.params;
-    
+
     if (!uploadId) {
       return res.status(400).json({
         error: 'Upload ID is required'
       });
     }
-    
+
     // Get the upload record
     const upload = await Upload.findByPk(uploadId);
-    
+
     if (!upload) {
       return res.status(404).json({
         error: 'Upload not found'
       });
     }
-    
+
     // Count batches in this upload
     const batchCount = await Batch.count({
       where: {
         uploadId: uploadId.toString()
       }
     });
-    
+
     // Count transactions in this upload
     const transactionCount = await Transaction.count({
       where: {
         uploadId: uploadId.toString()
       }
     });
-    
+
     // Get totals by transaction type
     const totals = await Transaction.findAll({
       where: {
@@ -417,13 +417,13 @@ router.get('/:uploadId/stats', async (req, res) => {
       ],
       group: ['type']
     });
-    
+
     // Format totals
     const totalsByType = {};
     totals.forEach(item => {
       totalsByType[item.type] = parseFloat(item.getDataValue('total'));
     });
-    
+
     // Get categorization stats
     const categorizedCount = await Transaction.count({
       where: {
@@ -433,7 +433,7 @@ router.get('/:uploadId/stats', async (req, res) => {
         }
       }
     });
-    
+
     return res.json({
       uploadId,
       uploadDate: upload.createdAt,
@@ -464,21 +464,21 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Batch, Transaction, Category } = sequelize.models;
-    
+
     const { uploadId, batchId } = req.params;
-    
+
     if (!uploadId || !batchId) {
       return res.status(400).json({
         error: 'Upload ID and Batch ID are required'
       });
     }
-    
+
     // Check if we're dealing with new UUIDs or old string format IDs
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(batchId);
-    
+
     // Declare batch outside the if blocks to make it accessible throughout the function
     let batch;
-    
+
     // For UUID batches, use the model's association
     // For string format IDs (upload_XXX_batch_Y), use raw query to avoid type conversion issues
     if (isUUID) {
@@ -505,12 +505,12 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
       });
     } else {
       console.log(`Looking for batch with uploadId=${uploadId}, batchId=${batchId} (string format)`);
-      
+
       try {
         // For string IDs like "upload_1743221430232_batch_2", we need a completely different approach
         // Skip the batch lookup in the batches table - go straight to finding transactions
         console.log('Checking for transactions with this batchId');
-          
+
         // Check if any transactions exist with this batchId
         const transactions = await Transaction.findAll({
           where: {
@@ -525,9 +525,9 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
             }
           ]
         });
-        
+
         console.log(`Found ${transactions.length} transactions with batchId=${batchId}`);
-        
+
         if (transactions.length > 0) {
           // Create a "virtual" batch from the transactions
           // Calculate batch statistics
@@ -535,18 +535,18 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
           let startDate = null;
           let endDate = null;
           let merchantCounts = {};
-          
+
           transactions.forEach(transaction => {
             totalAmount += parseFloat(transaction.amount);
-            
+
             const txDate = new Date(transaction.date);
             if (!startDate || txDate < startDate) startDate = txDate;
             if (!endDate || txDate > endDate) endDate = txDate;
-            
+
             const merchant = transaction.merchant || 'Unknown';
             merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
           });
-          
+
           // Find dominant merchant (if any)
           let dominantMerchant = null;
           let maxCount = 0;
@@ -556,7 +556,7 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
               dominantMerchant = merchant;
             }
           });
-          
+
           // Create a virtual batch object with a toJSON method to mimic a Sequelize model
           batch = {
             id: batchId,
@@ -597,7 +597,7 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
           };
         } else {
           console.log('No transactions found with this batch ID');
-          
+
           // Try a more flexible search to understand what's in the database
           const sampleTransactions = await Transaction.findAll({
             where: {
@@ -606,7 +606,7 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
             attributes: ['id', 'batchId'],
             limit: 5
           });
-          
+
           console.log('Sample transactions from this upload:', 
             sampleTransactions.map(t => ({ id: t.id, batchId: t.batchId })));
         }
@@ -614,25 +614,25 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
         console.error('Error during batch or transaction lookup:', error);
       }
     }
-    
+
     if (!batch) {
       return res.status(404).json({
         error: 'Batch not found'
       });
     }
-    
+
     // Generate a summary if one isn't already set
     if (!batch.title || batch.title === 'Untitled Batch' || batch.title === 'Virtual Batch') {
       console.log(`Generating summary for batch with title: "${batch.title}"`);
-      
+
       const summary = await generateBatchSummary(batch.transactions);
       console.log('OpenAI generated summary:', summary);
-      
+
       // Update the batch title in the database if we generated a good summary
       if (summary && summary.summary) {
         try {
           console.log(`Updating batch title to: "${summary.summary}"`);
-          
+
           if (batch.isVirtual) {
             console.log(`Updating virtual batch title in response only to: "${summary.summary}"`);
             // For virtual batches, just update the title in the response
@@ -652,7 +652,7 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
     } else {
       console.log(`Using existing batch title: "${batch.title}"`);
     }
-    
+
     // Calculate batch statistics
     const totalAmount = batch.transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
     const merchantCounts = {};
@@ -660,7 +660,7 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
       const merchant = tx.merchant || 'Unknown';
       merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
     });
-    
+
     // Find the most common merchant
     let dominantMerchant = null;
     let maxCount = 0;
@@ -670,7 +670,7 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
         dominantMerchant = merchant;
       }
     });
-    
+
     // Add statistics to the batch response
     const batchWithStats = {
       ...batch.toJSON(),
@@ -680,7 +680,7 @@ router.get('/:uploadId/batches/:batchId', async (req, res) => {
         transactionCount: batch.transactions.length
       }
     };
-    
+
     return res.json(batchWithStats);
   } catch (error) {
     console.error('Error getting batch details:', error);
@@ -701,16 +701,16 @@ router.patch('/:uploadId/batches/:batchId', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Batch } = sequelize.models;
-    
+
     const { uploadId, batchId } = req.params;
     const updateData = req.body;
-    
+
     if (!uploadId || !batchId) {
       return res.status(400).json({
         error: 'Upload ID and Batch ID are required'
       });
     }
-    
+
     // Find the batch
     const batch = await Batch.findOne({
       where: {
@@ -718,26 +718,26 @@ router.patch('/:uploadId/batches/:batchId', async (req, res) => {
         uploadId: uploadId.toString()
       }
     });
-    
+
     if (!batch) {
       return res.status(404).json({
         error: 'Batch not found'
       });
     }
-    
+
     // Update allowable fields
     const allowedFields = ['title', 'status', 'notes', 'processed'];
     const updateFields = {};
-    
+
     allowedFields.forEach(field => {
       if (updateData[field] !== undefined) {
         updateFields[field] = updateData[field];
       }
     });
-    
+
     // Perform the update
     await batch.update(updateFields);
-    
+
     return res.json({
       message: 'Batch updated successfully',
       batch
@@ -761,17 +761,17 @@ router.post('/', upload.single('file'), async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Upload } = sequelize.models;
-    
+
     // Check if file was uploaded
     if (!req.file) {
       return res.status(400).json({
         error: 'No file was uploaded'
       });
     }
-    
+
     // Get file details
     const { originalname, filename, mimetype, size, path: filePath } = req.file;
-    
+
     // Determine file type from mimetype
     let fileType = 'unknown';
     if (mimetype.includes('csv') || mimetype.includes('excel')) {
@@ -785,7 +785,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     } else if (mimetype.includes('spreadsheetml')) {
       fileType = 'xlsx';
     }
-    
+
     // Create upload record in database
     const upload = await Upload.create({
       filename,
@@ -795,7 +795,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       status: 'pending',
       importSource: 'User Upload'
     });
-    
+
     // Return the upload record
     return res.status(201).json({
       message: 'File uploaded successfully',
@@ -821,9 +821,9 @@ router.post('/dummy', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Upload } = sequelize.models;
-    
+
     const { name, source, type } = req.body;
-    
+
     // Create upload record in database
     const upload = await Upload.create({
       filename: 'dummy-file.csv',
@@ -833,7 +833,7 @@ router.post('/dummy', async (req, res) => {
       status: 'pending',
       importSource: source || 'Test'
     });
-    
+
     // Return the upload record
     return res.status(201).json({
       message: 'Dummy upload created successfully',
@@ -859,38 +859,38 @@ router.post('/:uploadId/process', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Upload, Transaction, Batch } = sequelize.models;
-    
+
     const { uploadId } = req.params;
-    
+
     if (!uploadId) {
       return res.status(400).json({
         error: 'Upload ID is required'
       });
     }
-    
+
     // Find the upload record
     const upload = await Upload.findByPk(uploadId);
-    
+
     if (!upload) {
       return res.status(404).json({
         error: 'Upload not found'
       });
     }
-    
+
     // Update upload status to processing
     await upload.update({ status: 'processing' });
-    
+
     // Process the file based on its type
     // This would typically be handled by a dedicated file parser service
     // For now, we'll just update the status to indicate it's processed
-    
+
     // Update the upload record to indicate processing completed
     await upload.update({
       status: 'processed',
       accountName: req.body.accountName || 'Default Account',
       accountType: req.body.accountType || 'bank'
     });
-    
+
     return res.json({
       message: 'Upload queued for processing',
       uploadId,
@@ -915,31 +915,31 @@ router.post('/:uploadId/batches', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Upload, Batch, Transaction } = sequelize.models;
-    
+
     const { uploadId } = req.params;
     const { title, transactionIds, type, metadata } = req.body;
-    
+
     if (!uploadId) {
       return res.status(400).json({
         error: 'Upload ID is required'
       });
     }
-    
+
     if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
       return res.status(400).json({
         error: 'At least one transaction ID is required'
       });
     }
-    
+
     // Find the upload record
     const upload = await Upload.findByPk(uploadId);
-    
+
     if (!upload) {
       return res.status(404).json({
         error: 'Upload not found'
       });
     }
-    
+
     // Get transactions to be included in this batch
     const transactions = await Transaction.findAll({
       where: {
@@ -949,33 +949,33 @@ router.post('/:uploadId/batches', async (req, res) => {
         uploadId: uploadId.toString()
       }
     });
-    
+
     if (transactions.length === 0) {
       return res.status(404).json({
         error: 'No valid transactions found for this upload'
       });
     }
-    
+
     // Calculate batch statistics
     let totalAmount = 0;
     let startDate = null;
     let endDate = null;
     let merchantCounts = {};
-    
+
     transactions.forEach(transaction => {
       // Sum amounts
       totalAmount += parseFloat(transaction.amount);
-      
+
       // Track date range
       const txDate = new Date(transaction.date);
       if (!startDate || txDate < startDate) startDate = txDate;
       if (!endDate || txDate > endDate) endDate = txDate;
-      
+
       // Count merchants
       const merchant = transaction.merchant || 'Unknown';
       merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
     });
-    
+
     // Find dominant merchant (if any)
     let dominantMerchant = null;
     let maxCount = 0;
@@ -985,7 +985,7 @@ router.post('/:uploadId/batches', async (req, res) => {
         dominantMerchant = merchant;
       }
     });
-    
+
     // Create the batch
     const batch = await Batch.create({
       title: title || 'Untitled Batch',
@@ -998,7 +998,7 @@ router.post('/:uploadId/batches', async (req, res) => {
       dominantMerchant,
       metadata: metadata || {}
     });
-    
+
     // Update transactions to associate with this batch
     await Transaction.update(
       { batchId: batch.id },
@@ -1010,7 +1010,7 @@ router.post('/:uploadId/batches', async (req, res) => {
         }
       }
     );
-    
+
     return res.status(201).json({
       message: 'Batch created successfully',
       batch
@@ -1034,24 +1034,24 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Upload, Batch, Transaction } = sequelize.models;
-    
+
     const { uploadId } = req.params;
-    
+
     if (!uploadId) {
       return res.status(400).json({
         error: 'Upload ID is required'
       });
     }
-    
+
     // Find the upload record
     const upload = await Upload.findByPk(uploadId);
-    
+
     if (!upload) {
       return res.status(404).json({
         error: 'Upload not found'
       });
     }
-    
+
     // Get all transactions for this upload that don't already have a batch
     const transactions = await Transaction.findAll({
       where: {
@@ -1060,18 +1060,18 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
       },
       order: [['date', 'ASC']]
     });
-    
+
     if (transactions.length === 0) {
       return res.status(200).json({
         message: 'No transactions available for batching',
         batches: []
       });
     }
-    
+
     // Simple logic for organizing batches (by merchant and close dates)
     const batches = [];
     const transactionsByMerchant = {};
-    
+
     // Group transactions by merchant
     transactions.forEach(transaction => {
       const merchant = transaction.merchant || 'Unknown';
@@ -1080,7 +1080,7 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
       }
       transactionsByMerchant[merchant].push(transaction);
     });
-    
+
     // Create batches for merchants with multiple transactions
     for (const [merchant, merchantTransactions] of Object.entries(transactionsByMerchant)) {
       if (merchantTransactions.length >= 2) {
@@ -1088,15 +1088,15 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
         let totalAmount = 0;
         let startDate = null;
         let endDate = null;
-        
+
         merchantTransactions.forEach(transaction => {
           totalAmount += parseFloat(transaction.amount);
-          
+
           const txDate = new Date(transaction.date);
           if (!startDate || txDate < startDate) startDate = txDate;
           if (!endDate || txDate > endDate) endDate = txDate;
         });
-        
+
         // Create a batch for this merchant
         const batch = await Batch.create({
           title: `${merchant} Transactions`,
@@ -1109,7 +1109,7 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
           dominantMerchant: merchant,
           metadata: {}
         });
-        
+
         // Update transactions to associate with this batch
         await Transaction.update(
           { batchId: batch.id },
@@ -1121,11 +1121,11 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
             }
           }
         );
-        
+
         batches.push(batch);
       }
     }
-    
+
     // Handle remaining transactions (create a "Miscellaneous" batch)
     const remainingTransactions = await Transaction.findAll({
       where: {
@@ -1133,20 +1133,20 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
         batchId: null
       }
     });
-    
+
     if (remainingTransactions.length > 0) {
       let totalAmount = 0;
       let startDate = null;
       let endDate = null;
-      
+
       remainingTransactions.forEach(transaction => {
         totalAmount += parseFloat(transaction.amount);
-        
+
         const txDate = new Date(transaction.date);
         if (!startDate || txDate < startDate) startDate = txDate;
         if (!endDate || txDate > endDate) endDate = txDate;
       });
-      
+
       const batch = await Batch.create({
         title: 'Miscellaneous Transactions',
         type: 'miscellaneous',
@@ -1158,7 +1158,7 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
         dominantMerchant: null,
         metadata: {}
       });
-      
+
       await Transaction.update(
         { batchId: batch.id },
         {
@@ -1169,10 +1169,10 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
           }
         }
       );
-      
+
       batches.push(batch);
     }
-    
+
     return res.status(201).json({
       message: 'Batches created successfully',
       batchCount: batches.length,
@@ -1197,24 +1197,24 @@ router.post('/:uploadId/complete', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Upload, Batch } = sequelize.models;
-    
+
     const { uploadId } = req.params;
-    
+
     if (!uploadId) {
       return res.status(400).json({
         error: 'Upload ID is required'
       });
     }
-    
+
     // Find the upload record
     const upload = await Upload.findByPk(uploadId);
-    
+
     if (!upload) {
       return res.status(404).json({
         error: 'Upload not found'
       });
     }
-    
+
     // Update all pending batches to completed
     await Batch.update(
       { status: 'completed' },
@@ -1225,10 +1225,10 @@ router.post('/:uploadId/complete', async (req, res) => {
         }
       }
     );
-    
+
     // Mark the upload as completed
     await upload.update({ status: 'completed' });
-    
+
     return res.json({
       message: 'Upload completed successfully',
       uploadId
@@ -1252,22 +1252,22 @@ router.get('/', async (req, res) => {
     // Get the database models after initialization
     const sequelize = getDB();
     const { Upload, Batch, Transaction } = sequelize.models;
-    
+
     // Query parameters for pagination
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
-    
+
     // Get all uploads (without the complex counts for now)
     const uploads = await Upload.findAndCountAll({
       limit,
       offset,
       order: [['createdAt', 'DESC']]
     });
-    
+
     // Get batch and transaction counts separately to avoid complex SQL
     const uploadIds = uploads.rows.map(upload => upload.id);
-    
+
     // Get batch counts
     const batchCounts = await Batch.findAll({
       attributes: [
@@ -1282,7 +1282,7 @@ router.get('/', async (req, res) => {
       group: ['uploadId'],
       raw: true
     });
-    
+
     // Get transaction counts
     const transactionCounts = await Transaction.findAll({
       attributes: [
@@ -1297,24 +1297,24 @@ router.get('/', async (req, res) => {
       group: ['uploadId'],
       raw: true
     });
-    
+
     // Create a map of counts
     const batchCountMap = {};
     batchCounts.forEach(item => {
       batchCountMap[item.uploadId] = parseInt(item.count);
     });
-    
+
     const transactionCountMap = {};
     transactionCounts.forEach(item => {
       transactionCountMap[item.uploadId] = parseInt(item.count);
     });
-    
+
     // Add counts to upload objects
     uploads.rows.forEach(upload => {
       upload.dataValues.batchCount = batchCountMap[upload.id] || 0;
       upload.dataValues.transactionCount = transactionCountMap[upload.id] || 0;
     });
-    
+
     return res.json({
       uploads: uploads.rows,
       total: uploads.count,
@@ -1340,14 +1340,14 @@ async function generateBatchSummary(transactions) {
   if (!transactions || transactions.length === 0) {
     return { summary: "Empty batch" };
   }
-  
+
   try {
     // Check for common merchant
     const merchants = [...new Set(transactions.map(t => t.merchant).filter(Boolean))];
     if (merchants.length === 1) {
-      return { summary: `Transactions from ${merchants[0]}` };
+      return { summary: merchants[0] };
     }
-    
+
     // If available, use OpenAI to generate a better summary
     if (openaiService.isAvailable() && !openaiService.isRateLimited()) {
       try {
@@ -1358,40 +1358,40 @@ async function generateBatchSummary(transactions) {
           const dates = transactions.map(t => new Date(t.date));
           const minDate = new Date(Math.min(...dates));
           const maxDate = new Date(Math.max(...dates));
-          
+
           // Format dates
           const startDate = minDate.toISOString().split('T')[0];
           const endDate = maxDate.toISOString().split('T')[0];
-          
+
           // Calculate total amount
           const totalAmount = transactions.reduce((sum, tx) => {
             const amount = parseFloat(tx.amount);
             return sum + (isNaN(amount) ? 0 : amount);
           }, 0);
-          
+
           // Format amount
           const formattedAmount = new Intl.NumberFormat('en-US', {
             style: 'currency',
             currency: 'USD',
           }).format(Math.abs(totalAmount));
-          
+
           // Get transaction types
           const expenseCount = transactions.filter(t => t.type === 'expense').length;
           const incomeCount = transactions.filter(t => t.type === 'income').length;
-          
+
           // Prepare merchant data
           const merchantCounts = {};
           transactions.forEach(tx => {
             const merchant = tx.merchant || 'Unknown';
             merchantCounts[merchant] = (merchantCounts[merchant] || 0) + 1;
           });
-          
+
           // Get top merchants (up to 3)
           const topMerchants = Object.entries(merchantCounts)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 3)
             .map(([name, count]) => ({ name, count }));
-          
+
           // Prepare transaction list for prompt
           const txList = transactions.slice(0, 10).map(tx => ({
             date: tx.date,
@@ -1400,7 +1400,7 @@ async function generateBatchSummary(transactions) {
             type: tx.type,
             merchant: tx.merchant
           }));
-          
+
           // Create a comprehensive prompt
           const prompt = JSON.stringify({
             instructions: "Generate a concise, 5-8 word title that accurately summarizes these transactions. The title should highlight the common theme (merchant, purpose, or time period). Make it human-readable and useful for financial tracking.",
@@ -1417,7 +1417,7 @@ async function generateBatchSummary(transactions) {
             },
             transactions: txList
           });
-          
+
           // Make the API call
           const completion = await openaiService.callWithRetry(
             async () => {
@@ -1435,7 +1435,7 @@ async function generateBatchSummary(transactions) {
               });
             }
           );
-          
+
           const summary = completion.choices[0].message.content.trim();
           if (summary) {
             return { summary };
@@ -1446,21 +1446,21 @@ async function generateBatchSummary(transactions) {
         // Fall through to default summary
       }
     }
-    
+
     // Default summary based on date range and transaction count
     const dates = transactions.map(t => new Date(t.date));
     const minDate = new Date(Math.min(...dates));
     const maxDate = new Date(Math.max(...dates));
-    
+
     // Calculate total amount
     const totalAmount = transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
     const formattedAmount = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
     }).format(Math.abs(totalAmount));
-    
+
     const typeDesc = totalAmount < 0 ? 'Expenses' : 'Income';
-    
+
     return { 
       summary: `${typeDesc} (${formattedAmount}) - ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`
     };
