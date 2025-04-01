@@ -1,0 +1,174 @@
+2. Update the category suggestion service:
+File: src/server/services/categorySuggestion.js
+javascriptCopy// Update the suggestCategory method in categorySuggestion.js
+async suggestCategory(description, amount = null, type = 'expense') {
+  try {
+    // First try to find existing transactions with the same description
+    const { Transaction, Category } = getModels();
+    
+    // Look for exact matches in previous transactions
+    const existingTransactions = await Transaction.findAll({
+      where: {
+        description: description,
+        categoryId: {
+          [Op.not]: null
+        }
+      },
+      include: [{
+        model: Category,
+        as: 'category'
+      }],
+      order: [['updatedAt', 'DESC']],
+      limit: 3
+    });
+    
+    // If we find matching transactions, use their category
+    if (existingTransactions.length > 0) {
+      const transaction = existingTransactions[0];
+      return {
+        categoryId: transaction.categoryId,
+        confidence: 0.9, // High confidence for exact matches
+        suggestionSource: 'database-exact-match',
+        reasoning: `Previously categorized identical transaction`
+      };
+    }
+    
+    // Look for similar descriptions (fuzzy match)
+    const allCategorizedTransactions = await Transaction.findAll({
+      where: {
+        categoryId: {
+          [Op.not]: null
+        }
+      },
+      include: [{
+        model: Category,
+        as: 'category'
+      }],
+      limit: 100 // Limit to avoid performance issues
+    });
+    
+    // Find similar transactions using string similarity
+    const similarTransactions = allCategorizedTransactions
+      .map(t => ({
+        transaction: t,
+        similarity: natural.JaroWinklerDistance(
+          this.preprocessText(description), 
+          this.preprocessText(t.description)
+        )
+      }))
+      .filter(item => item.similarity > 0.85) // High similarity threshold
+      .sort((a, b) => b.similarity - a.similarity);
+    
+    if (similarTransactions.length > 0) {
+      const match = similarTransactions[0];
+      return {
+        categoryId: match.transaction.categoryId,
+        confidence: match.similarity * 0.9, // Scale confidence based on similarity
+        suggestionSource: 'database-similar-match',
+        reasoning: `Similar to previously categorized transaction: "${match.transaction.description}"`
+      };
+    }
+    
+    // Make sure the classifier is trained
+    if (!this.trained) {
+      await this.trainClassifier();
+    }
+    
+    // If OpenAI is enabled and we have an API key, try it first
+    if (this.useOpenAI) {
+      console.log(`[CategorySuggestion] Using OpenAI to suggest category for: "${description}" (${type}, $${amount || 'N/A'})`);
+      
+      try {
+        // Add timeout for OpenAI calls to prevent hanging
+        const openaiPromise = (async () => {
+          const { Category } = getModels();
+          const categories = await Category.findAll({
+            order: [['type', 'ASC'], ['name', 'ASC']]
+          });
+          
+          return await openaiService.categorizeTransaction(
+            description,
+            amount,
+            type,
+            categories
+          );
+        })();
+        
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('OpenAI categorization timed out')), 10000));
+        
+        const openaiSuggestion = await Promise.race([openaiPromise, timeoutPromise]);
+        
+        if (openaiSuggestion && !openaiSuggestion.error) {
+          // Check if we already have a matched categoryId from the OpenAI service
+          let categoryId = openaiSuggestion.categoryId;
+          let matchConfidence = 1.0; // Default to high confidence if ID was directly provided
+          
+          // If no categoryId but we have a name suggestion, find matching category
+          if (!categoryId && openaiSuggestion.categoryName) {
+            const matchResult = openaiService.findMatchingCategory(
+              openaiSuggestion.categoryName,
+              await Category.findAll(),
+              type
+            );
+            
+            categoryId = matchResult.categoryId;
+            matchConfidence = matchResult.matchConfidence;
+          }
+          
+          // Calculate final confidence - use OpenAI confidence but adjust based on category match quality
+          const finalConfidence = categoryId 
+            ? (openaiSuggestion.confidence * 0.7) + (matchConfidence * 0.3)
+            : openaiSuggestion.confidence * 0.5; // Lower confidence if no match found
+          
+          // Log the result
+          console.log(`[CategorySuggestion] OpenAI suggestion: "${openaiSuggestion.categoryName}" -> ID: ${categoryId}, Confidence: ${finalConfidence.toFixed(2)}`);
+          
+          // Return formatted result
+          return {
+            categoryId,
+            confidence: finalConfidence,
+            openaiSuggestion: openaiSuggestion.categoryName,
+            reasoning: openaiSuggestion.reasoning || "Predicted by AI based on transaction description and amount",
+            fromCache: openaiSuggestion.fromCache || false,
+            suggestionSource: openaiSuggestion.fromCache ? 'openai-cache' : 'openai'
+          };
+        }
+      } catch (openaiError) {
+        console.error('[CategorySuggestion] OpenAI error, falling back to classifier:', openaiError);
+        console.log('[CategorySuggestion] Error details:', openaiError.message);
+        // Fall back to classifier below
+      }
+    }
+    
+    // Fall back to Bayes classifier if OpenAI failed or is disabled
+    
+    // If still not trained, return null suggestion
+    if (!this.trained) {
+      return { categoryId: null, confidence: 0, suggestionSource: 'untrained' };
+    }
+    
+    // Preprocess the description
+    const processedText = this.preprocessText(description);
+    
+    // Get classifier results
+    const classifications = this.classifier.getClassifications(processedText);
+    
+    if (classifications.length === 0) {
+      return { categoryId: null, confidence: 0, suggestionSource: 'no-classifications' };
+    }
+    
+    // Get the top classification
+    const topClassification = classifications[0];
+    
+    return {
+      categoryId: topClassification.label,
+      confidence: topClassification.confidence || topClassification.value,
+      suggestionSource: 'bayes-classifier',
+      reasoning: `Matched based on text similarity to previously categorized transactions`
+    };
+  } catch (error) {
+    console.error('Error suggesting category:', error);
+    return { categoryId: null, confidence: 0, suggestionSource: 'error', reasoning: error.message };
+  }
+}
