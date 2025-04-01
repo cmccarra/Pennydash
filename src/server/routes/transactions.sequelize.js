@@ -2953,13 +2953,13 @@ router.put('/uploads/:uploadId/account-info', async (req, res) => {
   }
 });
 
-// Complete an entire upload (mark all batches as processed)
+// Complete an entire upload (mark all batches as processed and save transactions)
 router.post('/uploads/:uploadId/complete', async (req, res) => {
   try {
     console.log(`🔍 [SERVER] Complete upload endpoint called for uploadId: ${req.params.uploadId}`);
     console.log(`🔍 [SERVER] Request body:`, JSON.stringify(req.body));
     
-    const { Transaction } = getModels();
+    const { Transaction, Upload, Batch } = getModels();
     const { uploadId } = req.params;
     
     if (!uploadId) {
@@ -2970,23 +2970,95 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
       });
     }
     
-    // Validate uploadId format (should start with 'upload_' followed by numbers)
-    if (!uploadId.match(/^upload_\d+$/)) {
-      console.error(`⚠️ [SERVER] Invalid upload ID format: ${uploadId}`);
-      return res.status(400).json({
-        error: 'Invalid upload ID format',
-        details: 'Upload ID should follow the format "upload_" followed by numbers.'
+    // Find the upload record
+    const upload = await Upload.findByPk(uploadId);
+    
+    if (!upload) {
+      console.error(`⚠️ [SERVER] Upload not found: ${uploadId}`);
+      return res.status(404).json({
+        error: 'Upload not found',
+        details: 'The requested upload ID does not exist in the database.'
       });
     }
     
-    console.log(`🔍 [SERVER] Updating transactions for uploadId: ${uploadId}`);
+    console.log(`🔍 [SERVER] Completing upload for ID: ${uploadId} with status ${upload.status}`);
     
-    // Set a timeout for the database operations (to prevent hanging)
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Database operation timed out')), 15000);
+    // If upload is already complete, just return success
+    if (upload.status === 'completed') {
+      console.log(`🔍 [SERVER] Upload ${uploadId} was already completed, returning success`);
+      return res.json({
+        message: 'Upload was already completed',
+        uploadId,
+        alreadyCompleted: true
+      });
+    }
+    
+    // Find all batches for this upload
+    const batches = await Batch.findAll({
+      where: {
+        uploadId: uploadId.toString()
+      }
     });
     
-    // We need to handle errors more gracefully so the client doesn't hang
+    console.log(`🔍 [SERVER] Found ${batches.length} batches for upload ${uploadId}`);
+    
+    // Mark all batches as completed
+    if (batches.length > 0) {
+      await Batch.update(
+        { status: 'completed', processed: true },
+        {
+          where: {
+            uploadId: uploadId.toString()
+          }
+        }
+      );
+      console.log(`✅ [SERVER] Marked ${batches.length} batches as completed for upload ${uploadId}`);
+    }
+    
+    // Mark the upload as completed
+    await upload.update({ status: 'completed' });
+    console.log(`✅ [SERVER] Marked upload ${uploadId} as completed`);
+    
+    // Call the /confirm endpoint to save the transactions if not already saved
+    if (!req.body.skipConfirm) {
+      // Forward to the confirm endpoint
+      console.log(`🔍 [SERVER] Forwarding to /uploads/${uploadId}/confirm endpoint to save transactions`);
+      
+      try {
+        // Create a new request to the confirm endpoint
+        const confirmResponse = await fetch(`http://localhost:5000/api/uploads/${uploadId}/confirm`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({})
+        });
+        
+        if (!confirmResponse.ok) {
+          console.error(`⚠️ [SERVER] Error confirming upload: ${confirmResponse.status}`);
+          const errorText = await confirmResponse.text();
+          console.error(`⚠️ [SERVER] Error details: ${errorText}`);
+        } else {
+          console.log(`✅ [SERVER] Successfully confirmed upload ${uploadId}`);
+        }
+      } catch (confirmError) {
+        console.error(`⚠️ [SERVER] Error calling confirm endpoint: ${confirmError.message}`);
+        // Continue anyway since we want to complete the upload
+      }
+    }
+    
+    return res.json({
+      message: 'Upload completed successfully',
+      uploadId,
+      batchCount: batches.length
+    });
+  } catch (error) {
+    console.error('Error completing upload:', error);
+    return res.status(500).json({
+      error: 'Failed to complete upload',
+      details: error.message
+    });
+  } need to handle errors more gracefully so the client doesn't hang
     try {
       // Create a promise that updates the transactions with a shorter timeout
       const updatePromise = Transaction.update(

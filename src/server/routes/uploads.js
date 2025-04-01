@@ -1100,7 +1100,7 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
 
 /**
  * @route POST /uploads/:uploadId/confirm
- * @desc Confirm an upload after review, actually saving transactions to database
+ * @desc Confirm an upload after enrichment completion, actually saving transactions to database
  * @access Public
  */
 router.post('/:uploadId/confirm', async (req, res) => {
@@ -1110,8 +1110,11 @@ router.post('/:uploadId/confirm', async (req, res) => {
     const { Upload, Transaction, Batch } = sequelize.models;
 
     const { uploadId } = req.params;
+    
+    console.log(`🔍 [SERVER] Confirming upload completion for ID: ${uploadId}`);
 
     if (!uploadId) {
+      console.error('⚠️ [SERVER] Missing uploadId in confirm request');
       return res.status(400).json({
         error: 'Upload ID is required'
       });
@@ -1121,20 +1124,34 @@ router.post('/:uploadId/confirm', async (req, res) => {
     const upload = await Upload.findByPk(uploadId);
 
     if (!upload) {
+      console.error(`⚠️ [SERVER] Upload not found for ID: ${uploadId}`);
       return res.status(404).json({
         error: 'Upload not found'
       });
     }
 
-    // Get the temporarily stored transactions
+    // Check if this upload was already processed
+    if (upload.status === 'completed') {
+      console.log(`🔍 [SERVER] Upload ${uploadId} was already completed, returning success`);
+      return res.json({
+        message: 'Upload was already processed',
+        uploadId,
+        alreadyCompleted: true
+      });
+    }
+    
+    // Get the temporarily stored transactions from metadata
     const tempTransactions = upload.metadata?.processedTransactions || [];
     
     if (tempTransactions.length === 0) {
+      console.error(`⚠️ [SERVER] No transactions found for upload ${uploadId}`);
       return res.status(400).json({
         error: 'No transactions found for this upload'
       });
     }
 
+    console.log(`🔍 [SERVER] Saving ${tempTransactions.length} transactions for upload ${uploadId}`);
+    
     // Now actually save the transactions to the database
     const createdTransactions = [];
     for (const transaction of tempTransactions) {
@@ -1149,6 +1166,8 @@ router.post('/:uploadId/confirm', async (req, res) => {
         // Continue with other transactions
       }
     }
+
+    console.log(`✅ [SERVER] Created ${createdTransactions.length} transactions for upload ${uploadId}`);
 
     // Create a batch for all transactions
     const batch = await Batch.create({
@@ -1173,6 +1192,8 @@ router.post('/:uploadId/confirm', async (req, res) => {
       status: 'completed',
       transactionCount: createdTransactions.length
     });
+
+    console.log(`✅ [SERVER] Upload ${uploadId} completed successfully with batch ${batch.id}`);
 
     return res.json({
       message: `Upload confirmed. ${createdTransactions.length} transactions saved.`,

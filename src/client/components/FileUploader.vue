@@ -210,11 +210,11 @@ export default defineComponent({
     // Add methods to handle user confirmation or cancellation
     const confirmUpload = async () => {
       try {
-        const result = await transactionsApi.confirmUpload(uploadResult.uploadId);
-        emit('upload-complete', result);
+        // This will start the enrichment flow but NOT save transactions yet
+        emit('upload-complete', uploadResult.value);
         uploadResult.value = null;
       } catch (err) {
-        error.value = err.message || 'Failed to confirm upload';
+        error.value = err.message || 'Failed to process upload';
       }
     };
     

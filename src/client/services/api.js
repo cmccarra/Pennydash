@@ -66,10 +66,33 @@ const transactionsApi = {
     }
   },
   
-  // Confirm a transaction upload
+  // Confirm a transaction upload - only called at the END of enrichment flow
   confirmUpload: async (uploadId) => {
     try {
+      console.log(`🔍 [API] Confirming upload with ID: ${uploadId}`);
+      
       const response = await fetch(`${API_BASE_URL}/uploads/${uploadId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const result = await handleResponse(response);
+      console.log(`✅ [API] Upload confirmed successfully: ${uploadId}`);
+      return result;
+    } catch (error) {
+      console.error('Error confirming upload:', error);
+      throw error;
+    }
+  },
+  
+  // Process uploaded file but don't save transactions yet
+  processUpload: async (uploadId) => {
+    try {
+      console.log(`🔍 [API] Processing upload with ID: ${uploadId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/uploads/${uploadId}/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -78,7 +101,7 @@ const transactionsApi = {
       
       return await handleResponse(response);
     } catch (error) {
-      console.error('Error confirming upload:', error);
+      console.error('Error processing upload:', error);
       throw error;
     }
   },
