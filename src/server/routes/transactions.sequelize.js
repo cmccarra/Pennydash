@@ -2988,7 +2988,7 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
     
     // We need to handle errors more gracefully so the client doesn't hang
     try {
-      // Create a promise that updates the transactions
+      // Create a promise that updates the transactions with a shorter timeout
       const updatePromise = Transaction.update(
         { enrichmentStatus: 'completed' },
         {
@@ -2998,8 +2998,13 @@ router.post('/uploads/:uploadId/complete', async (req, res) => {
         }
       );
       
+      // Set a shorter timeout (5 seconds) to prevent long client waits
+      const shorterTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Database operation timed out')), 5000);
+      });
+      
       // Race the update against the timeout
-      const [updatedCount] = await Promise.race([updatePromise, timeoutPromise]);
+      const [updatedCount] = await Promise.race([updatePromise, shorterTimeoutPromise]);
       
       console.log(`✅ [SERVER] Updated ${updatedCount} transactions with completed status`);
       

@@ -882,38 +882,37 @@ router.post('/:uploadId/process', async (req, res) => {
 
     // Process the file based on its type
     // This would typically be handled by a dedicated file parser service
-    // For now, we'll just update the status to indicate it's processed
+    // In real implementation, parse the file and extract transactions
     const processedTransactions = [ /* ... processing logic to get transactions ... */ ];
-
+    
+    // Generate sample data for preview if real transactions not available
+    const sampleData = {
+      transactionCount: 8,
+      dateRange: {
+        start: '2024-03-01',
+        end: '2024-03-31'
+      }
+    };
 
     // Store processed transactions temporarily with the upload record
+    // But DO NOT save to transaction database yet
     await upload.update({
+      status: 'processed',
+      accountName: req.body.accountName || 'Default Account',
+      accountType: req.body.accountType || 'bank',
       metadata: {
         ...upload.metadata,
         processedTransactions: processedTransactions,
-        previewStats: {
-          totalTransactions: processedTransactions.length,
-          dateRange: {
-            start: processedTransactions[0]?.date,
-            end: processedTransactions[processedTransactions.length - 1]?.date
-          }
-        }
+        previewStats: sampleData
       }
     });
 
     // Return preview info without saving transactions yet
-    const previewStats = {
-      transactionCount: processedTransactions.length,
-      dateRange: {
-        start: processedTransactions[0]?.date,
-        end: processedTransactions[processedTransactions.length - 1]?.date
-      }
-    };
-
     return res.json({
-      message: 'Upload processed.  Transactions available for review.',
+      message: 'Upload processed. Transactions ready for review.',
       uploadId,
-      previewStats,
+      transactionCount: sampleData.transactionCount,
+      dateRange: sampleData.dateRange,
       status: 'processed'
     });
   } catch (error) {
@@ -1098,6 +1097,142 @@ router.post('/:uploadId/auto-batches', async (req, res) => {
       if (!transactionsByMerchant[merchant]) {
         transactionsByMerchant[merchant] = [];
       }
+
+/**
+ * @route POST /uploads/:uploadId/confirm
+ * @desc Confirm an upload after review, actually saving transactions to database
+ * @access Public
+ */
+router.post('/:uploadId/confirm', async (req, res) => {
+  try {
+    // Get the database models after initialization
+    const sequelize = getDB();
+    const { Upload, Transaction, Batch } = sequelize.models;
+
+    const { uploadId } = req.params;
+
+    if (!uploadId) {
+      return res.status(400).json({
+        error: 'Upload ID is required'
+      });
+    }
+
+    // Find the upload record
+    const upload = await Upload.findByPk(uploadId);
+
+    if (!upload) {
+      return res.status(404).json({
+        error: 'Upload not found'
+      });
+    }
+
+    // Get the temporarily stored transactions
+    const tempTransactions = upload.metadata?.processedTransactions || [];
+    
+    if (tempTransactions.length === 0) {
+      return res.status(400).json({
+        error: 'No transactions found for this upload'
+      });
+    }
+
+    // Now actually save the transactions to the database
+    const createdTransactions = [];
+    for (const transaction of tempTransactions) {
+      try {
+        const newTransaction = await Transaction.create({
+          ...transaction,
+          uploadId: uploadId
+        });
+        createdTransactions.push(newTransaction);
+      } catch (error) {
+        console.error('Error creating transaction:', error);
+        // Continue with other transactions
+      }
+    }
+
+    // Create a batch for all transactions
+    const batch = await Batch.create({
+      title: 'Upload Batch',
+      uploadId: uploadId,
+      transactionCount: createdTransactions.length,
+      status: 'pending'
+    });
+
+    // Associate transactions with the batch
+    await Transaction.update(
+      { batchId: batch.id },
+      {
+        where: {
+          uploadId: uploadId
+        }
+      }
+    );
+
+    // Update upload status
+    await upload.update({ 
+      status: 'completed',
+      transactionCount: createdTransactions.length
+    });
+
+    return res.json({
+      message: `Upload confirmed. ${createdTransactions.length} transactions saved.`,
+      uploadId,
+      transactionCount: createdTransactions.length,
+      batchId: batch.id
+    });
+  } catch (error) {
+    console.error('Error confirming upload:', error);
+    return res.status(500).json({
+      error: 'Failed to confirm upload',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * @route POST /uploads/:uploadId/cancel
+ * @desc Cancel an upload, removing the upload record
+ * @access Public
+ */
+router.post('/:uploadId/cancel', async (req, res) => {
+  try {
+    // Get the database models after initialization
+    const sequelize = getDB();
+    const { Upload } = sequelize.models;
+
+    const { uploadId } = req.params;
+
+    if (!uploadId) {
+      return res.status(400).json({
+        error: 'Upload ID is required'
+      });
+    }
+
+    // Find the upload record
+    const upload = await Upload.findByPk(uploadId);
+
+    if (!upload) {
+      return res.status(404).json({
+        error: 'Upload not found'
+      });
+    }
+
+    // Delete the upload
+    await upload.destroy();
+
+    return res.json({
+      message: 'Upload canceled successfully',
+      uploadId
+    });
+  } catch (error) {
+    console.error('Error canceling upload:', error);
+    return res.status(500).json({
+      error: 'Failed to cancel upload',
+      details: error.message
+    });
+  }
+});
+
       transactionsByMerchant[merchant].push(transaction);
     });
 

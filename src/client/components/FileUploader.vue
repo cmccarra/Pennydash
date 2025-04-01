@@ -206,6 +206,30 @@ export default defineComponent({
       }
     };
     
+    // Add methods to handle user confirmation or cancellation
+    const confirmUpload = async () => {
+      try {
+        const result = await transactionsApi.confirmUpload(uploadResult.uploadId);
+        emit('upload-complete', result);
+        uploadResult.value = null;
+      } catch (err) {
+        error.value = err.message || 'Failed to confirm upload';
+      }
+    };
+    
+    const cancelUpload = async () => {
+      try {
+        if (uploadResult.value && uploadResult.value.uploadId) {
+          await transactionsApi.cancelUpload(uploadResult.value.uploadId);
+        }
+        uploadResult.value = null;
+      } catch (err) {
+        console.error('Error canceling upload:', err);
+        // Still clear the UI even if the cancel API fails
+        uploadResult.value = null;
+      }
+    };
+    
     return {
       fileInput,
       selectedFile,
@@ -216,7 +240,9 @@ export default defineComponent({
       uploadResult,
       handleFileChange,
       handleFileDrop,
-      uploadFile
+      uploadFile,
+      confirmUpload,
+      cancelUpload
     };
   }
 });
