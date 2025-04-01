@@ -777,17 +777,15 @@
           </svg>
           <span class="btm-nav-label text-xs">Reports</span>
         </button>
-        <div class="dropdown dropdown-top dropdown-end">
-          <button tabindex="0" @click="toggleMoreMenu" :class="activeTab === 'more' ? 'active text-primary' : ''">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+        <button class="flex-1 relative" @click="moreMenuOpen = !moreMenuOpen" :class="activeTab === 'more' ? 'active text-primary' : ''">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mx-auto">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
             <span class="btm-nav-label text-xs">More</span>
+            <ul v-if="moreMenuOpen" class="absolute bottom-full right-0 mb-2 dropdown-content menu p-2 shadow-lg bg-base-200 rounded-box w-52">
+              <li><a href="#" @click.prevent="activeTab = 'settings'; moreMenuOpen = false">Settings</a></li>
+            </ul>
           </button>
-          <ul tabindex="0" class="dropdown-content menu p-2 shadow-lg bg-base-200 rounded-box w-52 mb-2 right-0">
-            <li><a href="#" @click.prevent="activeTab = 'settings'">Settings</a></li>
-          </ul>
-        </div>
       </div>
       
       <!-- Main Content Area -->
@@ -3102,6 +3100,7 @@
         const isUploadActive = ref(false);
         const uploadProgress = ref(0);
         const activeTab = ref('home');
+const moreMenuOpen = ref(false);
         const selectedDateRange = ref('month');
         
         // Transaction filtering and pagination
