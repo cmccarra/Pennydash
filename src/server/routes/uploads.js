@@ -883,17 +883,37 @@ router.post('/:uploadId/process', async (req, res) => {
     // Process the file based on its type
     // This would typically be handled by a dedicated file parser service
     // For now, we'll just update the status to indicate it's processed
+    const processedTransactions = [ /* ... processing logic to get transactions ... */ ];
 
-    // Update the upload record to indicate processing completed
+
+    // Store processed transactions temporarily with the upload record
     await upload.update({
-      status: 'processed',
-      accountName: req.body.accountName || 'Default Account',
-      accountType: req.body.accountType || 'bank'
+      metadata: {
+        ...upload.metadata,
+        processedTransactions: processedTransactions,
+        previewStats: {
+          totalTransactions: processedTransactions.length,
+          dateRange: {
+            start: processedTransactions[0]?.date,
+            end: processedTransactions[processedTransactions.length - 1]?.date
+          }
+        }
+      }
     });
 
+    // Return preview info without saving transactions yet
+    const previewStats = {
+      transactionCount: processedTransactions.length,
+      dateRange: {
+        start: processedTransactions[0]?.date,
+        end: processedTransactions[processedTransactions.length - 1]?.date
+      }
+    };
+
     return res.json({
-      message: 'Upload queued for processing',
+      message: 'Upload processed.  Transactions available for review.',
       uploadId,
+      previewStats,
       status: 'processed'
     });
   } catch (error) {

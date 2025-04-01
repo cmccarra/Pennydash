@@ -81,11 +81,26 @@
     </div>
 
     <div v-if="uploadResult" class="mt-4">
-      <div class="bg-green-50 p-3 rounded">
-        <p class="font-medium text-green-700">{{ uploadResult.message }}</p>
+      <div class="bg-blue-50 p-3 rounded">
+        <p class="font-medium text-blue-700">Preview Ready</p>
         <p class="text-sm text-gray-600 mt-1">
-          Imported {{ uploadResult.transactions?.length }} transactions.
+          Found {{ uploadResult.transactionCount }} transactions
+          from {{ uploadResult.dateRange?.start }} to {{ uploadResult.dateRange?.end }}
         </p>
+        <div class="mt-3 flex justify-end space-x-2">
+          <button 
+            @click="cancelUpload"
+            class="btn btn-secondary"
+          >
+            Cancel
+          </button>
+          <button 
+            @click="confirmUpload"
+            class="btn btn-primary"
+          >
+            Continue to Review
+          </button>
+        </div>
       </div>
     </div>
   </div>
