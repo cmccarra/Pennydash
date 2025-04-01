@@ -156,6 +156,9 @@ class CategorySuggestionService {
    */
   async suggestCategory(description, amount = null, type = 'expense') {
     try {
+      // Get models at the start to ensure we have access
+      const { Transaction, Category } = getModels();
+      
       // Check if we're a new user (less than 10 categorized transactions)
       const categorizedCount = await Transaction.count({
         where: {
@@ -218,6 +221,7 @@ class CategorySuggestionService {
       }
 
       // Look for similar descriptions (fuzzy match)
+      console.log(`[CategorySuggestion] Looking for similar transactions to: "${description}"`);
       const allCategorizedTransactions = await Transaction.findAll({
         where: {
           categoryId: {
@@ -230,6 +234,8 @@ class CategorySuggestionService {
         }],
         limit: 100 // Limit to avoid performance issues
       });
+      
+      console.log(`[CategorySuggestion] Found ${allCategorizedTransactions.length} categorized transactions to compare against`);
 
       // Find similar transactions using string similarity
       const similarTransactions = allCategorizedTransactions
