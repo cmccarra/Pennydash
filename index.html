@@ -18,8 +18,41 @@
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
   
   <!-- Vue.js and Chart.js -->
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Fallback for Vue.js loading -->
+  <script>
+    // Function to initialize Vue app
+    function initializeApp() {
+      console.log('Initializing Vue app...');
+      if (typeof Vue !== 'undefined' && typeof Vue.createApp === 'function') {
+        // If Vue is properly loaded, we'll let the app initialize naturally
+        console.log('Vue is loaded and ready');
+      } else {
+        console.error('Vue is still not properly loaded after fallback attempt');
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', function() {
+      // Check if Vue is defined after all scripts have loaded
+      if (typeof Vue === 'undefined') {
+        console.error('Vue failed to load from primary CDN, trying backup...');
+        // Create and append a backup script
+        const backupScript = document.createElement('script');
+        backupScript.src = 'https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js';
+        backupScript.onload = function() {
+          console.log('Vue loaded from backup CDN');
+          // Attempt to initialize the app after backup loads
+          initializeApp();
+        };
+        document.head.appendChild(backupScript);
+      } else {
+        // Vue is already loaded
+        console.log('Vue already loaded from primary CDN');
+      }
+    });
+  </script>
   
   <!-- Reports View Styles -->
   <style>
@@ -2948,8 +2981,25 @@
       }
     };
 
-    // Create Vue App
+    // Create Vue App - This code runs after the entire page loads
+    if (typeof Vue === 'undefined') {
+      console.error('Vue is not defined. The app may not function correctly.');
+      
+      // Try to recover by adding a script and reinitializing
+      setTimeout(() => {
+        if (typeof initializeApp === 'function') {
+          initializeApp();
+        }
+      }, 1000);
+      
+      return; // Stop execution if Vue isn't available
+    }
+    
+    // Safely extract Vue methods
     const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+    
+    // Log successful initialization
+    console.log('Vue is available, creating app...');
     
     createApp({
       setup() {
