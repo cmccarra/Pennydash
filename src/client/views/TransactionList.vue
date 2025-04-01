@@ -168,8 +168,7 @@
         </div>
 
         <!-- Pagination -->
-        <!-- Add bottom padding to accommodate floating bar -->
-        <div class="flex justify-between items-center p-4 border-t border-gray-200 mb-20">
+        <div class="flex justify-between items-center p-4 border-t border-gray-200" style="margin-bottom: 80px;">
           <div>
             <span class="text-sm text-gray-700">
               Showing {{ paginationStart }} to {{ paginationEnd }} of {{ totalTransactions }} transactions
