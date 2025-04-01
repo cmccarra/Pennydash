@@ -365,7 +365,7 @@
         </div>
       </div>
     </div>
-    <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-[100]">
+    <div v-if="selectedTransactions.length > 0" class="fixed bottom-0 left-0 right-0 bg-base-200 p-4 shadow-lg border-t border-base-300 flex items-center justify-between z-[9999] max-w-[100vw]">
             <div class="flex items-center space-x-4">
               <span class="font-medium">{{ selectedTransactions.length }} transactions selected</span>
               <button 
