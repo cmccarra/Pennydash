@@ -2982,26 +2982,30 @@
     };
 
     // Create Vue App - This code runs after the entire page loads
-    if (typeof Vue === 'undefined') {
-      console.error('Vue is not defined. The app may not function correctly.');
+    // Wrap everything in an immediately invoked function expression (IIFE)
+    // to allow us to use return without causing syntax errors
+    (function() {
+      if (typeof Vue === 'undefined') {
+        console.error('Vue is not defined. The app may not function correctly.');
+        
+        // Try to recover by adding a script and reinitializing
+        setTimeout(() => {
+          if (typeof initializeApp === 'function') {
+            initializeApp();
+          }
+        }, 1000);
+        
+        // Return early from this function instead of global scope
+        return;
+      }
       
-      // Try to recover by adding a script and reinitializing
-      setTimeout(() => {
-        if (typeof initializeApp === 'function') {
-          initializeApp();
-        }
-      }, 1000);
+      // Safely extract Vue methods
+      const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
       
-      return; // Stop execution if Vue isn't available
-    }
-    
-    // Safely extract Vue methods
-    const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
-    
-    // Log successful initialization
-    console.log('Vue is available, creating app...');
-    
-    createApp({
+      // Log successful initialization
+      console.log('Vue is available, creating app...');
+      
+      createApp({
       setup() {
         // State management
         const state = reactive({
@@ -5942,6 +5946,9 @@
         };
       }
     }).mount('#app');
+    
+    // Close the IIFE that we started earlier to prevent return statement syntax errors
+    })();
     
     // Create Charts
     window.addEventListener('load', function() {
