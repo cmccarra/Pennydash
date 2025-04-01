@@ -15,7 +15,12 @@ export default defineComponent({
   name: 'App',
   components: {
     Navbar
-  }
+  },
+  data() {
+    return {
+      moreMenuOpen: false
+    }
+  },
 });
 </script>
 
