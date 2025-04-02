@@ -1957,8 +1957,19 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           };
         }
         
-        // Get batch summary
-        const summaryInfo = await generateBatchSummary(batchTransactions);
+        // Get batch summary with enhanced OpenAI integration and timeout handling
+        console.log(`[GET /uploads/${uploadId}/batches] - Generating summary for batch ${batchId}`);
+        const summaryPromise = generateBatchSummaryWithOpenAI(batchTransactions, 15000); // 15-second timeout
+        const timeoutPromise = new Promise(resolve => {
+          setTimeout(() => {
+            console.log(`[GET /uploads/${uploadId}/batches] - Batch summary timeout for ${batchId}, using fallback`);
+            resolve(generateBatchSummary(batchTransactions));
+          }, 15000);
+        });
+        
+        // Race the OpenAI summary against our timeout with fallback
+        const summaryInfo = await Promise.race([summaryPromise, timeoutPromise]) || await generateBatchSummary(batchTransactions);
+        console.log(`[GET /uploads/${uploadId}/batches] - Generated summary for batch ${batchId}: ${summaryInfo.summary.substring(0, 50)}...`);
         
         // Get category suggestions for the batch
         let suggestedCategory = null;
@@ -2016,7 +2027,7 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           console.error(`Error getting category suggestion for batch ${batchId}:`, suggestionError);
         }
         
-        // Create a batch object with the calculated data
+        // Create a batch object with the calculated data and enhanced AI insights
         const batchObject = {
           batchId,
           title: summaryInfo.summary,
@@ -2024,6 +2035,12 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           statistics: batchStats,
           status: batchTransactions[0]?.enrichmentStatus || 'pending',
           summary: summaryInfo.summary,
+          // Include AI-generated insights if available
+          insights: summaryInfo.insights || [],
+          // Add summary source information if available
+          summarySource: summaryInfo.source || 'auto',
+          // Record if there was a timeout during summary generation
+          summaryTimedOut: summaryInfo.timedOut || false,
           suggestedCategory: suggestedCategory ? {
             id: suggestedCategory.id,
             name: suggestedCategory.name,
@@ -2061,16 +2078,23 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           console.error(`Error generating fallback title:`, titleError);
         }
         
-        // Create an error batch object
+        // Create an enhanced error batch object with better error information
         const errorBatchObject = {
           batchId,
           title: errorTitle,
           transactions: batchTransactions,
           statistics: {
             totalTransactions: batchTransactions.length,
-            error: statError.message
+            error: statError.message,
+            errorType: statError.name || 'UnknownError',
+            errorTimestamp: new Date().toISOString()
           },
-          status: 'error'
+          status: 'error',
+          // Include fallback summary in case of error
+          summary: `Batch with ${batchTransactions.length} transaction(s)`,
+          insights: [`Error processing batch: ${statError.message}`],
+          summarySource: 'error-fallback',
+          summaryTimedOut: false
         };
         
         // Add to batches array
@@ -3449,38 +3473,82 @@ router.post('/uploads/:uploadId/batches/:batchId/regenerate-summary', async (req
     
     let summary = null;
     
+    // Set a timeout for summary generation
+    const timeoutMs = forceOpenAI ? 20000 : 15000; // 20 seconds for forced OpenAI, 15s otherwise
+    console.log(`[POST /uploads/${uploadId}/batches/${batchId}/regenerate-summary] Using ${timeoutMs}ms timeout`);
+    
+    let summaryResult = null;
+    
     // If forceOpenAI is true, try to generate summary directly with OpenAI
-    if (forceOpenAI && process.env.OPENAI_API_KEY) {
+    if (forceOpenAI) {
       try {
-        summary = await generateBatchSummaryWithOpenAI(transactions);
-        console.log('Forced OpenAI summary generation:', summary);
+        console.log(`[POST ${uploadId}/batches/${batchId}/regenerate-summary] Forcing OpenAI summary generation`);
+        
+        // Set up a timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('OpenAI summary generation timed out'));
+          }, timeoutMs);
+        });
+        
+        // Race the summary generation against the timeout
+        summaryResult = await Promise.race([
+          generateBatchSummaryWithOpenAI(transactions, timeoutMs),
+          timeoutPromise
+        ]);
+        
+        console.log(`[POST ${uploadId}/batches/${batchId}/regenerate-summary] OpenAI summary generation completed:`, 
+          summaryResult ? summaryResult.summary?.substring(0, 30) + '...' : 'null');
       } catch (error) {
-        console.error('Error forcing OpenAI summary:', error);
+        console.error(`[POST ${uploadId}/batches/${batchId}/regenerate-summary] Error with OpenAI summary:`, error);
+        // If we had a timeout, mark it as such
+        if (error.message === 'OpenAI summary generation timed out') {
+          summaryResult = {
+            summary: `Batch of ${transactions.length} transactions`,
+            insights: [`OpenAI summary generation timed out after ${timeoutMs/1000} seconds.`],
+            timedOut: true,
+            source: 'openai-timeout'
+          };
+        }
       }
     }
     
     // If we couldn't get an OpenAI summary or forceOpenAI is false, use the standard method
-    if (!summary) {
-      console.log(`Regenerating summary for batch ${batchId} with ${transactions.length} transactions`);
-      const batchInfo = await generateBatchSummary(transactions);
-      summary = batchInfo.summary;
+    if (!summaryResult) {
+      console.log(`[POST ${uploadId}/batches/${batchId}/regenerate-summary] Using standard summary generation method`);
+      summaryResult = await generateBatchSummary(transactions);
     }
     
-    console.log(`Generated new summary: "${summary}"`);
+    console.log(`[POST ${uploadId}/batches/${batchId}/regenerate-summary] Summary generation completed: "${summaryResult.summary}"`);
     
     // Update batch title in database
     const oldTitle = batch.title;
-    await batch.update({ title: summary });
+    await batch.update({ 
+      title: summaryResult.summary,
+      // Store additional metadata if available
+      metadata: {
+        ...(batch.metadata || {}),
+        insights: summaryResult.insights || [],
+        summarySource: summaryResult.source || 'unknown',
+        summaryTimedOut: summaryResult.timedOut || false,
+        summaryLastUpdated: new Date().toISOString()
+      }
+    });
     
-    // Return updated batch info
+    // Return updated batch info with enhanced metadata
     res.json({
       batchId,
       uploadId,
       oldTitle,
-      newTitle: summary,
-      insights: [],
+      newTitle: summaryResult.summary,
+      insights: summaryResult.insights || [],
+      source: summaryResult.source || (forceOpenAI ? 'openai' : 'standard'),
+      timedOut: summaryResult.timedOut || false,
+      error: summaryResult.error || false,
+      errorType: summaryResult.errorType,
       transactionCount: transactions.length,
-      regenerationMethod: forceOpenAI ? 'openai' : 'standard'
+      regenerationMethod: forceOpenAI ? 'openai' : 'standard',
+      regenerationTimestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error(`Error regenerating batch summary:`, error);
@@ -3496,7 +3564,7 @@ router.post('/test/openai-batch-summary', async (req, res) => {
   console.log('[POST /test/openai-batch-summary] - Testing OpenAI batch summary generation');
   
   try {
-    const { transactions } = req.body;
+    const { transactions, timeout = 15000, compareWithFallback = true } = req.body;
     
     if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
       return res.status(400).json({ 
@@ -3505,37 +3573,71 @@ router.post('/test/openai-batch-summary', async (req, res) => {
       });
     }
     
-    console.log(`Testing OpenAI batch summary with ${transactions.length} transactions`);
+    console.log(`[POST /test/openai-batch-summary] Testing with ${transactions.length} transactions (timeout: ${timeout}ms)`);
     
-    // Use our dedicated function for OpenAI summary generation
-    const summary = await generateBatchSummaryWithOpenAI(transactions);
+    // Track metrics for testing
+    const startTime = Date.now();
+    let openAISummary = null;
+    let fallbackSummary = null;
+    let errorOccurred = false;
+    let errorDetails = null;
     
-    if (!summary) {
-      return res.status(500).json({ 
-        error: 'Failed to generate summary',
-        details: 'The OpenAI integration failed to generate a summary'
-      });
+    try {
+      // Use our dedicated function for OpenAI summary generation
+      openAISummary = await generateBatchSummaryWithOpenAI(transactions, timeout);
+      console.log('[POST /test/openai-batch-summary] OpenAI summary generation completed');
+    } catch (openaiError) {
+      console.error('[POST /test/openai-batch-summary] Error with OpenAI summary:', openaiError);
+      errorOccurred = true;
+      errorDetails = {
+        message: openaiError.message,
+        stack: openaiError.stack,
+        name: openaiError.name
+      };
     }
     
+    // If requested, also generate a fallback summary for comparison
+    if (compareWithFallback) {
+      try {
+        console.log('[POST /test/openai-batch-summary] Generating fallback summary for comparison');
+        fallbackSummary = await generateBatchSummary(transactions);
+      } catch (fallbackError) {
+        console.error('[POST /test/openai-batch-summary] Error with fallback summary:', fallbackError);
+      }
+    }
+    
+    // Calculate elapsed time
+    const duration = Date.now() - startTime;
+    
     // Format the transaction information for the response
-    const transactionInfo = transactions.slice(0, 10).map(t => ({
+    const transactionInfo = transactions.slice(0, 15).map(t => ({
       description: t.description,
       merchant: t.merchant,
       amount: t.amount,
       date: t.date
     }));
     
-    // Return the summary and transaction info
+    // Return the full test results
     res.json({
-      summary,
-      transactions: transactionInfo,
-      success: true
+      success: !errorOccurred && openAISummary !== null,
+      duration,
+      timeout,
+      openai: openAISummary || {
+        error: true,
+        errorDetails
+      },
+      fallback: fallbackSummary,
+      transactionCount: transactions.length,
+      transactionSample: transactionInfo,
+      openaiConfigured: openAISummary?.source === 'openai',
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Error testing OpenAI batch summary:', error);
+    console.error('[POST /test/openai-batch-summary] Error testing batch summary:', error);
     res.status(500).json({ 
       error: 'Server error',
-      details: error.message
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -3547,33 +3649,90 @@ router.post('/test/openai-batch-summary', async (req, res) => {
  * @param {number} timeoutMs - Timeout in milliseconds (defaults to 10 seconds)
  * @returns {Promise<Object|null>} Object with summary and source, or null on failure
  */
-async function generateBatchSummaryWithOpenAI(transactions, timeoutMs = 10000) {
+async function generateBatchSummaryWithOpenAI(transactions, timeoutMs = 15000) {
   if (!transactions || transactions.length === 0) {
-    return null;
+    console.log('[generateBatchSummaryWithOpenAI] No transactions provided');
+    return {
+      summary: "No transactions",
+      insights: ["This batch contains no transactions."],
+      timedOut: false,
+      source: 'fallback'
+    };
   }
   
   try {
     const openaiService = require('../services/openai');
+    const startTime = Date.now();
     
-    if (!openaiService.isOpenAIConfigured() || openaiService.isRateLimited()) {
-      console.log('OpenAI service not available for batch summary generation');
-      return null;
+    // Check if OpenAI service is available
+    if (!openaiService.isOpenAIConfigured()) {
+      console.log('[generateBatchSummaryWithOpenAI] OpenAI service not configured');
+      return generateBatchSummary(transactions);
     }
     
-    // We now use the enhanced method from the openai service that has built-in timeout
+    // Check if we're currently rate limited
+    if (openaiService.isRateLimited()) {
+      console.log('[generateBatchSummaryWithOpenAI] OpenAI service is rate limited, using fallback');
+      return {
+        summary: `${transactions.length} Transactions`,
+        insights: ["OpenAI API rate limit reached. Using fallback summary."],
+        timedOut: false,
+        source: 'rate-limited-fallback',
+        error: true,
+        errorType: 'rate_limit'
+      };
+    }
+    
+    console.log(`[generateBatchSummaryWithOpenAI] Generating summary for ${transactions.length} transactions with ${timeoutMs}ms timeout`);
+    
+    // Use the enhanced method from the openai service that has built-in timeout
     const batchInfo = await openaiService.generateBatchSummary(transactions, timeoutMs);
+    const duration = Date.now() - startTime;
     
-    // Check if we had a timeout or error
+    // Log performance metrics
+    console.log(`[generateBatchSummaryWithOpenAI] Summary generation ${batchInfo.timedOut ? 'timed out' : 'completed'} in ${duration}ms`);
+    
+    // Check if we had a timeout or error, if so return enhanced error information
     if (batchInfo.timedOut || batchInfo.error) {
-      console.log(`OpenAI batch summary generation ${batchInfo.timedOut ? 'timed out' : 'error'}: ${batchInfo.errorType || ''}`);
-      return null;
+      console.log(`[generateBatchSummaryWithOpenAI] ${batchInfo.timedOut ? 'Timed out' : 'Error'}: ${batchInfo.errorType || 'unknown'}`);
+      
+      // If timed out, use fallback method
+      if (batchInfo.timedOut) {
+        console.log('[generateBatchSummaryWithOpenAI] Using fallback due to timeout');
+        const fallback = generateBatchSummary(transactions);
+        fallback.timedOut = true;
+        fallback.source = 'timeout-fallback';
+        fallback.originalErrorType = batchInfo.errorType;
+        return fallback;
+      }
+      
+      // For other errors, return the error info with enhanced metadata
+      return {
+        ...batchInfo,
+        source: 'openai-error',
+        duration
+      };
     }
     
-    // Return the valid summary
-    return batchInfo.summary;
+    // Return the valid summary with enhanced metadata
+    return {
+      summary: batchInfo.summary,
+      insights: batchInfo.insights || [],
+      timedOut: false,
+      source: 'openai',
+      duration
+    };
   } catch (error) {
-    console.error('Error generating batch summary with OpenAI:', error);
-    return null;
+    console.error('[generateBatchSummaryWithOpenAI] Unexpected error:', error);
+    
+    // Fall back to local generation
+    const fallback = generateBatchSummary(transactions);
+    fallback.error = true;
+    fallback.errorType = 'unexpected';
+    fallback.errorMessage = error.message;
+    fallback.source = 'error-fallback';
+    
+    return fallback;
   }
 }
 
@@ -3664,65 +3823,100 @@ router.get('/uploads/:uploadId/batches/:batchId', async (req, res) => {
   }
 });
 
-// Helper function to generate batch summary
+/**
+ * Helper function to generate batch summary without using OpenAI
+ * Uses pattern recognition and statistical analysis to generate insights
+ * 
+ * @param {Array} transactions - The transactions to summarize
+ * @returns {Object} Object with summary, insights, and metadata
+ */
 async function generateBatchSummary(transactions) {
   if (!transactions || transactions.length === 0) {
-    return { summary: "Empty batch" };
+    return { 
+      summary: "Empty batch", 
+      insights: ["No transactions available for analysis."],
+      source: 'local'
+    };
   }
   
   try {
+    console.log(`[generateBatchSummary] Generating fallback summary for ${transactions.length} transactions`);
+    const insights = [];
+    const stats = calculateBatchStatistics(transactions);
+    
     // Check for common merchant
     const merchants = [...new Set(transactions.map(t => t.merchant).filter(Boolean))];
+    const merchantTitle = merchants.length === 1 
+      ? `Transactions from ${merchants[0]}`
+      : null;
+      
     if (merchants.length === 1) {
-      return { summary: `Transactions from ${merchants[0]}` };
+      insights.push(`All transactions are from ${merchants[0]}.`);
+    } else if (merchants.length > 1 && merchants.length <= 3) {
+      insights.push(`Transactions are from: ${merchants.join(', ')}.`);
+    } else if (merchants.length > 3) {
+      // Find most frequent merchants
+      const merchantCounts = {};
+      transactions.forEach(t => {
+        if (t.merchant) {
+          merchantCounts[t.merchant] = (merchantCounts[t.merchant] || 0) + 1;
+        }
+      });
+      
+      const topMerchants = Object.entries(merchantCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(entry => `${entry[0]} (${entry[1]})`);
+        
+      if (topMerchants.length > 0) {
+        insights.push(`Top merchants: ${topMerchants.join(', ')}.`);
+      }
     }
     
     // Check if all transactions have similar descriptions
-    const descriptions = transactions.map(t => t.description);
-    const words = descriptions.join(' ').split(/\s+/);
-    const wordCounts = {};
+    const descriptions = transactions.map(t => t.description || '');
+    const words = descriptions.join(' ').split(/\s+/)
+      .filter(word => 
+        word.length > 3 && 
+        !['THE', 'AND', 'FROM', 'WITH'].includes(word.toUpperCase())
+      );
     
+    const wordCounts = {};
     words.forEach(word => {
-      if (word.length > 3) { // Skip short words
-        wordCounts[word] = (wordCounts[word] || 0) + 1;
-      }
+      wordCounts[word] = (wordCounts[word] || 0) + 1;
     });
     
-    // Find most common words
+    // Find most common words for title and insights
     const commonWords = Object.entries(wordCounts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 2)
+      .slice(0, 3)
       .map(entry => entry[0]);
     
+    const commonWordsTitle = commonWords.length > 0
+      ? `Transactions related to ${commonWords.join(' ')}`
+      : null;
+      
     if (commonWords.length > 0) {
-      return { summary: `Transactions related to ${commonWords.join(' ')}` };
+      insights.push(`Common keywords: ${commonWords.join(', ')}.`);
     }
     
-    // If OpenAI is available, use it for a better summary
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        const openaiService = require('../services/openai');
-        // Use the enhanced service with timeout handling
-        const batchInfo = await openaiService.generateBatchSummary(transactions, 12000); // 12 second timeout
-        
-        if (batchInfo && !batchInfo.timedOut && !batchInfo.error) {
-          return { 
-            summary: batchInfo.summary,
-            insights: batchInfo.insights,
-            source: 'openai'
-          };
-        } else if (batchInfo?.timedOut) {
-          console.log('[Batch Summary] OpenAI summary generation timed out');
-        }
-      } catch (error) {
-        console.error('Error generating batch summary with OpenAI:', error);
-        // Fall through to default summary
-      }
+    // Add financial insights
+    if (stats.netAmount) {
+      insights.push(`Net ${stats.netDirection === 'positive' ? 'income' : 'expense'}: $${Math.abs(stats.netAmount).toFixed(2)}.`);
     }
     
-    // Default summary based on date range
+    if (stats.incomeTransactions > 0 && stats.expenseTransactions > 0) {
+      insights.push(`Contains ${stats.incomeTransactions} income and ${stats.expenseTransactions} expense transactions.`);
+    } else if (stats.incomeTransactions > 0) {
+      insights.push(`Contains ${stats.incomeTransactions} income transactions.`);
+    } else if (stats.expenseTransactions > 0) {
+      insights.push(`Contains ${stats.expenseTransactions} expense transactions.`);
+    }
+    
+    // Get date range insights
     const dates = transactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
     
+    let dateRangeTitle = null;
     if (dates.length > 0) {
       const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
       const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
@@ -3735,16 +3929,56 @@ async function generateBatchSummary(transactions) {
         });
       };
       
-      return { 
-        summary: `Transactions from ${formatDate(minDate)} to ${formatDate(maxDate)}`
-      };
+      dateRangeTitle = `Transactions from ${formatDate(minDate)} to ${formatDate(maxDate)}`;
+      
+      // Add date range insight
+      const daysDiff = Math.round((maxDate - minDate) / (1000 * 60 * 60 * 24));
+      if (daysDiff === 0) {
+        insights.push(`All transactions occurred on ${formatDate(minDate)}.`);
+      } else {
+        insights.push(`Transactions span ${daysDiff} days from ${formatDate(minDate)} to ${formatDate(maxDate)}.`);
+      }
     }
     
-    // Fallback summary
-    return { summary: `Batch of ${transactions.length} transactions` };
+    // Get categorization insights
+    const categories = [...new Set(transactions
+      .map(t => t.category?.name || t.categoryName)
+      .filter(Boolean))];
+      
+    if (categories.length === 1) {
+      insights.push(`All transactions categorized as "${categories[0]}".`);
+    } else if (categories.length > 1 && categories.length <= 3) {
+      insights.push(`Categories include: ${categories.join(', ')}.`);
+    } else if (categories.length > 3) {
+      insights.push(`Transactions span ${categories.length} different categories.`);
+    }
+    
+    // Determine best title to use based on available information
+    let summary;
+    if (merchantTitle) {
+      summary = merchantTitle;
+    } else if (commonWordsTitle) {
+      summary = commonWordsTitle;
+    } else if (dateRangeTitle) {
+      summary = dateRangeTitle;
+    } else {
+      summary = `Batch of ${transactions.length} transactions`;
+    }
+    
+    return { 
+      summary,
+      insights: insights.length > 0 ? insights : [`Contains ${transactions.length} transactions.`],
+      source: 'local'
+    };
   } catch (error) {
-    console.error('Error generating batch summary:', error);
-    return { summary: `Batch of ${transactions.length} transactions` };
+    console.error('[generateBatchSummary] Error generating summary:', error);
+    return { 
+      summary: `Batch of ${transactions.length} transactions`,
+      insights: [`Error analyzing transactions: ${error.message}`],
+      error: true,
+      errorType: error.name || 'UnknownError',
+      source: 'error'
+    };
   }
 }
 
