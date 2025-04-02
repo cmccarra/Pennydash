@@ -64,6 +64,34 @@
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+
+/* Mobile navigation styling */
+.btm-nav {
+  display: flex;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.btm-nav button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  position: relative;
+}
+
+.btm-nav button.active {
+  font-weight: 500;
+}
+
+.btm-nav .btm-nav-label {
+  margin-top: 0.25rem;
+}
+
 }
 
 /* Custom scrollbar */
