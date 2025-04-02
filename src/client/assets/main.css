@@ -64,11 +64,18 @@
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
 
 /* Mobile navigation styling */
 .btm-nav {
   display: flex;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 50;
 }
 
 .btm-nav button {
@@ -90,8 +97,21 @@
 
 .btm-nav .btm-nav-label {
   margin-top: 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
+.btm-nav .dropdown-content {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  background-color: #1e1e1e;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 55;
+  min-width: 150px;
 }
 
 /* Custom scrollbar */
