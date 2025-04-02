@@ -52,17 +52,26 @@ async function runRegenerateSummaryTest() {
     console.log('Original batch details:');
     console.log(`- Title: ${originalBatch.title}`);
     
-    // Step 5: Regenerate the batch summary
-    console.log('Step 5: Regenerating the batch summary');
-    const regeneratedSummary = await regenerateBatchSummary(uploadId, batch.id);
-    console.log('Regenerated summary:');
-    console.log(`- Old title: ${regeneratedSummary.oldTitle}`);
-    console.log(`- New title: ${regeneratedSummary.newTitle}`);
+    // Step 5: Regenerate the batch summary with standard method
+    console.log('Step 5: Regenerating the batch summary (standard method)');
+    const standardSummary = await regenerateBatchSummary(uploadId, batch.id);
+    console.log('Standard regenerated summary:');
+    console.log(`- Old title: ${standardSummary.oldTitle}`);
+    console.log(`- New title: ${standardSummary.newTitle}`);
+    console.log(`- Method: ${standardSummary.regenerationMethod}`);
     
-    // Step 6: Retrieve the updated batch details
-    console.log('Step 6: Retrieving the updated batch details');
+    // Step 6: Regenerate the batch summary with forced OpenAI method
+    console.log('Step 6: Regenerating the batch summary (forced OpenAI method)');
+    const openAISummary = await regenerateBatchSummary(uploadId, batch.id, { forceOpenAI: true });
+    console.log('OpenAI regenerated summary:');
+    console.log(`- Old title: ${openAISummary.oldTitle}`);
+    console.log(`- New title: ${openAISummary.newTitle}`);
+    console.log(`- Method: ${openAISummary.regenerationMethod}`);
+    
+    // Step 7: Retrieve the final updated batch details
+    console.log('Step 7: Retrieving the updated batch details');
     const updatedBatch = await getBatchDetails(uploadId, batch.id);
-    console.log('Updated batch details:');
+    console.log('Final updated batch details:');
     console.log(`- Title: ${updatedBatch.title}`);
     
     console.log('\nTest completed successfully!');
@@ -325,11 +334,19 @@ async function getBatchDetails(uploadId, batchId) {
  * Regenerate batch summary
  * @param {string} uploadId - The upload ID
  * @param {string} batchId - The batch ID
+ * @param {Object} options - Optional parameters
+ * @param {boolean} options.forceOpenAI - Whether to force OpenAI generation
  * @returns {Promise<Object>} Regeneration result
  */
-async function regenerateBatchSummary(uploadId, batchId) {
+async function regenerateBatchSummary(uploadId, batchId, options = {}) {
   const response = await fetchData(`${API_BASE_URL}/transactions/uploads/${uploadId}/batches/${batchId}/regenerate-summary`, {
-    method: 'POST'
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      forceOpenAI: options.forceOpenAI || false
+    })
   });
   
   let data;

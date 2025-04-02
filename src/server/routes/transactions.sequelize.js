@@ -3338,6 +3338,9 @@ router.post('/uploads/:uploadId/batches/:batchId/regenerate-summary', async (req
     const { uploadId, batchId } = req.params;
     console.log(`[POST /uploads/${uploadId}/batches/${batchId}/regenerate-summary] - Regenerating batch summary`);
     
+    // Parse options from request
+    const { forceOpenAI = false } = req.body;
+    
     // Validate params
     if (!uploadId || !batchId) {
       return res.status(400).json({ 
@@ -3380,22 +3383,40 @@ router.post('/uploads/:uploadId/batches/:batchId/regenerate-summary', async (req
       });
     }
     
-    // Force a new summary, bypassing any caching
-    console.log(`Regenerating summary for batch ${batchId} with ${transactions.length} transactions`);
-    const batchInfo = await generateBatchSummary(transactions);
-    console.log(`Generated new summary: "${batchInfo.summary}"`);
+    let summary = null;
+    
+    // If forceOpenAI is true, try to generate summary directly with OpenAI
+    if (forceOpenAI && process.env.OPENAI_API_KEY) {
+      try {
+        summary = await generateBatchSummaryWithOpenAI(transactions);
+        console.log('Forced OpenAI summary generation:', summary);
+      } catch (error) {
+        console.error('Error forcing OpenAI summary:', error);
+      }
+    }
+    
+    // If we couldn't get an OpenAI summary or forceOpenAI is false, use the standard method
+    if (!summary) {
+      console.log(`Regenerating summary for batch ${batchId} with ${transactions.length} transactions`);
+      const batchInfo = await generateBatchSummary(transactions);
+      summary = batchInfo.summary;
+    }
+    
+    console.log(`Generated new summary: "${summary}"`);
     
     // Update batch title in database
-    await batch.update({ title: batchInfo.summary });
+    const oldTitle = batch.title;
+    await batch.update({ title: summary });
     
     // Return updated batch info
     res.json({
       batchId,
       uploadId,
-      oldTitle: batch.title,
-      newTitle: batchInfo.summary,
-      insights: batchInfo.insights || [],
-      transactionCount: transactions.length
+      oldTitle,
+      newTitle: summary,
+      insights: [],
+      transactionCount: transactions.length,
+      regenerationMethod: forceOpenAI ? 'openai' : 'standard'
     });
   } catch (error) {
     console.error(`Error regenerating batch summary:`, error);
@@ -3422,31 +3443,17 @@ router.post('/test/openai-batch-summary', async (req, res) => {
     
     console.log(`Testing OpenAI batch summary with ${transactions.length} transactions`);
     
-    // Validate OpenAI availability
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(400).json({ 
-        error: 'OpenAI not configured',
-        details: 'OpenAI API key is not set'
+    // Use our dedicated function for OpenAI summary generation
+    const summary = await generateBatchSummaryWithOpenAI(transactions);
+    
+    if (!summary) {
+      return res.status(500).json({ 
+        error: 'Failed to generate summary',
+        details: 'The OpenAI integration failed to generate a summary'
       });
     }
     
-    const openaiService = require('../services/openai');
-    
-    if (!openaiService.isOpenAIConfigured()) {
-      return res.status(400).json({ 
-        error: 'OpenAI not configured',
-        details: 'OpenAI service is not configured'
-      });
-    }
-    
-    if (openaiService.isRateLimited()) {
-      return res.status(429).json({ 
-        error: 'OpenAI rate limited',
-        details: 'OpenAI service is currently rate limited'
-      });
-    }
-    
-    // Collect transaction info for the summary
+    // Format the transaction information for the response
     const transactionInfo = transactions.slice(0, 10).map(t => ({
       description: t.description,
       merchant: t.merchant,
@@ -3454,32 +3461,65 @@ router.post('/test/openai-batch-summary', async (req, res) => {
       date: t.date
     }));
     
-    // Create a more detailed system prompt
+    // Return the summary and transaction info
+    res.json({
+      summary,
+      transactions: transactionInfo,
+      success: true
+    });
+  } catch (error) {
+    console.error('Error testing OpenAI batch summary:', error);
+    res.status(500).json({ 
+      error: 'Server error',
+      details: error.message
+    });
+  }
+});
+
+// Helper function to generate a batch summary with OpenAI
+async function generateBatchSummaryWithOpenAI(transactions) {
+  if (!transactions || transactions.length === 0) {
+    return null;
+  }
+  
+  try {
+    const openaiService = require('../services/openai');
+    
+    if (!openaiService.isOpenAIConfigured() || openaiService.isRateLimited()) {
+      return null;
+    }
+    
+    // Collect context for better summary (limit to 10 transactions for performance)
+    const transactionInfo = transactions.slice(0, 10).map(t => ({
+      description: t.description,
+      merchant: t.merchant,
+      amount: t.amount,
+      date: t.date
+    }));
+    
+    // Enhanced system prompt with better travel detection
     const systemPrompt = 
       "Analyze financial transactions and generate a concise summary label. " + 
-      "For travel-related expenses, mention the destination (e.g., 'New York Trip Expenses'). " +
+      "For travel-related expenses (flights, hotels, taxis, travel insurance), identify the trip by destination (e.g., 'New York Trip Expenses'). " +
+      "If business-related words appear with travel expenses, use 'Business Trip' in the label. " +
       "For similar merchant transactions, use that pattern (e.g., 'Amazon Purchases'). " +
-      "For mixed transactions, identify the common theme (e.g., 'Household Bills'). " +
+      "For mixed transactions, identify the common theme (e.g., 'Monthly Bills' or 'Household Expenses'). " +
       "Keep summaries under 5 words, be specific, and avoid generic terms like 'Various Transactions'.";
     
-    // Create a more detailed user prompt
+    // Enhanced user prompt with date context
     const userPrompt = 
       `Create a brief, descriptive label for this group of transactions:\n` +
       JSON.stringify(transactionInfo, null, 2) +
-      `\nSummary label:`;
-    
-    console.log('System prompt:', systemPrompt);
-    console.log('User prompt:', userPrompt);
+      `\nDate range: ${transactionInfo[0]?.date || ''} to ${transactionInfo[transactionInfo.length-1]?.date || ''}\n` +
+      `Summary label:`;
     
     const client = openaiService.getOpenAIClient();
     if (!client) {
-      return res.status(500).json({ 
-        error: 'OpenAI client not available',
-        details: 'Failed to get OpenAI client'
-      });
+      return null;
     }
     
-    console.log('Calling OpenAI API for batch summary');
+    console.log('Generating batch summary with OpenAI for transactions:', 
+      transactionInfo.map(t => t.description).join(', '));
     
     const completion = await openaiService.callWithRetry(
       async () => await client.chat.completions.create({
@@ -3496,20 +3536,12 @@ router.post('/test/openai-batch-summary', async (req, res) => {
     const summary = completion.choices[0].message.content.trim();
     console.log('OpenAI generated summary:', summary);
     
-    // Return the summary and transaction info
-    res.json({
-      summary,
-      transactions: transactionInfo,
-      success: true
-    });
+    return summary || null;
   } catch (error) {
-    console.error('Error testing OpenAI batch summary:', error);
-    res.status(500).json({ 
-      error: 'Server error',
-      details: error.message
-    });
+    console.error('Error generating batch summary with OpenAI:', error);
+    return null;
   }
-});
+}
 
 // Get batch details including transactions for a specific batch within an upload
 router.get('/uploads/:uploadId/batches/:batchId', async (req, res) => {
@@ -3632,60 +3664,16 @@ async function generateBatchSummary(transactions) {
     
     // If OpenAI is available, use it for a better summary
     if (process.env.OPENAI_API_KEY) {
-      const openaiService = require('../services/openai');
-      
-      if (openaiService.isOpenAIConfigured() && !openaiService.isRateLimited()) {
-        try {
-          // Collect more context for better summary
-          const transactionInfo = transactions.slice(0, 10).map(t => ({
-            description: t.description,
-            merchant: t.merchant,
-            amount: t.amount,
-            date: t.date
-          }));
-          
-          // Create a more detailed system prompt
-          const systemPrompt = 
-            "Analyze financial transactions and generate a concise summary label. " + 
-            "For travel-related expenses, mention the destination (e.g., 'New York Trip Expenses'). " +
-            "For similar merchant transactions, use that pattern (e.g., 'Amazon Purchases'). " +
-            "For mixed transactions, identify the common theme (e.g., 'Household Bills'). " +
-            "Keep summaries under 5 words, be specific, and avoid generic terms like 'Various Transactions'.";
-          
-          // Create a more detailed user prompt
-          const userPrompt = 
-            `Create a brief, descriptive label for this group of transactions:\n` +
-            JSON.stringify(transactionInfo, null, 2) +
-            `\nSummary label:`;
-          
-          const client = openaiService.getOpenAIClient();
-          if (client) {
-            console.log('Generating batch summary with OpenAI for transactions:', 
-              transactionInfo.map(t => t.description).join(', '));
-            
-            const completion = await openaiService.callWithRetry(
-              async () => await client.chat.completions.create({
-                model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
-                messages: [
-                  { role: "system", content: systemPrompt },
-                  { role: "user", content: userPrompt }
-                ],
-                temperature: 0.3,
-                max_tokens: 30
-              })
-            );
-            
-            const summary = completion.choices[0].message.content.trim();
-            console.log('OpenAI generated summary:', summary);
-            
-            if (summary) {
-              return { summary };
-            }
-          }
-        } catch (error) {
-          console.error('Error generating batch summary with OpenAI:', error);
-          // Fall through to default summary
+      try {
+        // Use our specialized function for OpenAI batch summaries
+        const openAISummary = await generateBatchSummaryWithOpenAI(transactions);
+        
+        if (openAISummary) {
+          return { summary: openAISummary };
         }
+      } catch (error) {
+        console.error('Error generating batch summary with OpenAI:', error);
+        // Fall through to default summary
       }
     }
     
