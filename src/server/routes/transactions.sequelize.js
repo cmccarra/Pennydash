@@ -3406,6 +3406,111 @@ router.post('/uploads/:uploadId/batches/:batchId/regenerate-summary', async (req
   }
 });
 
+// Test endpoint for OpenAI batch summary generation
+router.post('/test/openai-batch-summary', async (req, res) => {
+  console.log('[POST /test/openai-batch-summary] - Testing OpenAI batch summary generation');
+  
+  try {
+    const { transactions } = req.body;
+    
+    if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+      return res.status(400).json({ 
+        error: 'Invalid request',
+        details: 'Request must include a non-empty array of transactions'
+      });
+    }
+    
+    console.log(`Testing OpenAI batch summary with ${transactions.length} transactions`);
+    
+    // Validate OpenAI availability
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(400).json({ 
+        error: 'OpenAI not configured',
+        details: 'OpenAI API key is not set'
+      });
+    }
+    
+    const openaiService = require('../services/openai');
+    
+    if (!openaiService.isOpenAIConfigured()) {
+      return res.status(400).json({ 
+        error: 'OpenAI not configured',
+        details: 'OpenAI service is not configured'
+      });
+    }
+    
+    if (openaiService.isRateLimited()) {
+      return res.status(429).json({ 
+        error: 'OpenAI rate limited',
+        details: 'OpenAI service is currently rate limited'
+      });
+    }
+    
+    // Collect transaction info for the summary
+    const transactionInfo = transactions.slice(0, 10).map(t => ({
+      description: t.description,
+      merchant: t.merchant,
+      amount: t.amount,
+      date: t.date
+    }));
+    
+    // Create a more detailed system prompt
+    const systemPrompt = 
+      "Analyze financial transactions and generate a concise summary label. " + 
+      "For travel-related expenses, mention the destination (e.g., 'New York Trip Expenses'). " +
+      "For similar merchant transactions, use that pattern (e.g., 'Amazon Purchases'). " +
+      "For mixed transactions, identify the common theme (e.g., 'Household Bills'). " +
+      "Keep summaries under 5 words, be specific, and avoid generic terms like 'Various Transactions'.";
+    
+    // Create a more detailed user prompt
+    const userPrompt = 
+      `Create a brief, descriptive label for this group of transactions:\n` +
+      JSON.stringify(transactionInfo, null, 2) +
+      `\nSummary label:`;
+    
+    console.log('System prompt:', systemPrompt);
+    console.log('User prompt:', userPrompt);
+    
+    const client = openaiService.getOpenAIClient();
+    if (!client) {
+      return res.status(500).json({ 
+        error: 'OpenAI client not available',
+        details: 'Failed to get OpenAI client'
+      });
+    }
+    
+    console.log('Calling OpenAI API for batch summary');
+    
+    const completion = await openaiService.callWithRetry(
+      async () => await client.chat.completions.create({
+        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 30
+      })
+    );
+    
+    const summary = completion.choices[0].message.content.trim();
+    console.log('OpenAI generated summary:', summary);
+    
+    // Return the summary and transaction info
+    res.json({
+      summary,
+      transactions: transactionInfo,
+      success: true
+    });
+  } catch (error) {
+    console.error('Error testing OpenAI batch summary:', error);
+    res.status(500).json({ 
+      error: 'Server error',
+      details: error.message
+    });
+  }
+});
+
 // Get batch details including transactions for a specific batch within an upload
 router.get('/uploads/:uploadId/batches/:batchId', async (req, res) => {
   try {
@@ -3531,25 +3636,48 @@ async function generateBatchSummary(transactions) {
       
       if (openaiService.isOpenAIConfigured() && !openaiService.isRateLimited()) {
         try {
-          const sampleDesc = transactions.slice(0, 5).map(t => t.description).join(", ");
+          // Collect more context for better summary
+          const transactionInfo = transactions.slice(0, 10).map(t => ({
+            description: t.description,
+            merchant: t.merchant,
+            amount: t.amount,
+            date: t.date
+          }));
           
-          const prompt = `Summarize these financial transactions in 5 words or less: ${sampleDesc}`;
+          // Create a more detailed system prompt
+          const systemPrompt = 
+            "Analyze financial transactions and generate a concise summary label. " + 
+            "For travel-related expenses, mention the destination (e.g., 'New York Trip Expenses'). " +
+            "For similar merchant transactions, use that pattern (e.g., 'Amazon Purchases'). " +
+            "For mixed transactions, identify the common theme (e.g., 'Household Bills'). " +
+            "Keep summaries under 5 words, be specific, and avoid generic terms like 'Various Transactions'.";
+          
+          // Create a more detailed user prompt
+          const userPrompt = 
+            `Create a brief, descriptive label for this group of transactions:\n` +
+            JSON.stringify(transactionInfo, null, 2) +
+            `\nSummary label:`;
           
           const client = openaiService.getOpenAIClient();
           if (client) {
+            console.log('Generating batch summary with OpenAI for transactions:', 
+              transactionInfo.map(t => t.description).join(', '));
+            
             const completion = await openaiService.callWithRetry(
               async () => await client.chat.completions.create({
                 model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
                 messages: [
-                  { role: "system", content: "Summarize financial transactions in 5 words or less." },
-                  { role: "user", content: prompt }
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: userPrompt }
                 ],
                 temperature: 0.3,
-                max_tokens: 20
+                max_tokens: 30
               })
             );
             
             const summary = completion.choices[0].message.content.trim();
+            console.log('OpenAI generated summary:', summary);
+            
             if (summary) {
               return { summary };
             }

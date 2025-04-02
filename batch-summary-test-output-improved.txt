@@ -1,0 +1,71 @@
+Starting batch summary regeneration test...
+Step 1: Creating a new upload
+Fetching POST http://localhost:5000/api/uploads/dummy
+Response status: 201
+Created upload with ID: a4f77859-c822-49b0-945e-b4c800e76680
+Step 2: Processing upload and adding test transactions
+Fetching POST http://localhost:5000/api/uploads/a4f77859-c822-49b0-945e-b4c800e76680/process
+Response status: 200
+Adding transaction: {"date":"2025-03-01","description":"Flight to New York","amount":450.75,"type":"expense","merchant":"United Airlines","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-01","id":"84a3fe45-fe73-400d-9506-ed54a2ee3066","description":"Flight to New York","amount":"450.75","type":"expense","merchant":"United Airlines","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:06.110Z","updatedAt":"2025-04-02T03:03:06.110Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-01","description":"Travel Insurance","amount":85.5,"type":"expense","merchant":"Allianz","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-01","id":"521cea56-3c47-4464-9e5a-53a229a1be63","description":"Travel Insurance","amount":"85.50","type":"expense","merchant":"Allianz","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:06.281Z","updatedAt":"2025-04-02T03:03:06.281Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-02","description":"Hotel in New York","amount":324.5,"type":"expense","merchant":"Hilton Hotels","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-02","id":"ca3edb41-64ea-48a3-a362-0651ba3416b5","description":"Hotel in New York","amount":"324.50","type":"expense","merchant":"Hilton Hotels","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:06.441Z","updatedAt":"2025-04-02T03:03:06.441Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-02","description":"Taxi from JFK Airport","amount":65.99,"type":"expense","merchant":"Yellow Cab","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-02","id":"eeccfe03-6377-470b-9c25-42a82469416c","description":"Taxi from JFK Airport","amount":"65.99","type":"expense","merchant":"Yellow Cab","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:06.600Z","updatedAt":"2025-04-02T03:03:06.600Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-03","description":"New York City Pass","amount":129,"type":"expense","merchant":"NYC Tourism","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-03","id":"796046a3-3ed4-4000-8cbe-aebdd4a4232d","description":"New York City Pass","amount":"129.00","type":"expense","merchant":"NYC Tourism","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:06.762Z","updatedAt":"2025-04-02T03:03:06.762Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-03","description":"Empire State Building Entry","amount":45.73,"type":"expense","merchant":"Empire State Building","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-03","id":"d6962840-0870-42a4-9daf-804c11234ca1","description":"Empire State Building Entry","amount":"45.73","type":"expense","merchant":"Empire State Building","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:06.935Z","updatedAt":"2025-04-02T03:03:06.935Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-04","description":"MoMA Museum Ticket","amount":25,"type":"expense","merchant":"Museum of Modern Art","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-04","id":"342c9aff-4017-49b1-8e40-0d7633fbb2fd","description":"MoMA Museum Ticket","amount":"25.00","type":"expense","merchant":"Museum of Modern Art","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:07.093Z","updatedAt":"2025-04-02T03:03:07.093Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-04","description":"Lunch in Central Park","amount":32.45,"type":"expense","merchant":"Central Park Cafe","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-04","id":"d01248f9-b10e-4db2-9285-e9432c7f19b8","description":"Lunch in Central Park","amount":"32.45","type":"expense","merchant":"Central Park Cafe","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:07.253Z","updatedAt":"2025-04-02T03:03:07.253Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-05","description":"Broadway Show Tickets","amount":178.45,"type":"expense","merchant":"Ticketmaster","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-05","id":"e8fd046c-2153-4217-b17e-fecbe293fafa","description":"Broadway Show Tickets","amount":"178.45","type":"expense","merchant":"Ticketmaster","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:07.411Z","updatedAt":"2025-04-02T03:03:07.411Z","category":null,"subcategory":null}
+Adding transaction: {"date":"2025-03-05","description":"Dinner before show","amount":120,"type":"expense","merchant":"Le Bernardin","uploadId":"a4f77859-c822-49b0-945e-b4c800e76680"}
+Fetching POST http://localhost:5000/api/transactions
+Response status: 201
+Response status: 201, body: {"date":"2025-03-05","id":"e482b6c2-e65d-46d2-bdd8-2a8ec5ee3920","description":"Dinner before show","amount":"120.00","type":"expense","merchant":"Le Bernardin","account":null,"accountType":"other","source":null,"notes":null,"isRecurring":false,"tags":[],"categoryId":null,"subcategoryId":null,"balance":null,"currency":"USD","suggestedCategoryId":null,"suggestionApplied":false,"originalText":null,"importSource":null,"uploadId":"a4f77859-c822-49b0-945e-b4c800e76680","batchId":null,"enrichmentStatus":null,"categoryConfidence":null,"needsReview":true,"createdAt":"2025-04-02T03:03:07.570Z","updatedAt":"2025-04-02T03:03:07.570Z","category":null,"subcategory":null}
+Added 10 test transactions
+Step 3: Creating a batch with test transactions
+Fetching POST http://localhost:5000/api/uploads/a4f77859-c822-49b0-945e-b4c800e76680/batches
+Response status: 201
+Created batch with ID: 80326e74-9adc-4f62-96b7-a4d59775955a, Title: Untitled Batch
+Step 4: Retrieving the original batch details
+Fetching GET http://localhost:5000/api/transactions/uploads/a4f77859-c822-49b0-945e-b4c800e76680/batches/80326e74-9adc-4f62-96b7-a4d59775955a
+Response status: 200
+Original batch details:
+- Title: Transactions related to York Dinner
+Step 5: Regenerating the batch summary
+Fetching POST http://localhost:5000/api/transactions/uploads/a4f77859-c822-49b0-945e-b4c800e76680/batches/80326e74-9adc-4f62-96b7-a4d59775955a/regenerate-summary
+Response status: 200
+Regenerated summary:
+- Old title: Transactions related to York Dinner
+- New title: Transactions related to York Dinner
+Step 6: Retrieving the updated batch details
+Fetching GET http://localhost:5000/api/transactions/uploads/a4f77859-c822-49b0-945e-b4c800e76680/batches/80326e74-9adc-4f62-96b7-a4d59775955a
+Response status: 200
+Updated batch details:
+- Title: Transactions related to York Dinner
+
+Test completed successfully!

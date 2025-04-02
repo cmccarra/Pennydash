@@ -8,8 +8,16 @@ const path = require('path');
 
 // Use dynamic import for ESM modules
 const fetchData = async (url, options = {}) => {
-  const fetch = (await import('node-fetch')).default;
-  return fetch(url, options);
+  try {
+    console.log(`Fetching ${options.method || 'GET'} ${url}`);
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, options);
+    console.log(`Response status: ${response.status}`);
+    return response;
+  } catch (error) {
+    console.error(`Fetch error: ${error.message}`);
+    throw error;
+  }
 };
 
 // Configuration
@@ -219,25 +227,39 @@ async function addTestTransactions(uploadId) {
   // Add transactions one by one and collect their IDs
   const transactionIds = [];
   for (const transactionData of testTransactions) {
-    const response = await fetchData(`${API_BASE_URL}/transactions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(transactionData)
-    });
-    
-    let transaction;
     try {
-      transaction = await response.json();
+      console.log(`Adding transaction: ${JSON.stringify(transactionData)}`);
+      
+      const response = await fetchData(`${API_BASE_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(transactionData)
+      });
+      
+      const responseText = await response.text();
+      console.log(`Response status: ${response.status}, body: ${responseText}`);
+      
+      let transaction;
+      try {
+        // Try to parse the response as JSON
+        transaction = JSON.parse(responseText);
+      } catch (error) {
+        console.error(`Failed to parse response as JSON: ${error.message}`);
+        throw new Error(`Failed to parse transaction response: ${error.message}, response was: ${responseText}`);
+      }
+      
+      if (!response.ok) {
+        console.error(`Transaction creation failed with status ${response.status}`);
+        throw new Error(`Failed to add transaction: ${transaction.error || response.statusText}`);
+      }
+      
+      transactionIds.push(transaction.id);
     } catch (error) {
-      throw new Error(`Failed to parse transaction response: ${error.message}`);
+      console.error(`Error creating transaction: ${error.message}`);
+      throw error;
     }
-    
-    if (!response.ok) {
-      throw new Error(`Failed to add transaction: ${transaction.error || response.statusText}`);
-    }
-    transactionIds.push(transaction.id);
   }
   
   return transactionIds;
