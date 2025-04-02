@@ -1543,7 +1543,6 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
   try {
     console.log(`[GET /uploads/${req.params.uploadId}/batches] - Fetching batches for upload`);
     
-    // Add request validation and handle potential errors early
     const { Transaction, Category } = getModels();
     const { uploadId } = req.params;
     
@@ -1567,13 +1566,39 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     console.log(`[GET /uploads/${uploadId}/batches] - Finding transactions with this uploadId`);
     
     // Set a timeout for database operations to prevent hanging
-    const QUERY_TIMEOUT = 30000; // 30 seconds timeout (increased from 15 seconds)
+    const dbOperationPromise = Transaction.findAll({
+      where: { uploadId: uploadId },
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'color', 'icon'],
+          required: false
+        }
+      ],
+      order: [['date', 'DESC']]
+    });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Database operation timed out')), 10000);
+    });
+    
+    // Use Promise.race to implement the timeout
+    let transactions;
+    try {
+      transactions = await Promise.race([dbOperationPromise, timeoutPromise]);
+    } catch (timeoutError) {
+      console.error(`⚠️ [ERROR] Database operation timed out: ${timeoutError.message}`);
+      return res.status(408).json({
+        error: 'Database operation timed out',
+        message: 'The server took too long to fetch the transactions. Please try again.',
+        timeout: true
+      });
+    }
     
     // Instead of fetching all transactions at once, we'll use pagination to retrieve them in batches
     // This helps prevent timeouts by processing data in smaller chunks
-    const PAGE_SIZE = 100; // Process 100 transactions at a time
-    
-    console.log(`[GET /uploads/${uploadId}/batches] - Using paginated query with page size: ${PAGE_SIZE}`);
+    const PAGE_SIZE = 100; 
     
     // Function to fetch transactions in pages
     async function fetchTransactionPages() {
@@ -1648,7 +1673,7 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     }
     
     // Fetch all transactions using pagination
-    const transactions = await fetchTransactionPages();
+    transactions = await fetchTransactionPages();
     
     console.log(`[GET /uploads/${uploadId}/batches] - Found ${transactions.length} transactions`);
     
@@ -1896,7 +1921,8 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     const batches = [];
     
     // Process each batch
-    Object.keys(batchMap).forEach(batchId => {
+    // Use map with Promise.all for async processing
+    const batchPromises = Object.keys(batchMap).map(async (batchId) => {
       const batchTransactions = batchMap[batchId];
       console.log(`[GET /uploads/${uploadId}/batches] - Processing batch ${batchId} with ${batchTransactions.length} transactions`);
       
@@ -1930,48 +1956,82 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
           };
         }
         
-        // Generate batch title/summary if not already present
-        let batchTitle = '';
+        // Get batch summary
+        const summaryInfo = await generateBatchSummary(batchTransactions);
         
-        // Try to get the title from transaction metadata or generate from batch characteristics
-        if (sampleTx.metadata && sampleTx.metadata.summary) {
-          // Use metadata from our organizeIntoBatches function
-          batchTitle = sampleTx.metadata.summary;
-        } else if (sampleTx.batchSummary) {
-          // Use stored batch summary from database
-          batchTitle = sampleTx.batchSummary;
-        } else {
-          // Generate a basic summary based on the transactions
-          const descriptions = batchTransactions.map(t => t.description || '');
-          const commonWords = findCommonWords(descriptions);
-          const dateRange = getDateRange(batchTransactions);
-          
-          if (commonWords.length > 0) {
-            batchTitle = `Transactions related to ${commonWords.join(' ')}`;
-            if (dateRange.from !== 'unknown') {
-              batchTitle += ` (${dateRange.from} to ${dateRange.to})`;
+        // Get category suggestions for the batch
+        let suggestedCategory = null;
+        let suggestedCategoryId = null;
+        let suggestedCategoryConfidence = 0;
+        
+        try {
+          // Check if any transactions already have a category
+          const categorizedTransactions = batchTransactions.filter(t => t.categoryId);
+          if (categorizedTransactions.length > 0) {
+            // Use the most common category
+            const categoryCounts = {};
+            categorizedTransactions.forEach(t => {
+              categoryCounts[t.categoryId] = (categoryCounts[t.categoryId] || 0) + 1;
+            });
+            
+            const mostCommonCategory = Object.entries(categoryCounts)
+              .sort((a, b) => b[1] - a[1])[0];
+            
+            if (mostCommonCategory) {
+              suggestedCategoryId = mostCommonCategory[0];
+              suggestedCategoryConfidence = 0.9; // High confidence for existing categories
+              
+              // Get category details
+              try {
+                suggestedCategory = await Category.findByPk(suggestedCategoryId);
+              } catch (err) {
+                console.error(`Error finding category ${suggestedCategoryId}:`, err);
+              }
             }
-          } else if (batchTransactions.length === 1) {
-            // Single transaction batch
-            batchTitle = `${sampleTx.description} (${sampleTx.date || 'unknown date'})`;
-          } else {
-            // Multiple transactions without common words
-            const type = sampleTx.type || 'unknown';
-            if (dateRange.from !== 'unknown') {
-              batchTitle = `${type.charAt(0).toUpperCase() + type.slice(1)} transactions (${dateRange.from} to ${dateRange.to})`;
-            } else {
-              batchTitle = `${type.charAt(0).toUpperCase() + type.slice(1)} transactions (${batchTransactions.length})`;
+          } 
+          // If no transactions have categories, use category suggestion service
+          else if (batchTransactions.length > 0) {
+            // Use the first transaction to get a suggestion
+            const firstTransaction = batchTransactions[0];
+            const suggestion = await categorySuggestionService.suggestCategory(
+              firstTransaction.description,
+              firstTransaction.amount,
+              firstTransaction.type
+            );
+            
+            if (suggestion && suggestion.categoryId) {
+              suggestedCategoryId = suggestion.categoryId;
+              suggestedCategoryConfidence = suggestion.confidence;
+              
+              // Get category details
+              try {
+                suggestedCategory = await Category.findByPk(suggestedCategoryId);
+              } catch (err) {
+                console.error(`Error finding category ${suggestedCategoryId}:`, err);
+              }
             }
           }
+        } catch (suggestionError) {
+          console.error(`Error getting category suggestion for batch ${batchId}:`, suggestionError);
         }
         
         // Create a batch object with the calculated data
         const batchObject = {
           batchId,
-          title: batchTitle,
+          title: summaryInfo.summary,
           transactions: batchTransactions,
           statistics: batchStats,
-          status: batchTransactions[0]?.enrichmentStatus || 'pending'
+          status: batchTransactions[0]?.enrichmentStatus || 'pending',
+          summary: summaryInfo.summary,
+          suggestedCategory: suggestedCategory ? {
+            id: suggestedCategory.id,
+            name: suggestedCategory.name,
+            color: suggestedCategory.color,
+            icon: suggestedCategory.icon,
+            type: suggestedCategory.type
+          } : null,
+          suggestedCategoryId,
+          suggestedCategoryConfidence
         };
         
         // Add to batches array
@@ -2016,6 +2076,9 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
         batches.push(errorBatchObject);
       }
     });
+    
+    // Wait for all batch processing to complete
+    await Promise.all(batchPromises);
     
     console.log(`[GET /uploads/${uploadId}/batches] - Created ${batches.length} batches`);
     
@@ -3486,6 +3549,7 @@ async function generateBatchSummaryWithOpenAI(transactions) {
     const openaiService = require('../services/openai');
     
     if (!openaiService.isOpenAIConfigured() || openaiService.isRateLimited()) {
+      console.log('OpenAI service not available for batch summary generation');
       return null;
     }
     
@@ -3494,34 +3558,40 @@ async function generateBatchSummaryWithOpenAI(transactions) {
       description: t.description,
       merchant: t.merchant,
       amount: t.amount,
-      date: t.date
+      date: t.date,
+      category: t.category?.name
     }));
     
-    // Enhanced system prompt with better travel detection
+    // Enhanced system prompt with better travel detection and insights
     const systemPrompt = 
       "Analyze financial transactions and generate a concise summary label. " + 
       "For travel-related expenses (flights, hotels, taxis, travel insurance), identify the trip by destination (e.g., 'New York Trip Expenses'). " +
       "If business-related words appear with travel expenses, use 'Business Trip' in the label. " +
       "For similar merchant transactions, use that pattern (e.g., 'Amazon Purchases'). " +
+      "For food or dining transactions, identify the pattern (e.g., 'Restaurant Dining' or 'Coffee Shops'). " +
+      "For utility bills, identify the service type (e.g., 'Utility Bills' or 'Phone & Internet'). " +
       "For mixed transactions, identify the common theme (e.g., 'Monthly Bills' or 'Household Expenses'). " +
       "Keep summaries under 5 words, be specific, and avoid generic terms like 'Various Transactions'.";
     
-    // Enhanced user prompt with date context
+    // Enhanced user prompt with date context and transaction detail
     const userPrompt = 
       `Create a brief, descriptive label for this group of transactions:\n` +
       JSON.stringify(transactionInfo, null, 2) +
       `\nDate range: ${transactionInfo[0]?.date || ''} to ${transactionInfo[transactionInfo.length-1]?.date || ''}\n` +
+      `Transaction count: ${transactions.length}\n` +
       `Summary label:`;
     
     const client = openaiService.getOpenAIClient();
     if (!client) {
+      console.log('OpenAI client not available');
       return null;
     }
     
     console.log('Generating batch summary with OpenAI for transactions:', 
       transactionInfo.map(t => t.description).join(', '));
     
-    const completion = await openaiService.callWithRetry(
+    // Set up a timeout for the OpenAI call to prevent hanging
+    const openaiPromise = openaiService.callWithRetry(
       async () => await client.chat.completions.create({
         model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
         messages: [
@@ -3533,6 +3603,18 @@ async function generateBatchSummaryWithOpenAI(transactions) {
       })
     );
     
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('OpenAI summary generation timed out')), 10000));
+    
+    // Use Promise.race to implement the timeout
+    let completion;
+    try {
+      completion = await Promise.race([openaiPromise, timeoutPromise]);
+    } catch (timeoutError) {
+      console.error('OpenAI summary generation timed out:', timeoutError);
+      return null;
+    }
+    
     const summary = completion.choices[0].message.content.trim();
     console.log('OpenAI generated summary:', summary);
     
@@ -3542,6 +3624,8 @@ async function generateBatchSummaryWithOpenAI(transactions) {
     return null;
   }
 }
+
+
 
 // Get batch details including transactions for a specific batch within an upload
 router.get('/uploads/:uploadId/batches/:batchId', async (req, res) => {

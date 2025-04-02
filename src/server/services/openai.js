@@ -1,8 +1,7 @@
 
 const OpenAI = require('openai');
 
-// Instead of creating a fixed client instance, we'll use a function that
-// returns a configured client based on the current environment state
+// Configure OpenAI client with error handling
 let openaiClient = null;
 
 /**
@@ -31,9 +30,6 @@ function getOpenAIClient() {
   
   return openaiClient;
 }
-
-// For backward compatibility and easier access
-const openai = getOpenAIClient();
 
 // Check if OpenAI API key is configured
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -760,9 +756,11 @@ function isRateLimited() {
     const timeSinceLastRateLimit = Date.now() - metrics.lastRateLimitTime;
     if (timeSinceLastRateLimit < RATE_LIMIT_WINDOW) {
       // Still in the rate limit cooldown window
+      console.log('[OpenAI] In rate limit cooldown period');
       return true;
     } else {
       // Reset rate limit status after cooldown
+      console.log('[OpenAI] Resetting rate limit status after cooldown');
       metrics.lastRateLimitTime = 0;
       metrics.isRateLimited = false;
     }
