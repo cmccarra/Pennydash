@@ -46,26 +46,45 @@ function isOpenAIConfigured() {
 /**
  * Generate a summary for a batch of transactions
  * @param {Array} transactions - Array of transaction objects
+ * @param {number} timeoutMs - Timeout in milliseconds (defaults to 15 seconds)
  * @returns {Promise<Object>} Object with summary and insights
  */
-async function generateBatchSummary(transactions) {
+async function generateBatchSummary(transactions, timeoutMs = 15000) {
   // Check if OpenAI is available
   if (!isAvailable()) {
     console.log(`[OpenAI] API not available for batch summary`);
     return {
       summary: "Transactions Batch",
-      insights: ["OpenAI API not available for generating insights."]
+      insights: ["OpenAI API not available for generating insights."],
+      timedOut: false,
+      error: true,
+      errorType: "api_not_configured"
     };
   }
 
   try {
-    console.log(`[OpenAI] Generating summary for ${transactions.length} transactions`);
+    console.log(`[OpenAI] Generating summary for ${transactions.length} transactions with ${timeoutMs}ms timeout`);
     metrics.apiCalls++;
     
-    // Format transactions for the prompt
+    // Create timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        const error = new Error('Batch summary generation timed out');
+        error.code = 'TIMEOUT';
+        metrics.timeoutErrors++;
+        reject(error);
+      }, timeoutMs);
+    });
+    
+    // Format transactions for the prompt (limit to 15 to avoid token limits)
     const transactionSummary = transactions.slice(0, 15).map((t, idx) => 
       `Transaction ${idx + 1}: "${t.description}" for $${t.amount} (${t.type || 'expense'})${t.merchant ? ` - Merchant: ${t.merchant}` : ''}${t.category ? ` - Category: ${t.category}` : ''}`
     ).join('\n');
+    
+    // Add transaction count info if we're limiting the sample
+    const transactionCountInfo = transactions.length > 15 
+      ? `\n(Showing 15 of ${transactions.length} total transactions)`
+      : '';
     
     const totalAmount = transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0).toFixed(2);
     
@@ -84,60 +103,93 @@ async function generateBatchSummary(transactions) {
       model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. Do not change this unless explicitly requested by the user
       messages: [{
         role: "system",
-        content: "You are a financial analyst assistant. Your task is to analyze transaction data and provide a concise, informative summary. Focus on identifying patterns, dominant merchants, time periods, and any notable insights."
+        content: "You are a financial analyst assistant. Your task is to analyze transaction data and provide a concise, informative summary. Focus on identifying patterns, dominant merchants, time periods, and any notable insights. Look for travel expenses, subscription patterns, or unusual spending. Respond with a JSON object containing summary and insights fields."
       }, {
         role: "user",
-        content: `Please analyze these transactions and provide a summary and key insights:\n\n${transactionSummary}\n\n${dateRangeSummary}\nTotal amount: $${totalAmount}\nTotal transactions: ${transactions.length}`
+        content: `Please analyze these transactions and provide a summary and key insights as a JSON object:\n\n${transactionSummary}${transactionCountInfo}\n\n${dateRangeSummary}\nTotal amount: $${totalAmount}\nTotal transactions: ${transactions.length}`
       }],
       temperature: 0.3,
       max_tokens: 400,
       response_format: { type: "json_object" }
     };
     
-    // Make API call with retry logic
-    const completion = await callWithRetry(
-      async () => {
-        const client = getOpenAIClient();
-        if (!client) {
-          throw new Error('OpenAI client not available');
+    // Process function that makes the API call with retry logic
+    const processSummary = async () => {
+      const completion = await callWithRetry(
+        async () => {
+          const client = getOpenAIClient();
+          if (!client) {
+            throw new Error('OpenAI client not available');
+          }
+          return await client.chat.completions.create(requestConfig);
         }
-        return await client.chat.completions.create(requestConfig);
+      );
+      
+      // Parse the JSON response
+      const responseText = completion.choices[0].message.content.trim();
+      console.log(`[OpenAI] Batch summary response: ${responseText.length} characters`);
+      
+      try {
+        const response = JSON.parse(responseText);
+        metrics.successfulCalls++;
+        
+        // Expected format: { summary: string, insights: string[] }
+        return {
+          summary: response.summary || "Transaction Batch",
+          insights: Array.isArray(response.insights) ? response.insights : 
+                  (response.insights ? [response.insights] : []),
+          timedOut: false
+        };
+      } catch (parseError) {
+        console.error('[OpenAI] Failed to parse JSON response:', parseError);
+        metrics.errors++;
+        metrics.parseFailed++;
+        
+        // Fallback - extract key information from text
+        const lines = responseText.split('\n').filter(line => line.trim());
+        const summary = lines[0] || "Transaction Batch";
+        const insights = lines.slice(1).filter(line => line.trim());
+        
+        return {
+          summary,
+          insights: insights.length > 0 ? insights : ["No additional insights available."],
+          timedOut: false,
+          parseError: true
+        };
       }
-    );
+    };
     
-    // Parse the JSON response
-    const responseText = completion.choices[0].message.content.trim();
-    console.log(`[OpenAI] Batch summary response: ${responseText}`);
+    // Race the timeout against the actual API call
+    const result = await Promise.race([
+      timeoutPromise,
+      processSummary()
+    ]);
     
-    try {
-      const response = JSON.parse(responseText);
-      
-      // Expected format: { summary: string, insights: string[] }
-      return {
-        summary: response.summary || "Transaction Batch",
-        insights: Array.isArray(response.insights) ? response.insights : 
-                 (response.insights ? [response.insights] : [])
-      };
-    } catch (parseError) {
-      console.error('[OpenAI] Failed to parse JSON response:', parseError);
-      metrics.errors++;
-      
-      // Fallback - extract key information from text
-      const lines = responseText.split('\n').filter(line => line.trim());
-      const summary = lines[0] || "Transaction Batch";
-      const insights = lines.slice(1).filter(line => line.trim());
-      
-      return {
-        summary,
-        insights: insights.length > 0 ? insights : ["No additional insights available."]
-      };
-    }
+    return result;
   } catch (error) {
     console.error('[OpenAI] API Error generating batch summary:', error);
+    
+    // Update error metrics
     metrics.errors++;
+    metrics.lastError = error.message;
+    metrics.lastErrorTime = Date.now();
+    
+    // Check if this was a timeout
+    const timedOut = error.code === 'TIMEOUT';
+    if (timedOut) {
+      console.log('[OpenAI] Batch summary generation timed out');
+    }
+    
     return {
-      summary: "Transaction Batch",
-      insights: [`Error generating insights: ${error.message}`]
+      summary: timedOut ? "Transaction Batch (Summary Generation Timed Out)" : "Transaction Batch",
+      insights: timedOut 
+        ? ["Summary generation timed out. Try again or view individual transactions."] 
+        : [`Error generating insights: ${error.message}`],
+      timedOut,
+      error: true,
+      errorType: timedOut ? 'timeout' : 
+                 error.message.includes('rate limit') ? 'rate_limit' : 
+                 error.name === 'SyntaxError' ? 'parse_error' : 'api_error'
     };
   }
 }
@@ -158,7 +210,13 @@ const metrics = {
   retries: 0,
   startTime: Date.now(),
   lastRateLimitTime: 0,
-  isRateLimited: false
+  isRateLimited: false,
+  lastError: null,
+  lastErrorTime: null,
+  connectionErrors: 0,
+  timeoutErrors: 0,
+  parseFailed: 0,
+  successfulCalls: 0
 };
 
 // Simple in-memory cache for OpenAI responses
@@ -349,12 +407,30 @@ async function categorizeTransaction(description, amount, type = 'expense', exis
     }
   } catch (error) {
     console.error('[OpenAI] API Error:', error);
+    
+    // Update error metrics
     metrics.errors++;
+    metrics.lastError = error.message;
+    metrics.lastErrorTime = Date.now();
+    
+    // Classify error type for better metrics
+    if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+      metrics.timeoutErrors++;
+    } else if (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+      metrics.connectionErrors++;
+    }
+    
+    // Return detailed error info
     return {
       categoryName: null,
       confidence: 0,
       reasoning: `Error: ${error.message}`,
-      error: true
+      error: true,
+      errorType: error.message.includes('timeout') ? 'timeout' : 
+                 error.message.includes('rate limit') ? 'rate_limit' : 
+                 error.name === 'SyntaxError' ? 'parse_error' : 'api_error',
+      retryable: !error.message.includes('invalid_api_key') && 
+                 !error.message.includes('not available')
     };
   }
 }
@@ -911,6 +987,13 @@ function resetMetrics() {
   metrics.rateLimitErrors = 0;
   metrics.retries = 0;
   metrics.startTime = Date.now();
+  metrics.connectionErrors = 0;
+  metrics.timeoutErrors = 0;
+  metrics.parseFailed = 0;
+  metrics.successfulCalls = 0;
+  // Keeping error tracking for debugging
+  metrics.lastError = `Reset at ${new Date().toISOString()}`;
+  metrics.lastErrorTime = Date.now();
   // Do not reset lastRateLimitTime to maintain rate limit status
 }
 
@@ -924,24 +1007,55 @@ function clearCache() {
 
 /**
  * Check if OpenAI service is available and properly configured
+ * @param {boolean} forceCheck - If true, perform a more thorough check
  * @returns {boolean} Whether OpenAI is available
  */
-function isAvailable() {
-  return isOpenAIConfigured() && !SIMULATE_FAILURE;
+function isAvailable(forceCheck = false) {
+  // Quick check if simulation is enabled or no API key configured
+  if (SIMULATE_FAILURE || !API_KEY_CONFIGURED) {
+    return false;
+  }
+  
+  // Basic check if not forcing a thorough check
+  if (!forceCheck) {
+    return isOpenAIConfigured() && !isRateLimited();
+  }
+  
+  // More thorough check - actually try to get the client
+  const client = getOpenAIClient();
+  
+  // Also check if we're currently rate limited
+  if (isRateLimited()) {
+    console.log('[OpenAI] Service is currently rate limited, considered unavailable');
+    return false;
+  }
+  
+  return !!client;
 }
 
 /**
  * Get information about the OpenAI service status
+ * @param {boolean} forceCheck - Whether to perform a thorough availability check
  * @returns {Object} Status information
  */
-function getStatus() {
+function getStatus(forceCheck = false) {
+  // Do a thorough check for availability
+  const available = isAvailable(forceCheck);
+  
   return {
-    available: isOpenAIConfigured() && !SIMULATE_FAILURE,
+    available,
     apiKeyConfigured: !!process.env.OPENAI_API_KEY,
     clientConfigured: isOpenAIConfigured(),
     simulatingFailure: SIMULATE_FAILURE,
     rateLimited: isRateLimited(),
-    metricsSnapshot: getMetrics()
+    metricsSnapshot: getMetrics(),
+    readyForUse: available && !isRateLimited(),
+    lastError: metrics.lastError ? {
+      time: metrics.lastErrorTime,
+      message: metrics.lastError,
+      secondsAgo: metrics.lastErrorTime ? 
+        Math.round((Date.now() - metrics.lastErrorTime) / 1000) : null
+    } : null
   };
 }
 

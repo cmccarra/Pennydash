@@ -18,25 +18,56 @@ let sequelize;
  */
 const initDB = async () => {
   try {
-    // Use environment variables for database connection
-    const dbUrl = process.env.DATABASE_URL;
+    // Use environment variables for database connection with SQLite fallback
+    const dbUrl = process.env.DATABASE_URL || 'sqlite:./database.sqlite';
+    console.log(`Using database: ${dbUrl.startsWith('sqlite') ? 'SQLite (fallback)' : 'PostgreSQL'}`);
 
-    if (!dbUrl) {
-      throw new Error('DATABASE_URL environment variable is not set');
-    }
+    // Determine dialect from URL
+    const isPostgres = !dbUrl.startsWith('sqlite');
+    const dialect = isPostgres ? 'postgres' : 'sqlite';
 
-    // Create Sequelize instance
+    // Create Sequelize instance with appropriate configuration
     sequelize = new Sequelize(dbUrl, {
-      dialect: 'postgres',
+      dialect,
       logging: process.env.NODE_ENV === 'development' ? console.log : false,
-      dialectOptions: {
-        // We're not using SSL in the Replit environment
-      },
+      
+      // Dialect-specific options
+      dialectOptions: isPostgres ? {
+        // PostgreSQL specific options
+        // Note: SSL is disabled for Replit environment
+      } : {},
+      
+      // SQLite specific settings (only used for SQLite)
+      storage: !isPostgres ? './database.sqlite' : undefined,
+      
+      // Connection pool configuration
       pool: {
-        max: 5, // Maximum number of connection in pool
-        min: 0, // Minimum number of connection in pool
-        acquire: 30000, // The maximum time, in milliseconds, that pool will try to get connection before throwing error
-        idle: 10000 // The maximum time, in milliseconds, that a connection can be idle before being released
+        max: 5, 
+        min: 0, 
+        acquire: 30000,
+        idle: 10000
+      },
+
+      // Improved retry logic for connections
+      retry: {
+        max: 3,
+        match: [
+          /ETIMEDOUT/,
+          /ECONNRESET/,
+          /ECONNREFUSED/,
+          /ESOCKETTIMEDOUT/,
+          /EHOSTUNREACH/,
+          /EPIPE/,
+          /EAI_AGAIN/,
+          /SequelizeConnectionError/,
+          /SequelizeConnectionRefusedError/,
+          /SequelizeHostNotFoundError/,
+          /SequelizeHostNotReachableError/,
+          /SequelizeInvalidConnectionError/,
+          /SequelizeConnectionTimedOutError/
+        ],
+        backoffBase: 1000,
+        backoffExponent: 1.5
       }
     });
 
@@ -63,11 +94,28 @@ const initDB = async () => {
     await sequelize.authenticate();
     console.log('Connection to database has been established successfully.');
 
-    // Sync models with database with force option to apply schema changes
-    // Set force to false to preserve existing data, true will recreate tables
-    const force = false; // Only use true when you need to reset the schema
-    await sequelize.sync({ force });
-    console.log('Database synchronized with force =', force);
+    // Database migration strategy
+    // FORCE_SYNC will recreate all tables (dropping existing ones)
+    // ALTER will attempt to modify tables to match models (safer option)
+    const FORCE_SYNC = process.env.DB_FORCE_SYNC === 'true';
+    const ALTER_SYNC = process.env.DB_ALTER_SYNC === 'true';
+    
+    // Sync options
+    const syncOptions = {
+      force: FORCE_SYNC, // Drop and recreate tables (destructive)
+      alter: !FORCE_SYNC && ALTER_SYNC // Alter tables to match models (less destructive)
+    };
+    
+    // Log the strategy
+    console.log(`Database sync strategy: ${
+      FORCE_SYNC ? 'FORCE (drop and recreate all tables)' : 
+      ALTER_SYNC ? 'ALTER (modify existing tables)' : 
+      'NORMAL (only create missing tables)'
+    }`);
+    
+    // Perform the sync
+    await sequelize.sync(syncOptions);
+    console.log('Database synchronized successfully');
 
     // Create default settings if none exist
     const settingsCount = await Settings.count();

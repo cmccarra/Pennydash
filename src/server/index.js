@@ -4,6 +4,9 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 
+// Import error handler utilities
+const { formatErrorResponse } = require('./utils/errorHandler');
+
 // Import database
 const { initDB } = require('./db/sequelize');
 
@@ -30,10 +33,23 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// Configure CORS with more specific settings
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production'
+    ? ['https://pennydash.replit.app'] // Update with your production domain(s)
+    : ['http://localhost:3000', 'http://localhost:5000', '*'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-access-token', 'x-requested-with'],
+  credentials: true,
+  maxAge: 86400, // 24 hours, how long preflight requests can be cached
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
 // Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cors(corsOptions));
+app.use(bodyParser.json({ limit: '5mb' })); // Increase limit for larger payloads
+app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -89,76 +105,81 @@ app.get('/api/debug/transaction-tags', async (req, res) => {
   }
 });
 
-// Log static file path
-const staticPath = path.join(__dirname, '../../');
-console.log('Serving static files from:', staticPath);
-console.log('Directory exists:', fs.existsSync(staticPath));
+// Configure static file serving
+const publicPath = path.join(__dirname, '../../public');
+const rootPath = path.join(__dirname, '../../');
 
-// List the contents of the directory
-try {
-  const files = fs.readdirSync(staticPath);
-  console.log('Directory contents:', files);
-} catch (error) {
-  console.error('Error reading directory:', error);
+// Create public directory if it doesn't exist
+if (!fs.existsSync(publicPath)) {
+  try {
+    fs.mkdirSync(publicPath, { recursive: true });
+    console.log(`Created public directory at ${publicPath}`);
+  } catch (error) {
+    console.error(`Failed to create public directory: ${error.message}`);
+  }
 }
 
-// Serve static files from the root with debugging
-app.use(express.static(staticPath, {
-  index: false,  // Disable automatic index.html serving to handle it manually
-  setHeaders: (res, path, stat) => {
-    console.log('Serving static file:', path);
-  }
+// Serve files from the public directory first (prioritize these)
+app.use(express.static(publicPath, { 
+  index: false,
+  maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0
 }));
 
-// Serve index.html for the root path and all other non-API routes
-app.get('/', (req, res) => {
-  console.log('Serving index.html for root path');
+// Then serve files from the root directory 
+app.use(express.static(rootPath, {
+  index: false,
+  maxAge: 0
+}));
+
+// Centralized function to serve index.html for SPA routing
+function serveIndexHtml(req, res) {
   const indexPath = path.join(__dirname, '../../index.html');
-  console.log('Index file path:', indexPath);
-  console.log('File exists:', fs.existsSync(indexPath));
   
-  // Log the size of the file
-  if (fs.existsSync(indexPath)) {
-    const stats = fs.statSync(indexPath);
-    console.log('File size:', stats.size, 'bytes');
+  // Only log in development or for debugging
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`Serving index.html for path: ${req.path}`);
+    
+    if (!fs.existsSync(indexPath)) {
+      console.error('Error: index.html does not exist at path:', indexPath);
+      return res.status(404).send('Error: index.html not found');
+    }
   }
   
+  // Send the file with error handling
   res.sendFile(indexPath, (err) => {
     if (err) {
-      console.error('Error sending index.html:', err);
-      res.status(500).send('Error serving index.html: ' + err.message);
-    } else {
-      console.log('Successfully sent index.html');
+      console.error(`Error sending index.html for ${req.path}:`, err.message);
+      
+      // Use our error handler format
+      const error = new Error(`Failed to serve index.html: ${err.message}`);
+      error.statusCode = 500;
+      error.code = 'SERVE_ERROR';
+      
+      res.status(500).json(formatErrorResponse(error));
     }
   });
-});
+}
 
-// Fallback to index.html for SPA routing
+// Route for root path
+app.get('/', serveIndexHtml);
+
+// Fallback route for SPA client-side routing
 app.get('*', (req, res, next) => {
   // Skip API routes
-  if (req.path.startsWith('/api')) {
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
     return next();
   }
   
-  console.log('Serving index.html for path:', req.path);
-  const indexPath = path.join(__dirname, '../../index.html');
-  
-  res.sendFile(indexPath, (err) => {
-    if (err) {
-      console.error('Error sending index.html for', req.path, ':', err);
-      res.status(500).send('Error serving index.html: ' + err.message);
-    }
-  });
+  serveIndexHtml(req, res);
 });
 
-// Error handling middleware
+// Enhanced error handling middleware
 app.use((err, req, res, next) => {
+  console.error(`[ERROR] ${err.message}`);
   console.error(err.stack);
-  res.status(500).json({
-    error: true,
-    message: err.message || 'Something went wrong on the server',
-    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
+  
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json(formatErrorResponse(err));
 });
 
 // Start server and database

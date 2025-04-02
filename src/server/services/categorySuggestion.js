@@ -11,13 +11,60 @@ class CategorySuggestionService {
     this.tokenizer = new natural.WordTokenizer();
     this.classifier = new natural.BayesClassifier();
     this.trained = false;
-    this.useOpenAI = openaiService.isAvailable();
-    this.categoryCache = new Map(); // Cache for OpenAI suggestions
+    this.categoryCache = new Map(); // Cache for suggestions
+    
+    // Check if OpenAI is available safely
+    try {
+      this.useOpenAI = openaiService && 
+                       typeof openaiService.isAvailable === 'function' && 
+                       openaiService.isAvailable();
+    } catch (error) {
+      console.warn('[CategorySuggestion] Error checking OpenAI availability:', error.message);
+      this.useOpenAI = false;
+    }
 
-    // Log OpenAI availability at startup
+    // Set up keyword-based fallback categorization
+    this.setupKeywordMatcher();
+
+    // Log availability
     console.log(`[CategorySuggestion] OpenAI service availability: ${this.useOpenAI ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
     if (!this.useOpenAI) {
-      console.log('[CategorySuggestion] Will use Bayes classifier as the primary categorization method');
+      console.log('[CategorySuggestion] Will use alternative categorization methods (Bayes + keyword matching)');
+    }
+  }
+  
+  /**
+   * Setup keyword-based matcher for fallback categorization
+   */
+  setupKeywordMatcher() {
+    // Define keywords for common categories
+    this.categoryKeywords = {
+      // Income categories
+      'Salary': ['salary', 'paycheck', 'pay', 'direct deposit', 'employment'],
+      'Freelance': ['freelance', 'client', 'contract', 'consulting', 'gig'],
+      'Investments': ['dividend', 'interest', 'investment', 'stock', 'bond', 'crypto', 'capital gain'],
+      'Other Income': ['refund', 'rebate', 'cashback', 'reimbursement', 'other income'],
+      
+      // Expense categories
+      'Housing': ['rent', 'mortgage', 'lease', 'housing', 'apartment', 'house payment'],
+      'Food': ['grocery', 'restaurant', 'food', 'meal', 'dining', 'takeout', 'café', 'cafe', 'coffee shop'],
+      'Transportation': ['gas', 'fuel', 'uber', 'lyft', 'taxi', 'car', 'auto', 'vehicle', 'transit', 'bus', 'train', 'subway'],
+      'Utilities': ['electric', 'water', 'gas', 'utility', 'bill', 'internet', 'phone', 'cell'],
+      'Entertainment': ['movie', 'theatre', 'theater', 'concert', 'streaming', 'subscription', 'netflix', 'amazon prime', 'disney+', 'spotify'],
+      'Shopping': ['amazon', 'walmart', 'target', 'store', 'purchase', 'online shopping', 'clothing', 'retail'],
+      'Health': ['doctor', 'hospital', 'medical', 'dental', 'pharmacy', 'prescription', 'health', 'insurance'],
+      'Education': ['tuition', 'school', 'college', 'university', 'education', 'course', 'book', 'student'],
+      'Travel': ['flight', 'hotel', 'airbnb', 'airline', 'travel', 'vacation', 'booking', 'expedia', 'trip'],
+      'Subscriptions': ['membership', 'subscription', 'monthly', 'annual fee', 'recurring']
+    };
+    
+    // Create normalized versions of all keywords for faster matching
+    this.normalizedKeywords = {};
+    
+    for (const [category, keywords] of Object.entries(this.categoryKeywords)) {
+      this.normalizedKeywords[category] = keywords.map(keyword => 
+        keyword.toLowerCase().replace(/[^a-z0-9 ]/g, '')
+      );
     }
   }
 
@@ -405,12 +452,158 @@ class CategorySuggestionService {
           reasoning: `Matched based on text similarity to previously categorized transactions`
         };
       } catch (classifierError) {
-        console.error('[CategorySuggestion] Classifier error:', classifierError);
+        console.error('[CategorySuggestion] Classifier error, trying keyword fallback:', classifierError);
+        
+        // Attempt keyword-based fallback categorization
+        try {
+          // Get all categories
+          const { Category } = getModels();
+          const categories = await Category.findAll();
+          
+          // If we have no categories, we can't suggest anything
+          if (!categories || categories.length === 0) {
+            return {
+              categoryId: null,
+              confidence: 0,
+              suggestionSource: 'fallback-no-categories',
+              reasoning: 'No categories available for matching'
+            };
+          }
+          
+          // Normalize description for matching
+          const normalizedDescription = description.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+          
+          // Track matching categories and their scores
+          const matches = [];
+          
+          // Check each category's keywords for matches
+          for (const [categoryName, keywords] of Object.entries(this.normalizedKeywords)) {
+            // Find matching category object from DB
+            const categoryObj = categories.find(cat => 
+              cat.name.toLowerCase() === categoryName.toLowerCase()
+            );
+            
+            // Skip if no matching category in database
+            if (!categoryObj) continue;
+            
+            // Skip if transaction type doesn't match category type (income vs expense)
+            if (type !== 'unknown' && categoryObj.type !== type) continue;
+            
+            // Check for keyword matches
+            for (const keyword of keywords) {
+              if (normalizedDescription.includes(keyword)) {
+                // Calculate match strength based on keyword length and position
+                const keywordLength = keyword.length;
+                const descriptionLength = normalizedDescription.length;
+                const positionFactor = normalizedDescription.indexOf(keyword) === 0 ? 1.2 : 1.0; // Boost if at start
+                
+                // Score between 0.5-0.85 based on keyword relevance
+                const matchScore = Math.min(0.85, Math.max(0.5,
+                  (keywordLength / Math.min(descriptionLength, 20)) * 0.7 * positionFactor
+                ));
+                
+                matches.push({
+                  categoryId: categoryObj.id,
+                  categoryName: categoryObj.name,
+                  score: matchScore,
+                  keyword
+                });
+                
+                // Only count the first matching keyword per category
+                break;
+              }
+            }
+          }
+          
+          // Return best match if any
+          if (matches.length > 0) {
+            // Sort by score descending
+            matches.sort((a, b) => b.score - a.score);
+            const bestMatch = matches[0];
+            
+            return {
+              categoryId: bestMatch.categoryId,
+              confidence: bestMatch.score,
+              suggestionSource: 'keyword-matcher',
+              reasoning: `Matched keyword "${bestMatch.keyword}" for category "${bestMatch.categoryName}"`
+            };
+          }
+          
+          // If no keyword matches, try to guess from the transaction type and amount
+          if (type === 'income') {
+            // Find default income category
+            const defaultIncome = categories.find(c => 
+              c.type === 'income' && (c.name.includes('Other') || c.isDefault)
+            );
+            
+            if (defaultIncome) {
+              return {
+                categoryId: defaultIncome.id,
+                confidence: 0.3,
+                suggestionSource: 'fallback-type-based',
+                reasoning: 'Assigned default income category based on transaction type'
+              };
+            }
+          } else {
+            // Use different default categories based on amount for expenses
+            let defaultCategory;
+            
+            if (!amount || typeof amount !== 'number') {
+              // No amount info, use general uncategorized
+              defaultCategory = categories.find(c => 
+                c.type === 'expense' && (c.name.includes('Uncategorized') || c.isDefault)
+              );
+            } else if (amount > 500) {
+              // Large expenses often housing or big ticket items
+              defaultCategory = categories.find(c => 
+                c.type === 'expense' && (c.name.includes('Housing') || c.name.includes('Shopping'))
+              );
+            } else if (amount > 50) {
+              // Medium expenses often shopping or dining
+              defaultCategory = categories.find(c => 
+                c.type === 'expense' && (c.name.includes('Shopping') || c.name.includes('Food'))
+              );
+            } else {
+              // Small expenses often food or entertainment
+              defaultCategory = categories.find(c => 
+                c.type === 'expense' && (c.name.includes('Food') || c.name.includes('Entertainment'))
+              );
+            }
+            
+            // Fallback to any expense category
+            if (!defaultCategory) {
+              defaultCategory = categories.find(c => c.type === 'expense');
+            }
+            
+            if (defaultCategory) {
+              return {
+                categoryId: defaultCategory.id,
+                confidence: 0.2,
+                suggestionSource: 'fallback-amount-based',
+                reasoning: `Assigned category based on transaction amount ($${amount || 'unknown'})`
+              };
+            }
+          }
+          
+          // Ultimate fallback - first category in the system
+          if (categories.length > 0) {
+            return {
+              categoryId: categories[0].id,
+              confidence: 0.1,
+              suggestionSource: 'fallback-last-resort',
+              reasoning: 'No matching pattern found, assigned first available category'
+            };
+          }
+        } catch (fallbackError) {
+          console.error('[CategorySuggestion] Keyword fallback failed:', fallbackError);
+        }
+        
+        // Return error result if everything failed
         return { 
           categoryId: null, 
           confidence: 0, 
-          suggestionSource: 'classifier-error',
-          reasoning: `Classifier error: ${classifierError.message}`
+          suggestionSource: 'all-methods-failed',
+          reasoning: `All categorization methods failed: ${classifierError.message}`
         };
       }
     } catch (error) {

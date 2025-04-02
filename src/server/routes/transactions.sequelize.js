@@ -1538,7 +1538,7 @@ router.get('/by-upload/:uploadId', async (req, res) => {
   }
 });
 
-// Get all batches for a specific upload
+// Get all batches for a specific upload with enhanced timeout, error handling, and batch summaries
 router.get('/uploads/:uploadId/batches', async (req, res) => {
   try {
     console.log(`[GET /uploads/${req.params.uploadId}/batches] - Fetching batches for upload`);
@@ -3541,7 +3541,13 @@ router.post('/test/openai-batch-summary', async (req, res) => {
 });
 
 // Helper function to generate a batch summary with OpenAI
-async function generateBatchSummaryWithOpenAI(transactions) {
+/**
+ * Generate a natural language batch summary using OpenAI
+ * @param {Array} transactions - Array of transaction objects
+ * @param {number} timeoutMs - Timeout in milliseconds (defaults to 10 seconds)
+ * @returns {Promise<Object|null>} Object with summary and source, or null on failure
+ */
+async function generateBatchSummaryWithOpenAI(transactions, timeoutMs = 10000) {
   if (!transactions || transactions.length === 0) {
     return null;
   }
@@ -3554,72 +3560,17 @@ async function generateBatchSummaryWithOpenAI(transactions) {
       return null;
     }
     
-    // Collect context for better summary (limit to 10 transactions for performance)
-    const transactionInfo = transactions.slice(0, 10).map(t => ({
-      description: t.description,
-      merchant: t.merchant,
-      amount: t.amount,
-      date: t.date,
-      category: t.category?.name
-    }));
+    // We now use the enhanced method from the openai service that has built-in timeout
+    const batchInfo = await openaiService.generateBatchSummary(transactions, timeoutMs);
     
-    // Enhanced system prompt with better travel detection and insights
-    const systemPrompt = 
-      "Analyze financial transactions and generate a concise summary label. " + 
-      "For travel-related expenses (flights, hotels, taxis, travel insurance), identify the trip by destination (e.g., 'New York Trip Expenses'). " +
-      "If business-related words appear with travel expenses, use 'Business Trip' in the label. " +
-      "For similar merchant transactions, use that pattern (e.g., 'Amazon Purchases'). " +
-      "For food or dining transactions, identify the pattern (e.g., 'Restaurant Dining' or 'Coffee Shops'). " +
-      "For utility bills, identify the service type (e.g., 'Utility Bills' or 'Phone & Internet'). " +
-      "For mixed transactions, identify the common theme (e.g., 'Monthly Bills' or 'Household Expenses'). " +
-      "Keep summaries under 5 words, be specific, and avoid generic terms like 'Various Transactions'.";
-    
-    // Enhanced user prompt with date context and transaction detail
-    const userPrompt = 
-      `Create a brief, descriptive label for this group of transactions:\n` +
-      JSON.stringify(transactionInfo, null, 2) +
-      `\nDate range: ${transactionInfo[0]?.date || ''} to ${transactionInfo[transactionInfo.length-1]?.date || ''}\n` +
-      `Transaction count: ${transactions.length}\n` +
-      `Summary label:`;
-    
-    const client = openaiService.getOpenAIClient();
-    if (!client) {
-      console.log('OpenAI client not available');
+    // Check if we had a timeout or error
+    if (batchInfo.timedOut || batchInfo.error) {
+      console.log(`OpenAI batch summary generation ${batchInfo.timedOut ? 'timed out' : 'error'}: ${batchInfo.errorType || ''}`);
       return null;
     }
     
-    console.log('Generating batch summary with OpenAI for transactions:', 
-      transactionInfo.map(t => t.description).join(', '));
-    
-    // Set up a timeout for the OpenAI call to prevent hanging
-    const openaiPromise = openaiService.callWithRetry(
-      async () => await client.chat.completions.create({
-        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 30
-      })
-    );
-    
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('OpenAI summary generation timed out')), 10000));
-    
-    // Use Promise.race to implement the timeout
-    let completion;
-    try {
-      completion = await Promise.race([openaiPromise, timeoutPromise]);
-    } catch (timeoutError) {
-      console.error('OpenAI summary generation timed out:', timeoutError);
-      return null;
-    }
-    
-    const summary = completion.choices[0].message.content.trim();
-    console.log('OpenAI generated summary:', summary);
-    
-    return summary || null;
+    // Return the valid summary
+    return batchInfo.summary;
   } catch (error) {
     console.error('Error generating batch summary with OpenAI:', error);
     return null;
@@ -3750,11 +3701,18 @@ async function generateBatchSummary(transactions) {
     // If OpenAI is available, use it for a better summary
     if (process.env.OPENAI_API_KEY) {
       try {
-        // Use our specialized function for OpenAI batch summaries
-        const openAISummary = await generateBatchSummaryWithOpenAI(transactions);
+        const openaiService = require('../services/openai');
+        // Use the enhanced service with timeout handling
+        const batchInfo = await openaiService.generateBatchSummary(transactions, 12000); // 12 second timeout
         
-        if (openAISummary) {
-          return { summary: openAISummary };
+        if (batchInfo && !batchInfo.timedOut && !batchInfo.error) {
+          return { 
+            summary: batchInfo.summary,
+            insights: batchInfo.insights,
+            source: 'openai'
+          };
+        } else if (batchInfo?.timedOut) {
+          console.log('[Batch Summary] OpenAI summary generation timed out');
         }
       } catch (error) {
         console.error('Error generating batch summary with OpenAI:', error);
