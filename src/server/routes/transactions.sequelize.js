@@ -1599,6 +1599,7 @@ router.get('/uploads/:uploadId/batches', async (req, res) => {
     // Instead of fetching all transactions at once, we'll use pagination to retrieve them in batches
     // This helps prevent timeouts by processing data in smaller chunks
     const PAGE_SIZE = 100; 
+    const QUERY_TIMEOUT = 15000; // 15 seconds timeout per page query
     
     // Function to fetch transactions in pages
     async function fetchTransactionPages() {
