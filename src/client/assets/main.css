@@ -110,8 +110,27 @@
   background-color: #1e1e1e;
   border-radius: 0.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  z-index: 55;
+  z-index: 100;
   min-width: 150px;
+  width: 100%;
+  max-width: 200px;
+}
+
+.btm-nav .dropdown-content .menu {
+  width: 100%;
+  background-color: var(--bg-card, #121212);
+}
+
+.btm-nav .dropdown-content li a {
+  color: var(--text-primary, #FFFFFF);
+  padding: 0.75rem 1rem;
+  display: block;
+  font-size: 0.875rem;
+  transition: background-color 0.2s ease;
+}
+
+.btm-nav .dropdown-content li a:hover {
+  background-color: var(--bg-muted, #222222);
 }
 
 /* Custom scrollbar */

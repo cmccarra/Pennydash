@@ -26,19 +26,21 @@
         </svg>
         <span class="btm-nav-label">Reports</span>
       </button>
-      <button @click="moreMenuOpen = !moreMenuOpen" :class="{'active text-primary': moreMenuOpen || activeTab === 'more'}">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-        </svg>
-        <span class="btm-nav-label">More</span>
-        <div v-if="moreMenuOpen" class="dropdown-content">
-          <ul class="menu p-2 rounded-box">
+      <div class="flex-1 relative">
+        <button @click="moreMenuOpen = !moreMenuOpen" :class="{'active text-primary': moreMenuOpen || activeTab === 'more'}" class="w-full h-full flex flex-col items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+          <span class="btm-nav-label">More</span>
+        </button>
+        <div v-if="moreMenuOpen" class="absolute bottom-full right-0 mb-2 w-48 dropdown-content">
+          <ul class="menu p-2 shadow-lg bg-base-200 rounded-box">
             <li><a @click="activeTab = 'settings'; moreMenuOpen = false">Settings</a></li>
             <li><a @click="activeTab = 'categories'; moreMenuOpen = false">Categories</a></li>
             <li><a @click="activeTab = 'reviewQueue'; moreMenuOpen = false">Review Queue</a></li>
           </ul>
         </div>
-      </button>
+      </div>
     </div>
   </div>
 </template>
