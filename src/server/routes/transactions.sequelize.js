@@ -3332,6 +3332,80 @@ router.put('/uploads/:fileId/account-info', async (req, res) => {
 // Complete an upload
 // PUT route for completing upload removed - using POST endpoint instead
 
+// Regenerate a batch summary explicitly (useful for testing)
+router.post('/uploads/:uploadId/batches/:batchId/regenerate-summary', async (req, res) => {
+  try {
+    const { uploadId, batchId } = req.params;
+    console.log(`[POST /uploads/${uploadId}/batches/${batchId}/regenerate-summary] - Regenerating batch summary`);
+    
+    // Validate params
+    if (!uploadId || !batchId) {
+      return res.status(400).json({ 
+        error: 'Missing parameters',
+        details: 'Both uploadId and batchId are required'
+      });
+    }
+    
+    const { Transaction, Category, Batch } = getModels();
+    
+    // Find the batch record
+    const batch = await Batch.findOne({
+      where: { id: batchId, uploadId: uploadId }
+    });
+    
+    if (!batch) {
+      return res.status(404).json({
+        error: 'Batch not found',
+        details: `No batch found with ID ${batchId} in upload ${uploadId}`
+      });
+    }
+    
+    // Fetch transactions
+    const transactions = await Transaction.findAll({
+      where: { 
+        uploadId: uploadId,
+        batchId: batchId
+      },
+      include: [{
+        model: Category,
+        as: 'category'
+      }],
+      order: [['date', 'DESC']]
+    });
+    
+    if (transactions.length === 0) {
+      return res.status(404).json({
+        error: 'Empty batch',
+        details: `No transactions found for batch ${batchId}`
+      });
+    }
+    
+    // Force a new summary, bypassing any caching
+    console.log(`Regenerating summary for batch ${batchId} with ${transactions.length} transactions`);
+    const batchInfo = await generateBatchSummary(transactions);
+    console.log(`Generated new summary: "${batchInfo.summary}"`);
+    
+    // Update batch title in database
+    await batch.update({ title: batchInfo.summary });
+    
+    // Return updated batch info
+    res.json({
+      batchId,
+      uploadId,
+      oldTitle: batch.title,
+      newTitle: batchInfo.summary,
+      insights: batchInfo.insights || [],
+      transactionCount: transactions.length
+    });
+  } catch (error) {
+    console.error(`Error regenerating batch summary:`, error);
+    res.status(500).json({ 
+      error: 'Server error',
+      details: error.message
+    });
+  }
+});
+
 // Get batch details including transactions for a specific batch within an upload
 router.get('/uploads/:uploadId/batches/:batchId', async (req, res) => {
   try {
@@ -3381,6 +3455,16 @@ router.get('/uploads/:uploadId/batches/:batchId', async (req, res) => {
       ? calculateBatchStatisticsOptimized(transactions)
       : calculateBatchStatistics(transactions);
     
+    // Update batch title in database if it doesn't have one yet and we got a good summary
+    if (batch && (!batch.title || batch.title === 'Untitled Batch') && batchInfo.summary) {
+      try {
+        await batch.update({ title: batchInfo.summary });
+        console.log(`Updated batch title for ${batchId} to "${batchInfo.summary}"`);
+      } catch (updateError) {
+        console.error(`Error updating batch title:`, updateError);
+      }
+    }
+    
     // Return batch details
     res.json({
       batchId,
@@ -3420,15 +3504,36 @@ async function generateBatchSummary(transactions) {
       return { summary: `Transactions from ${merchants[0]}` };
     }
     
-    // If available, use OpenAI to generate a better summary
+    // Check if all transactions have similar descriptions
+    const descriptions = transactions.map(t => t.description);
+    const words = descriptions.join(' ').split(/\s+/);
+    const wordCounts = {};
+    
+    words.forEach(word => {
+      if (word.length > 3) { // Skip short words
+        wordCounts[word] = (wordCounts[word] || 0) + 1;
+      }
+    });
+    
+    // Find most common words
+    const commonWords = Object.entries(wordCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(entry => entry[0]);
+    
+    if (commonWords.length > 0) {
+      return { summary: `Transactions related to ${commonWords.join(' ')}` };
+    }
+    
+    // If OpenAI is available, use it for a better summary
     if (process.env.OPENAI_API_KEY) {
       const openaiService = require('../services/openai');
       
-      if (!openaiService.isRateLimited()) {
+      if (openaiService.isOpenAIConfigured() && !openaiService.isRateLimited()) {
         try {
-          const descriptions = transactions.slice(0, 5).map(t => t.description).join(", ");
+          const sampleDesc = transactions.slice(0, 5).map(t => t.description).join(", ");
           
-          const prompt = `Summarize these financial transactions in 5 words or less: ${descriptions}`;
+          const prompt = `Summarize these financial transactions in 5 words or less: ${sampleDesc}`;
           
           const client = openaiService.getOpenAIClient();
           if (client) {
@@ -3463,11 +3568,20 @@ async function generateBatchSummary(transactions) {
       const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
       const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
       
+      const formatDate = (date) => {
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        });
+      };
+      
       return { 
-        summary: `Transactions from ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`
+        summary: `Transactions from ${formatDate(minDate)} to ${formatDate(maxDate)}`
       };
     }
     
+    // Fallback summary
     return { summary: `Batch of ${transactions.length} transactions` };
   } catch (error) {
     console.error('Error generating batch summary:', error);

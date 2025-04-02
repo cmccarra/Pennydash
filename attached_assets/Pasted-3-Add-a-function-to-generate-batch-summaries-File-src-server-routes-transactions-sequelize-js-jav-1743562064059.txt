@@ -1,0 +1,98 @@
+3. Add a function to generate batch summaries:
+File: src/server/routes/transactions.sequelize.js
+javascriptCopy// Add this function to your transactions.sequelize.js file
+async function generateBatchSummary(transactions) {
+  if (!transactions || transactions.length === 0) {
+    return { summary: "Empty batch" };
+  }
+  
+  try {
+    // Check for common merchant
+    const merchants = [...new Set(transactions.map(t => t.merchant).filter(Boolean))];
+    if (merchants.length === 1) {
+      return { summary: `Transactions from ${merchants[0]}` };
+    }
+    
+    // Check if all transactions have similar descriptions
+    const descriptions = transactions.map(t => t.description);
+    const words = descriptions.join(' ').split(/\s+/);
+    const wordCounts = {};
+    
+    words.forEach(word => {
+      if (word.length > 3) { // Skip short words
+        wordCounts[word] = (wordCounts[word] || 0) + 1;
+      }
+    });
+    
+    // Find most common words
+    const commonWords = Object.entries(wordCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(entry => entry[0]);
+    
+    if (commonWords.length > 0) {
+      return { summary: `Transactions related to ${commonWords.join(' ')}` };
+    }
+    
+    // If OpenAI is available, use it for a better summary
+    if (process.env.OPENAI_API_KEY) {
+      const openaiService = require('../services/openai');
+      
+      if (openaiService.isOpenAIConfigured() && !openaiService.isRateLimited()) {
+        try {
+          const sampleDesc = transactions.slice(0, 5).map(t => t.description).join(", ");
+          
+          const prompt = `Summarize these financial transactions in 5 words or less: ${sampleDesc}`;
+          
+          const openai = new (require('openai').OpenAI)({ apiKey: process.env.OPENAI_API_KEY });
+          
+          const completion = await openaiService.callWithRetry(
+            async () => await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: "Summarize financial transactions in 5 words or less." },
+                { role: "user", content: prompt }
+              ],
+              temperature: 0.3,
+              max_tokens: 20
+            })
+          );
+          
+          const summary = completion.choices[0].message.content.trim();
+          if (summary) {
+            return { summary };
+          }
+        } catch (error) {
+          console.error('Error generating batch summary with OpenAI:', error);
+          // Fall through to default summary
+        }
+      }
+    }
+    
+    // Default summary based on date range
+    const dates = transactions.map(t => new Date(t.date)).filter(d => !isNaN(d.getTime()));
+    
+    if (dates.length > 0) {
+      const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+      const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+      
+      const formatDate = (date) => {
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        });
+      };
+      
+      return { 
+        summary: `Transactions from ${formatDate(minDate)} to ${formatDate(maxDate)}`
+      };
+    }
+    
+    // Fallback summary
+    return { summary: `Batch of ${transactions.length} transactions` };
+  } catch (error) {
+    console.error('Error generating batch summary:', error);
+    return { summary: `Batch of ${transactions.length} transactions` };
+  }
+}

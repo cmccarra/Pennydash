@@ -1,0 +1,339 @@
+4. Update the batches endpoint to include summaries and timeouts:
+File: src/server/routes/transactions.sequelize.js
+javascriptCopy// Replace the existing /uploads/:uploadId/batches endpoint with this improved version
+router.get('/uploads/:uploadId/batches', async (req, res) => {
+  try {
+    console.log(`[GET /uploads/${req.params.uploadId}/batches] - Fetching batches for upload`);
+    
+    const { Transaction, Category } = getModels();
+    const { uploadId } = req.params;
+    
+    if (!uploadId) {
+      console.log('⚠️ [ERROR] Upload ID is missing in request');
+      return res.status(400).json({ 
+        error: 'Upload ID is required',
+        details: 'The upload ID is missing in the URL path. Please ensure the uploadId is provided.'
+      });
+    }
+    
+    // Validate uploadId format (should start with 'upload_' followed by numbers)
+    if (!uploadId.match(/^upload_\d+$/)) {
+      console.log(`⚠️ [ERROR] Invalid upload ID format: ${uploadId}`);
+      return res.status(400).json({
+        error: 'Invalid upload ID format',
+        details: 'Upload ID should follow the format "upload_" followed by numbers.'
+      });
+    }
+    
+    console.log(`[GET /uploads/${uploadId}/batches] - Finding transactions with this uploadId`);
+    
+    // Set a timeout for database operations to prevent hanging
+    const dbOperationPromise = Transaction.findAll({
+      where: { uploadId: uploadId },
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'color', 'icon'],
+          required: false
+        }
+      ],
+      order: [['date', 'DESC']]
+    });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Database operation timed out')), 10000);
+    });
+    
+    // Use Promise.race to implement the timeout
+    let transactions;
+    try {
+      transactions = await Promise.race([dbOperationPromise, timeoutPromise]);
+    } catch (timeoutError) {
+      console.error(`⚠️ [ERROR] Database operation timed out: ${timeoutError.message}`);
+      return res.status(408).json({
+        error: 'Database operation timed out',
+        message: 'The server took too long to fetch the transactions. Please try again.',
+        timeout: true
+      });
+    }
+    
+    console.log(`[GET /uploads/${uploadId}/batches] - Found ${transactions.length} transactions`);
+    
+    // Return early if no transactions found to avoid further processing
+    if (transactions.length === 0) {
+      console.log(`⚠️ [WARNING] No transactions found for upload ID: ${uploadId}`);
+      return res.json({
+        batches: [],
+        statistics: { 
+          totalTransactions: 0,
+          netAmount: 0,
+          netDirection: 'neutral',
+          sources: []
+        }
+      });
+    }
+    
+    // Special handling for credit card transactions - update transaction types if needed
+    if (transactions.length > 0 && transactions[0].accountType === 'credit_card') {
+      console.log(`[GET /uploads/${uploadId}/batches] - Processing credit card transactions...`);
+      
+      // Correct the transaction types for credit card transactions
+      for (const transaction of transactions) {
+        const description = transaction.description.toLowerCase();
+        const originalType = transaction.type;
+        
+        // Payment detection
+        const isPayment = description.includes('payment') && 
+                         (description.includes('received') || 
+                          description.includes('thank you'));
+                          
+        // Refund detection
+        const isRefund = description.includes('refund') || 
+                        description.includes('credit') || 
+                        description.includes('return');
+        
+        // For credit cards, regular purchases should be expenses, not income
+        // But keep payments to the card as income
+        let correctType;
+        if (isPayment || isRefund) {
+          correctType = 'income';
+        } else {
+          correctType = 'expense';
+        }
+        
+        // Update transaction type if needed
+        if (transaction.type !== correctType) {
+          console.log(`[GET /uploads/${uploadId}/batches] - Correcting transaction type: "${transaction.description}" | ${originalType} -> ${correctType}`);
+          transaction.type = correctType;
+          await transaction.save();
+        }
+      }
+    }
+    
+    // Group transactions by batchId
+    const batchMap = {};
+    let transactionsWithoutBatch = 0;
+    
+    transactions.forEach(transaction => {
+      const batchId = transaction.batchId;
+      
+      // Log transactions without batches and try to recover
+      if (!batchId) {
+        transactionsWithoutBatch++;
+        console.log(`⚠️ [WARNING] Transaction without batchId: ${transaction.id} - ${transaction.description}`);
+        
+        // Try to recover using various strategies
+        if (transaction.uploadId) {
+          // Determine if this transaction fits with a merchant-based batch
+          let foundMatchingBatch = false;
+          
+          // Extract merchant if available
+          const merchant = transaction.merchant || 
+                          (transaction.description ? transaction.description.split(' ')[0] : null);
+          
+          // Try to find existing batches for this merchant
+          if (merchant) {
+            // Look through existing batches to see if there's a merchant match
+            Object.entries(batchMap).forEach(([existingBatchId, batchTransactions]) => {
+              if (batchTransactions.length > 0) {
+                const batchMerchant = batchTransactions[0].merchant || 
+                                     (batchTransactions[0].description ? batchTransactions[0].description.split(' ')[0] : null);
+                
+                // If merchants match and transaction types match, use this batch
+                if (batchMerchant && 
+                    batchMerchant.toLowerCase() === merchant.toLowerCase() && 
+                    batchTransactions[0].type === transaction.type) {
+                  console.log(`🔄 [RECOVERY] Adding transaction to existing merchant batch: ${existingBatchId} for transaction ${transaction.id}`);
+                  batchMap[existingBatchId].push(transaction);
+                  foundMatchingBatch = true;
+                  
+                  // Also update the transaction's batchId in memory and in the database
+                  transaction.batchId = existingBatchId;
+                  
+                  // Save the updated batchId to the database
+                  (async () => {
+                    try {
+                      await Transaction.update(
+                        { batchId: existingBatchId },
+                        { where: { id: transaction.id } }
+                      );
+                      console.log(`✅ [RECOVERY] Updated batchId in database for transaction ${transaction.id}`);
+                    } catch (err) {
+                      console.error(`❌ [ERROR] Failed to update batchId in database for transaction ${transaction.id}:`, err);
+                    }
+                  })();
+                  
+                  return;
+                }
+              }
+            });
+          }
+          
+          // If we couldn't find a matching batch, create a new one based on type
+          if (!foundMatchingBatch) {
+            const transactionType = transaction.type || 'unknown';
+            const recoveredBatchId = `${transaction.uploadId}_batch_recovered_${transactionType}_${Date.now().toString().slice(-4)}`;
+            console.log(`🔄 [RECOVERY] Creating new recovered batch ID: ${recoveredBatchId} for transaction ${transaction.id}`);
+            
+            if (!batchMap[recoveredBatchId]) {
+              batchMap[recoveredBatchId] = [];
+            }
+            batchMap[recoveredBatchId].push(transaction);
+            
+            // Update the transaction's batchId in memory and in the database
+            transaction.batchId = recoveredBatchId;
+            
+            // Save the updated batchId to the database
+            (async () => {
+              try {
+                await Transaction.update(
+                  { batchId: recoveredBatchId },
+                  { where: { id: transaction.id } }
+                );
+                console.log(`✅ [RECOVERY] Updated batchId in database for transaction ${transaction.id}`);
+              } catch (err) {
+                console.error(`❌ [ERROR] Failed to update batchId in database for transaction ${transaction.id}:`, err);
+              }
+            })();
+          }
+        } else {
+          console.log(`❌ [ERROR] Cannot recover transaction ${transaction.id} - missing uploadId`);
+        }
+        return;
+      }
+      
+      if (!batchMap[batchId]) {
+        batchMap[batchId] = [];
+      }
+      batchMap[batchId].push(transaction);
+    });
+    
+    // Convert to array of batches with summaries and statistics
+    const batches = await Promise.all(Object.keys(batchMap).map(async (batchId) => {
+      const batchTransactions = batchMap[batchId];
+      console.log(`[GET /uploads/${uploadId}/batches] - Processing batch ${batchId} with ${batchTransactions.length} transactions`);
+      
+      // Get batch summary
+      const summaryInfo = await generateBatchSummary(batchTransactions);
+      
+      // Get category suggestions for the batch
+      let suggestedCategory = null;
+      let suggestedCategoryId = null;
+      let suggestedCategoryConfidence = 0;
+      
+      try {
+        // Check if any transactions already have a category
+        const categorizedTransactions = batchTransactions.filter(t => t.categoryId);
+        if (categorizedTransactions.length > 0) {
+          // Use the most common category
+          const categoryCounts = {};
+          categorizedTransactions.forEach(t => {
+            categoryCounts[t.categoryId] = (categoryCounts[t.categoryId] || 0) + 1;
+          });
+          
+          const mostCommonCategory = Object.entries(categoryCounts)
+            .sort((a, b) => b[1] - a[1])[0];
+          
+          if (mostCommonCategory) {
+            suggestedCategoryId = mostCommonCategory[0];
+            suggestedCategoryConfidence = 0.9; // High confidence for existing categories
+            
+            // Get category details
+            try {
+              suggestedCategory = await Category.findByPk(suggestedCategoryId);
+            } catch (err) {
+              console.error(`Error finding category ${suggestedCategoryId}:`, err);
+            }
+          }
+        } 
+        // If no transactions have categories, use category suggestion service
+        else if (batchTransactions.length > 0) {
+          // Use the first transaction to get a suggestion
+          const firstTransaction = batchTransactions[0];
+          const suggestion = await categorySuggestionService.suggestCategory(
+            firstTransaction.description,
+            firstTransaction.amount,
+            firstTransaction.type
+          );
+          
+          if (suggestion && suggestion.categoryId) {
+            suggestedCategoryId = suggestion.categoryId;
+            suggestedCategoryConfidence = suggestion.confidence;
+            
+            // Get category details
+            try {
+              suggestedCategory = await Category.findByPk(suggestedCategoryId);
+            } catch (err) {
+              console.error(`Error finding category ${suggestedCategoryId}:`, err);
+            }
+          }
+        }
+      } catch (suggestionError) {
+        console.error(`Error getting category suggestion for batch ${batchId}:`, suggestionError);
+      }
+      
+      try {
+        const batchStats = calculateBatchStatistics(batchTransactions);
+        return {
+          batchId,
+          transactions: batchTransactions,
+          statistics: batchStats,
+          status: batchTransactions[0]?.enrichmentStatus || 'pending',
+          summary: summaryInfo.summary,
+          suggestedCategory: suggestedCategory ? {
+            id: suggestedCategory.id,
+            name: suggestedCategory.name,
+            color: suggestedCategory.color,
+            icon: suggestedCategory.icon,
+            type: suggestedCategory.type
+          } : null,
+          suggestedCategoryId,
+          suggestedCategoryConfidence
+        };
+      } catch (statError) {
+        console.error(`Error calculating statistics for batch ${batchId}:`, statError);
+        return {
+          batchId,
+          transactions: batchTransactions,
+          statistics: {
+            totalTransactions: batchTransactions.length,
+            error: statError.message
+          },
+          status: 'error',
+          summary: summaryInfo.summary
+        };
+      }
+    }));
+    
+    console.log(`[GET /uploads/${uploadId}/batches] - Created ${batches.length} batches`);
+    
+    // Calculate overall statistics
+    let totalStats;
+    try {
+      totalStats = calculateTotalStatistics(batches.map(b => ({ transactions: b.transactions })));
+      console.log(`[GET /uploads/${uploadId}/batches] - Calculated total statistics`);
+    } catch (statError) {
+      console.error(`Error calculating total statistics:`, statError);
+      totalStats = { 
+        error: statError.message,
+        totalTransactions: transactions.length
+      };
+    }
+    
+    const response = {
+      uploadId,
+      batches,
+      statistics: totalStats
+    };
+    
+    console.log(`[GET /uploads/${uploadId}/batches] - Sending response with ${batches.length} batches`);
+    res.json(response);
+  } catch (error) {
+    console.error('Error getting batches:', error);
+    res.status(500).json({ 
+      error: `Error fetching batches: ${error.message}`,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});

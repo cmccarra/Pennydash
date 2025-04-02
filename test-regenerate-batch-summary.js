@@ -1,5 +1,5 @@
 /**
- * Test script for the batch summary generation functionality
+ * Test script for the batch summary regeneration functionality
  */
 
 // Use CommonJS for Node.js built-in modules
@@ -14,21 +14,20 @@ const fetchData = async (url, options = {}) => {
 
 // Configuration
 const API_BASE_URL = 'http://localhost:5000/api';
-const TEST_TRANSACTION_FILE = 'test-transactions.csv';
 
 /**
  * Main test function
  */
-async function runBatchSummaryTest() {
+async function runRegenerateSummaryTest() {
   try {
-    console.log('Starting batch summary test...');
+    console.log('Starting batch summary regeneration test...');
     
     // Step 1: Create a new upload
     console.log('Step 1: Creating a new upload');
     const uploadId = await createNewUpload();
     console.log(`Created upload with ID: ${uploadId}`);
     
-    // Step 2: Process the upload and add some test transactions
+    // Step 2: Process the upload and add test transactions
     console.log('Step 2: Processing upload and adding test transactions');
     await processUpload(uploadId);
     const transactionIds = await addTestTransactions(uploadId);
@@ -39,15 +38,24 @@ async function runBatchSummaryTest() {
     const batch = await createBatch(uploadId, transactionIds);
     console.log(`Created batch with ID: ${batch.id}, Title: ${batch.title}`);
     
-    // Step 4: Retrieve the batch to see if a summary was generated
-    console.log('Step 4: Retrieving the batch to check summary');
-    const retrievedBatch = await getBatchDetails(uploadId, batch.id);
-    console.log('Batch details:');
-    console.log(`- Title: ${retrievedBatch.title}`);
-    console.log(`- Transaction Count: ${retrievedBatch.transactions.length}`);
-    if (retrievedBatch.statistics) {
-      console.log(`- Statistics: ${JSON.stringify(retrievedBatch.statistics, null, 2)}`);
-    }
+    // Step 4: Retrieve the original batch details
+    console.log('Step 4: Retrieving the original batch details');
+    const originalBatch = await getBatchDetails(uploadId, batch.id);
+    console.log('Original batch details:');
+    console.log(`- Title: ${originalBatch.title}`);
+    
+    // Step 5: Regenerate the batch summary
+    console.log('Step 5: Regenerating the batch summary');
+    const regeneratedSummary = await regenerateBatchSummary(uploadId, batch.id);
+    console.log('Regenerated summary:');
+    console.log(`- Old title: ${regeneratedSummary.oldTitle}`);
+    console.log(`- New title: ${regeneratedSummary.newTitle}`);
+    
+    // Step 6: Retrieve the updated batch details
+    console.log('Step 6: Retrieving the updated batch details');
+    const updatedBatch = await getBatchDetails(uploadId, batch.id);
+    console.log('Updated batch details:');
+    console.log(`- Title: ${updatedBatch.title}`);
     
     console.log('\nTest completed successfully!');
   } catch (error) {
@@ -61,7 +69,6 @@ async function runBatchSummaryTest() {
  */
 async function createNewUpload() {
   // For simplicity, we'll skip the file upload and create a dummy upload directly
-  // since our focus is on testing the batch summary functionality
   
   const response = await fetchData(`${API_BASE_URL}/uploads/dummy`, {
     method: 'POST',
@@ -69,7 +76,7 @@ async function createNewUpload() {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      name: 'Test Upload for Batch Summary',
+      name: 'Test Upload for Batch Summary Regeneration',
       source: 'Test',
       type: 'csv'
     })
@@ -125,46 +132,86 @@ async function processUpload(uploadId) {
  * @returns {Promise<Array<string>>} Transaction IDs
  */
 async function addTestTransactions(uploadId) {
-  // Sample test transactions
+  // Sample test transactions - all related to a New York trip
   const testTransactions = [
     {
       date: '2025-03-01',
-      description: 'Coffee Shop - Morning Coffee',
-      amount: 5.75,
+      description: 'Flight to New York',
+      amount: 450.75,
       type: 'expense',
-      merchant: 'Starbucks',
+      merchant: 'United Airlines',
+      uploadId
+    },
+    {
+      date: '2025-03-01',
+      description: 'Travel Insurance',
+      amount: 85.50,
+      type: 'expense',
+      merchant: 'Allianz',
       uploadId
     },
     {
       date: '2025-03-02',
-      description: 'Coffee Shop - Afternoon Coffee',
-      amount: 4.50,
+      description: 'Hotel in New York',
+      amount: 324.50,
       type: 'expense',
-      merchant: 'Starbucks',
+      merchant: 'Hilton Hotels',
+      uploadId
+    },
+    {
+      date: '2025-03-02',
+      description: 'Taxi from JFK Airport',
+      amount: 65.99,
+      type: 'expense',
+      merchant: 'Yellow Cab',
       uploadId
     },
     {
       date: '2025-03-03',
-      description: 'Coffee Shop - Morning Breakfast',
-      amount: 12.99,
+      description: 'New York City Pass',
+      amount: 129.00,
       type: 'expense',
-      merchant: 'Starbucks',
+      merchant: 'NYC Tourism',
+      uploadId
+    },
+    {
+      date: '2025-03-03',
+      description: 'Empire State Building Entry',
+      amount: 45.73,
+      type: 'expense',
+      merchant: 'Empire State Building',
+      uploadId
+    },
+    {
+      date: '2025-03-04',
+      description: 'MoMA Museum Ticket',
+      amount: 25.00,
+      type: 'expense',
+      merchant: 'Museum of Modern Art',
+      uploadId
+    },
+    {
+      date: '2025-03-04',
+      description: 'Lunch in Central Park',
+      amount: 32.45,
+      type: 'expense',
+      merchant: 'Central Park Cafe',
       uploadId
     },
     {
       date: '2025-03-05',
-      description: 'Grocery Shopping',
-      amount: 78.45,
+      description: 'Broadway Show Tickets',
+      amount: 178.45,
       type: 'expense',
-      merchant: 'Whole Foods',
+      merchant: 'Ticketmaster',
       uploadId
     },
     {
-      date: '2025-03-10',
-      description: 'Salary Deposit',
-      amount: 3500.00,
-      type: 'income',
-      merchant: 'Employer Inc',
+      date: '2025-03-05',
+      description: 'Dinner before show',
+      amount: 120.00,
+      type: 'expense',
+      merchant: 'Le Bernardin',
       uploadId
     }
   ];
@@ -252,5 +299,30 @@ async function getBatchDetails(uploadId, batchId) {
   return data;
 }
 
+/**
+ * Regenerate batch summary
+ * @param {string} uploadId - The upload ID
+ * @param {string} batchId - The batch ID
+ * @returns {Promise<Object>} Regeneration result
+ */
+async function regenerateBatchSummary(uploadId, batchId) {
+  const response = await fetchData(`${API_BASE_URL}/transactions/uploads/${uploadId}/batches/${batchId}/regenerate-summary`, {
+    method: 'POST'
+  });
+  
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new Error(`Failed to parse regenerate summary response: ${error.message}`);
+  }
+  
+  if (!response.ok) {
+    throw new Error(`Failed to regenerate batch summary: ${data.error || response.statusText}`);
+  }
+  
+  return data;
+}
+
 // Run the test
-runBatchSummaryTest().catch(console.error);
+runRegenerateSummaryTest().catch(console.error);
