@@ -2,6 +2,13 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
+/* Mobile dropdown menu */
+.dropdown-top .dropdown-content {
+  bottom: 100%;
+  top: auto;
+  transform: translateY(0);
+}
+
 /* Custom utility classes */
 .card {
   @apply bg-white shadow-md rounded-lg p-6;
