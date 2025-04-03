@@ -262,9 +262,33 @@ class CategorySuggestionService {
           );
 
           if (openaiSuggestion && !openaiSuggestion.error) {
+            // Check if we already have a matched categoryId from the OpenAI service
+            let categoryId = openaiSuggestion.categoryId;
+            let matchConfidence = 1.0; // Default to high confidence if ID was directly provided
+            
+            // If no categoryId but we have a name suggestion, find matching category
+            if (!categoryId && openaiSuggestion.categoryName) {
+              const matchResult = openaiService.findMatchingCategory(
+                openaiSuggestion.categoryName,
+                categories,
+                type
+              );
+              
+              categoryId = matchResult.categoryId;
+              matchConfidence = matchResult.matchConfidence;
+              
+              console.log(`[CategorySuggestion] New user match: "${openaiSuggestion.categoryName}" → ID: ${categoryId}, Confidence: ${matchConfidence.toFixed(2)}`);
+            }
+            
+            // Calculate final confidence
+            const finalConfidence = categoryId 
+              ? (openaiSuggestion.confidence * 0.7) + (matchConfidence * 0.3)
+              : openaiSuggestion.confidence * 0.5; // Lower confidence if no match found
+              
             return {
-              categoryId: openaiSuggestion.categoryId,
-              confidence: openaiSuggestion.confidence,
+              categoryId,
+              confidence: finalConfidence,
+              openaiSuggestion: openaiSuggestion.categoryName,
               suggestionSource: 'openai-new-user',
               reasoning: openaiSuggestion.reasoning
             };

@@ -392,6 +392,20 @@ async function categorizeTransaction(description, amount, type = 'expense', exis
         reasoning: response.reasoning || "No reasoning provided",
         responseText // Include full response for debugging
       };
+
+      // Find matching category ID if existing categories were provided
+      if (result.categoryName && existingCategories && existingCategories.length > 0) {
+        const matchResult = findMatchingCategory(
+          result.categoryName,
+          existingCategories,
+          type
+        );
+        
+        result.categoryId = matchResult.categoryId;
+        result.matchConfidence = matchResult.matchConfidence;
+        
+        console.log(`[OpenAI] Category match: "${result.categoryName}" → ID: ${result.categoryId}, Confidence: ${result.matchConfidence?.toFixed(2) || 'N/A'}`);
+      }
       
       // Add to cache
       addToCache(cacheKey, result);
@@ -450,13 +464,37 @@ async function categorizeTransaction(description, amount, type = 'expense', exis
  * @param {string} transactionType - Transaction type (income or expense)
  * @returns {Object} Object with categoryId and matchConfidence
  */
+/**
+ * Find matching category from a suggested name
+ * @param {string} suggestedName - The category name suggested by OpenAI
+ * @param {Array} existingCategories - Array of existing category objects
+ * @param {string} transactionType - The transaction type (expense, income, transfer)
+ * @returns {Object} Object with categoryId and matchConfidence
+ */
 function findMatchingCategory(suggestedName, existingCategories, transactionType) {
   if (!suggestedName || !existingCategories || !existingCategories.length) {
+    console.log(`[OpenAI] Cannot match category: Invalid inputs`);
     return { categoryId: null, matchConfidence: 0 };
   }
   
+  // Handle cases where OpenAI returns "Category (type)" format
+  // Extract the category name without the type in parentheses
+  let cleanSuggestion = suggestedName;
+  const typeMatch = suggestedName.match(/^(.+?)\s*\((expense|income|transfer)\)$/i);
+  
+  if (typeMatch) {
+    cleanSuggestion = typeMatch[1].trim();
+    // If a type was specified in parentheses, use it instead of the passed transactionType
+    const specifiedType = typeMatch[2].toLowerCase();
+    if (specifiedType && ['expense', 'income', 'transfer'].includes(specifiedType)) {
+      transactionType = specifiedType;
+    }
+  }
+  
+  console.log(`[OpenAI] Matching "${suggestedName}" → Clean: "${cleanSuggestion}", Type: ${transactionType}`);
+  
   // Normalize the suggested name for better matching
-  const normalizedSuggestion = suggestedName.toLowerCase();
+  const normalizedSuggestion = cleanSuggestion.toLowerCase();
   
   // First try to find an exact match
   const exactMatch = existingCategories.find(
@@ -465,6 +503,7 @@ function findMatchingCategory(suggestedName, existingCategories, transactionType
   );
   
   if (exactMatch) {
+    console.log(`[OpenAI] Found exact match: ${exactMatch.name} (${exactMatch.type})`);
     return { categoryId: exactMatch.id, matchConfidence: 1.0 };
   }
   
@@ -472,6 +511,12 @@ function findMatchingCategory(suggestedName, existingCategories, transactionType
   const typeFilteredCategories = existingCategories.filter(
     cat => cat.type === transactionType || transactionType === 'unknown'
   );
+  
+  if (typeFilteredCategories.length === 0) {
+    console.log(`[OpenAI] No categories found with type ${transactionType}`);
+    // If no categories of the right type exist, try all categories
+    typeFilteredCategories.push(...existingCategories);
+  }
   
   // Calculate similarity scores
   const matches = typeFilteredCategories.map(category => {
@@ -512,12 +557,15 @@ function findMatchingCategory(suggestedName, existingCategories, transactionType
   matches.sort((a, b) => b.score - a.score);
   
   if (matches.length > 0 && matches[0].score > 0.3) {
+    const bestMatch = matches[0];
+    console.log(`[OpenAI] Best category match: ${bestMatch.category.name} (${bestMatch.category.type}) with score ${bestMatch.score.toFixed(2)}`);
     return {
-      categoryId: matches[0].category.id,
-      matchConfidence: matches[0].score
+      categoryId: bestMatch.category.id,
+      matchConfidence: bestMatch.score
     };
   }
   
+  console.log(`[OpenAI] No good category matches found for "${suggestedName}"`);
   return { categoryId: null, matchConfidence: 0 };
 }
 
