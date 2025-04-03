@@ -2,45 +2,62 @@
 const OpenAI = require('openai');
 
 // Configure OpenAI client with error handling
-let openaiClient = null;
+const openai = process.env.OPENAI_API_KEY ? 
+  new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : 
+  null;
 
-/**
- * Get or create an OpenAI client instance
- * This allows dynamic reconfiguration without server restarts
- * @returns {Object|null} Configured OpenAI client or null
- */
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  
-  // If no API key is available, return null
-  if (!apiKey) {
-    return null;
-  }
-  
-  // Create a new client if one doesn't exist or if the API key has changed
-  if (!openaiClient || openaiClient._options.apiKey !== apiKey) {
-    try {
-      console.log('[OpenAI] Configuring client with API key');
-      openaiClient = new OpenAI({ apiKey });
-    } catch (error) {
-      console.error('[OpenAI] Error configuring client:', error);
-      return null;
-    }
-  }
-  
-  return openaiClient;
-}
+// Configuration flag for testing
+const SIMULATE_FAILURE = process.env.SIMULATE_OPENAI_FAILURE === 'true';
+
+// Rate limit configuration in milliseconds (1 minute)
+const RATE_LIMIT_WINDOW = 60000; 
 
 // Check if OpenAI API key is configured
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const API_KEY_CONFIGURED = !!OPENAI_API_KEY;
+const API_KEY_CONFIGURED = !!process.env.OPENAI_API_KEY;
+
+// Flag to indicate if OpenAI is available
+const OPENAI_AVAILABLE = API_KEY_CONFIGURED && !SIMULATE_FAILURE;
 
 /**
  * Check if OpenAI is properly configured
  * @returns {boolean} Whether OpenAI is properly configured
  */
 function isOpenAIConfigured() {
-  return !!getOpenAIClient();
+  return !!openai;
+}
+
+/**
+ * Check if OpenAI service is rate limited
+ * @returns {boolean} Whether the service is rate limited
+ */
+function isRateLimited() {
+  // If simulating failure, always return true
+  if (SIMULATE_FAILURE) {
+    console.log('[OpenAI] Simulating API failure for testing');
+    metrics.isRateLimited = true;
+    return true;
+  }
+
+  // If OpenAI is not configured, we should consider it rate limited
+  if (!isOpenAIConfigured()) {
+    console.log('[OpenAI] OpenAI is not configured');
+    return true;
+  }
+  
+  // If we've seen a rate limit error recently, enforce a cooldown period
+  if (metrics.lastRateLimitTime > 0) {
+    const timeSinceLastRateLimit = Date.now() - metrics.lastRateLimitTime;
+    if (timeSinceLastRateLimit < RATE_LIMIT_WINDOW) {
+      // Still in the rate limit cooldown window
+      return true;
+    } else {
+      // Reset rate limit status after cooldown
+      metrics.lastRateLimitTime = 0;
+      metrics.isRateLimited = false;
+    }
+  }
+  
+  return metrics.isRateLimited;
 }
 
 /**
@@ -117,11 +134,10 @@ async function generateBatchSummary(transactions, timeoutMs = 15000) {
     const processSummary = async () => {
       const completion = await callWithRetry(
         async () => {
-          const client = getOpenAIClient();
-          if (!client) {
+          if (!openai) {
             throw new Error('OpenAI client not available');
           }
-          return await client.chat.completions.create(requestConfig);
+          return await openai.chat.completions.create(requestConfig);
         }
       );
       
@@ -194,12 +210,6 @@ async function generateBatchSummary(transactions, timeoutMs = 15000) {
   }
 }
 
-// Flag to simulate API failures (for testing)
-const SIMULATE_FAILURE = process.env.SIMULATE_OPENAI_FAILURE === 'true';
-
-// Flag to indicate if OpenAI is available
-const OPENAI_AVAILABLE = API_KEY_CONFIGURED && !SIMULATE_FAILURE;
-
 // Tracking metrics and cache to optimize API usage
 const metrics = {
   apiCalls: 0,
@@ -231,7 +241,6 @@ const CACHE_SIZE_LIMIT = 1000;
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 // Rate limiting settings
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute window
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 
@@ -359,14 +368,13 @@ async function categorizeTransaction(description, amount, type = 'expense', exis
       response_format: { type: "json_object" } // Ensure response is formatted as JSON
     };
     
-    // Make API call with retry logic using dynamically retrieved client
+    // Make API call with retry logic
     const completion = await callWithRetry(
       async () => {
-        const client = getOpenAIClient();
-        if (!client) {
+        if (!openai) {
           throw new Error('OpenAI client not available');
         }
-        return await client.chat.completions.create(requestConfig);
+        return await openai.chat.completions.create(requestConfig);
       }
     );
     
@@ -584,14 +592,13 @@ async function categorizeBatch(transactions, existingCategories = []) {
         response_format: { type: "json_object" }
       };
       
-      // Make API call with retry logic using dynamically retrieved client
+      // Make API call with retry logic
       const completion = await callWithRetry(
         async () => {
-          const client = getOpenAIClient();
-          if (!client) {
+          if (!openai) {
             throw new Error('OpenAI client not available');
           }
-          return await client.chat.completions.create(requestConfig);
+          return await openai.chat.completions.create(requestConfig);
         }
       );
       
@@ -815,7 +822,7 @@ async function categorizeBatch(transactions, existingCategories = []) {
  */
 function isRateLimited() {
   // If OpenAI client is not available, treat as rate limited
-  if (!getOpenAIClient()) {
+  if (!openai) {
     console.log('[OpenAI] OpenAI client not available');
     return true;
   }
@@ -856,7 +863,7 @@ async function callWithRetry(apiFn, ...args) {
   let lastError = null;
   
   // Check if OpenAI client is available
-  if (!getOpenAIClient()) {
+  if (!openai) {
     const error = new Error('OpenAI client not available');
     error.code = 'api_key_missing';
     error.type = 'configuration_error';
@@ -1021,16 +1028,14 @@ function isAvailable(forceCheck = false) {
     return isOpenAIConfigured() && !isRateLimited();
   }
   
-  // More thorough check - actually try to get the client
-  const client = getOpenAIClient();
-  
+  // More thorough check
   // Also check if we're currently rate limited
   if (isRateLimited()) {
     console.log('[OpenAI] Service is currently rate limited, considered unavailable');
     return false;
   }
   
-  return !!client;
+  return !!openai;
 }
 
 /**
@@ -1071,6 +1076,5 @@ module.exports = {
   callWithRetry,
   isAvailable,
   getStatus,
-  isOpenAIConfigured,
-  getOpenAIClient
+  isOpenAIConfigured
 };
