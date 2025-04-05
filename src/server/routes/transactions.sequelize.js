@@ -3875,14 +3875,14 @@ async function generateBatchSummary(transactions) {
     
     // Check if all transactions have similar descriptions
     const descriptions = transactions.map(t => t.description || '');
-    const descriptionWords = descriptions.join(' ').split(/\s+/)
+    const words = descriptions.join(' ').split(/\s+/)
       .filter(word => 
         word.length > 3 && 
         !['THE', 'AND', 'FROM', 'WITH'].includes(word.toUpperCase())
       );
     
     const wordCounts = {};
-    descriptionWords.forEach(word => {
+    words.forEach(word => {
       wordCounts[word] = (wordCounts[word] || 0) + 1;
     });
     
@@ -3963,12 +3963,6 @@ async function generateBatchSummary(transactions) {
       summary = dateRangeTitle;
     } else {
       summary = `Batch of ${transactions.length} transactions`;
-    }
-    
-    // Ensure summary is no longer than 8 words
-    const summaryWords = summary.split(/\s+/);
-    if (summaryWords.length > 8) {
-      summary = summaryWords.slice(0, 8).join(' ') + '...';
     }
     
     return { 

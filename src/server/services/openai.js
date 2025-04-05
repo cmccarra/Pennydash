@@ -120,7 +120,7 @@ async function generateBatchSummary(transactions, timeoutMs = 15000) {
       model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. Do not change this unless explicitly requested by the user
       messages: [{
         role: "system",
-        content: "You are a financial analyst assistant. Your task is to analyze transaction data and provide a concise, informative summary. Focus on identifying patterns, dominant merchants, time periods, and any notable insights. Look for travel expenses, subscription patterns, or unusual spending.\n\nCRITICAL: Your summary MUST be NO LONGER THAN 8 WORDS - absolutely no exceptions. It should be very short but descriptive.\n\nRespond with a JSON object containing:\n1. summary: Your 8-words-or-less summary\n2. insights: Array of brief insights"
+        content: "You are a financial analyst assistant. Your task is to analyze transaction data and provide a concise, informative summary. Focus on identifying patterns, dominant merchants, time periods, and any notable insights. Look for travel expenses, subscription patterns, or unusual spending. Respond with a JSON object containing summary and insights fields."
       }, {
         role: "user",
         content: `Please analyze these transactions and provide a summary and key insights as a JSON object:\n\n${transactionSummary}${transactionCountInfo}\n\n${dateRangeSummary}\nTotal amount: $${totalAmount}\nTotal transactions: ${transactions.length}`
